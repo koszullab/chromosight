@@ -82,7 +82,7 @@ def main():
     arguments = docopt.docopt(__doc__, version=__version__)
     predicted_patterns = arguments["<predicted_patterns>"]
     real_patterns = arguments["<real_patterns>"]
-    area = arguements["--area"]
+    area = arguments["--area"]
     size = arguments["--size"]
 
     score_loop(predicted_patterns, real_patterns, area, size)
