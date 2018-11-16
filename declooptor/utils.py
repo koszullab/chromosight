@@ -40,6 +40,33 @@ def scn_func(A, threshold=0):
 
 
 def distance_law(matrix):
+    """Genomic distance law
+    
+    Compute genomic distance law by averaging over each diagonal.
+    
+    Parameters
+    ----------
+    matrix: array_like
+        The input matrix to compute distance law from.
+        
+    Returns
+    -------
+    dist: np.ndarray
+        The output genomic distance law.
+    
+    
+    Example
+    -------
+        >>> M = np.ones((3,3))
+        >>> M += np.array([1,2,3])
+        >>> M
+        array([[2., 3., 4.],
+               [2., 3., 4.],
+               [2., 3., 4.]])
+        >>> distance_law(M)
+        array([3. , 2.5, 2. ])
+    
+    """
     n = matrix.shape[0]
     dist = np.zeros(n)
     for diag in range(n):
