@@ -26,7 +26,7 @@ def scn_func(A, threshold=0):
     indices1 = np.where(keep > 0)
     indices2 = np.where(keep <= 0)
 
-    for n in range(0, n_iterations):
+    for _ in range(0, n_iterations):
         for i in range(0, n1):
             A[indices1[0], i] = A[indices1[0], i] / np.sum(A[indices1[0], i])
             A[indices2[0], i] = 0
@@ -39,25 +39,11 @@ def scn_func(A, threshold=0):
     return A
 
 
-def distance_law(A):
-    n1 = A.shape[0]
-    dist = np.zeros(n1)
-    for nw in range(n1):
-        dist[nw] = np.mean(np.diag(A, -nw))
-    return dist
-
-
-def distance_law_filter(A, indices):
-    n1 = A.shape[0]
-    dist = np.zeros(n1)
-    n_int = np.zeros(n1)
-    for nw in range(n1):  # scales
-        group = []
-        for j in range(0, n1):
-            lp = j + nw
-            if j in indices and lp in indices and lp <= n1:
-                group.append(A[j, lp])
-        dist[nw] = np.mean(group)
+def distance_law(matrix):
+    n = matrix.shape[0]
+    dist = np.zeros(n)
+    for diag in range(n):
+        dist[diag] = np.mean(np.diag(matrix, -diag))
     return dist
 
 
@@ -66,7 +52,7 @@ def despeckles(A, th2):
     outlier = []
     n1 = A.shape[0]
     dist = {}
-    n_int = np.zeros(n1)
+
     for nw in range(n1):  # scales
         group = []
         for j in range(0, n1):
@@ -93,15 +79,23 @@ def despeckles(A, th2):
 
 
 def picker(probas, thres=0.8):
-    """
+    """Pick pixels out of a probability map
+
     Given a probability heat map, pick (i, j) of local maxima
-    INPUT:
-    probas: a float array assigning a probability to each pixel (i,j)
-            of being a loop.
-    thres:  pixels having a probability higher than thres are potentially
-            loops (default is 0.8).
-    OUTPUT:
-    ijs: coordinates of identified loops.
+
+    Parameters
+    ----------
+    probas : array_like
+        A float array assigning a probability to each pixel (i,j)
+        of being a loop.
+    thres : float, optional
+        Pixels having a probability higher than thres are potentially
+        loops. Default is 0.8.
+
+    Returns
+    -------
+    ijs : array_like
+        Coordinates of identified loops.
     """
     # sanity check
     if np.any(probas > 1):
@@ -140,270 +134,57 @@ def picker(probas, thres=0.8):
     return ijs
 
 
-def loop_detector(list_files, p, precision_value=4.0):
-    LIST_SIZES = []  # list of sizes of detected loops
-    MAT_LIST = []  # list containing all pannel of detected patterns
-    area = 8  # Half size of the pannel
-    MAT_SUM = np.zeros(
-        (area * 2 + 1, area * 2 + 1)
-    )  # sum of all detected patterns
-    MAT_MEDIAN = np.zeros(
-        (area * 2 + 1, area * 2 + 1)
-    )  # median of all detected patterns
-    loops_peak_selected = []
-    n_patterns = 0
-    for fich in list_files:
-        print(fich)
-        chromo = fich
-        #        chromo = "chr"+re.findall("chr""([0-9]+)", fich)[0]
-        print(chromo)
-        raw_test = np.loadtxt(fich)
-        th_sum = np.median(raw_test.sum(axis=0)) - 2.0 * np.std(
-            raw_test.sum(axis=0)
-        )  # Removal of poor interacting bins
-        indices_matrice = np.where(raw_test.sum(axis=0) > th_sum)
-        indices_poor = np.where(raw_test.sum(axis=0) <= th_sum)
-        matscn = scn_func(raw_test, th_sum)
-        dd, matscn, n, outiers = despeckles(matscn, 3.0)
+def detrend(matrix):
 
-        dist = distance_law(matscn)
-        x = np.arange(0, len(dist))
-        y = dist
-        y[np.isnan(y)] = 0.
-        y_savgol = savgol_filter(y, window_length=17, polyorder=5)
+    threshold_vector = np.median(matrix.sum(axis=0)) - 2.0 * np.std(
+        matrix.sum(axis=0)
+    )  # Removal of poor interacting bins
+    poor_indices = np.where(matrix.sum(axis=0) <= threshold_vector)
+    matscn = scn_func(matrix, threshold_vector)
+    _, matscn, _, _ = despeckles(matscn, 10.0)
 
-        n1 = np.shape(matscn)[0]
-        # Computation of genomic distance law matrice:
-        MAT_DIST = np.zeros((n1, n1))
-        for i in range(0, n1):
-            for j in range(0, n1):
-                MAT_DIST[i, j] = y_savgol[abs(j - i)]
-        MAT_DETREND = matscn / MAT_DIST
-        MAT_DETREND[np.isnan(MAT_DETREND)] = 1.0
-        MAT_DETREND[MAT_DETREND < 0] = 1.0
-        # refilling of empty bins with 1.0 (neutral):
-        for i in indices_matrice[0]:
-            MAT_DETREND[indices_poor[0], :] = np.ones(
-                (len(indices_poor[0]), n1)
-            )
-            MAT_DETREND[:, indices_poor[0]] = np.ones(
-                (n1, len(indices_poor[0]))
-            )
+    y = distance_law(matscn)
+    y[np.isnan(y)] = 0.
+    y_savgol = savgol_filter(y, window_length=17, polyorder=5)
 
-        loops_peak_selected_chromo = []
-        res2 = corrcoef2d(
-            MAT_DETREND, p, centered_p=False
-        )  # !!  Here the pattern match  !!
-        res2[np.isnan(res2)] = 0.0
-        n2 = np.shape(res2)[0]
-        res_rescaled = np.zeros(np.shape(matscn))
-        res_rescaled[
-            np.ix_(
-                range(int(area), n2 + int(area)),
-                range(int(area), n2 + int(area)),
-            )
-        ] = res2
-        VECT_VALUES = np.reshape(res_rescaled, (1, n1 * n1))
-        VECT_VALUES = VECT_VALUES[0]
-        thr = np.median(VECT_VALUES) + precision_value * np.std(VECT_VALUES)
-        indices_max = np.where(res_rescaled > thr)
-        indices_max = np.array(indices_max)
-        res_rescaled = np.triu(res_rescaled)  # Centering:
-        res_rescaled[(res_rescaled) < 0] = 0
-        loops_peak = picker(res_rescaled, thr)  #   Recentring here !!
+    n = matrix.shape[0]
 
-        if loops_peak != "NA":
-            mask = np.array(abs(loops_peak[:, 0] - loops_peak[:, 1])) < 5000
-            loops_peak = loops_peak[mask, :]
-            mask = np.array(abs(loops_peak[:, 0] - loops_peak[:, 1])) > 2
-            loops_peak = loops_peak[mask, :]
-            for l in loops_peak:
-                if l[0] in indices_matrice[0] and l[1] in indices_matrice[0]:
-                    p1 = int(l[0])
-                    p2 = int(l[1])
-                    if p1 > p2:
-                        p22 = p2
-                        p2 = p1
-                        p1 = p22
-                    if (
-                        p1 - area >= 0
-                        and p1 + area + 1 < n1
-                        and p2 - area >= 0
-                        and p2 + area + 1 < n1
-                    ):
-                        MAT_PANNEL = MAT_DETREND[
-                            np.ix_(
-                                range(p1 - area, p1 + area + 1),
-                                range(p2 - area, p2 + area + 1),
-                            )
-                        ]
-                        if (
-                            len(MAT_PANNEL[MAT_PANNEL == 1.])
-                            < ((area * 2 + 1) ** 2) * 1.0 / 100.
-                        ):  # there should not be many indetermined bins
-                            n_patterns += 1
-                            score = res_rescaled[l[0], l[1]]
-                            loops_peak_selected.append(
-                                [chromo, l[0], l[1], score]
-                            )
-                            MAT_SUM = MAT_SUM + MAT_PANNEL
-                            MAT_LIST.append(MAT_PANNEL)
-                            LIST_SIZES.append(abs(p2 - p1))
-                        else:
-                            loops_peak_selected.append(
-                                [chromo, "NA", "NA", "NA"]
-                            )
-        else:
-            loops_peak_selected.append([chromo, "NA", "NA", "NA"])
-
-    # Computation of stats on the whole set - Agglomerated procedure :
-    for i in range(0, area * 2 + 1):
-        for j in range(0, area * 2 + 1):
-            list_temp = []
-            for el in range(1, len(MAT_LIST)):
-                list_temp.append(MAT_LIST[el][i, j])
-            MAT_MEDIAN[i, j] = np.median(list_temp)
-
-    return loops_peak_selected, LIST_SIZES, MAT_LIST, MAT_MEDIAN
-
-
-def border_detector(list_files, p, precision_value=4.0):
-    LIST_SIZES = []  # list of sizes of detected loops
-    MAT_LIST = []  # list containing all pannel of detected patterns
-    area = 8  # Half size of the pannel
-    MAT_SUM = np.zeros(
-        (area * 2 + 1, area * 2 + 1)
-    )  # sum of all detected patterns
-    MAT_MEDIAN = np.zeros(
-        (area * 2 + 1, area * 2 + 1)
-    )  # median of all detected patterns
-    loops_peak_selected = []
-    n_patterns = 0
-    for fich in list_files:
-        print(fich)
-        chromo = fich
-        #        chromo = "chr"+re.findall("chr""([0-9]+)", fich)[0]
-        print(chromo)
-        raw_test = np.loadtxt(fich)
-        th_sum = np.median(raw_test.sum(axis=0)) - 2.0 * np.std(
-            raw_test.sum(axis=0)
-        )  # Removal of poor interacting bins
-        indices_matrice = np.where(raw_test.sum(axis=0) > th_sum)
-        indices_poor = np.where(raw_test.sum(axis=0) <= th_sum)
-        matscn = scn_func(raw_test, th_sum)
-        dd, matscn, n, outiers = despeckles(matscn, 10.0)
-
-        dist = distance_law(matscn)
-        x = np.arange(0, len(dist))
-        y = dist
-        y[np.isnan(y)] = 0.
-        y_savgol = savgol_filter(y, window_length=17, polyorder=5)
-
-        n1 = np.shape(matscn)[0]
-        # Computation of genomic distance law matrice:
-        MAT_DIST = np.zeros((n1, n1))
-        for i in range(0, n1):
-            for j in range(0, n1):
-                MAT_DIST[i, j] = y_savgol[abs(j - i)]
-        MAT_DETREND = matscn / MAT_DIST
-        MAT_DETREND[np.isnan(MAT_DETREND)] = 1.0
-        MAT_DETREND[MAT_DETREND < 0] = 1.0
-        # refilling of empty bins with 1.0 (neutral):
-        for i in indices_matrice[0]:
-            MAT_DETREND[indices_poor[0], :] = np.ones(
-                (len(indices_poor[0]), n1)
-            )
-            MAT_DETREND[:, indices_poor[0]] = np.ones(
-                (n1, len(indices_poor[0]))
-            )
-
-        loops_peak_selected_chromo = []
-        res2 = corrcoef2d(
-            MAT_DETREND, p, centered_p=False
-        )  # !!  Here the pattern match  !!
-        res2[np.isnan(res2)] = 0.0
-        n2 = np.shape(res2)[0]
-        res_rescaled = np.zeros(np.shape(matscn))
-        res_rescaled[
-            np.ix_(
-                range(int(area), n2 + int(area)),
-                range(int(area), n2 + int(area)),
-            )
-        ] = res2
-        VECT_VALUES = np.reshape(res_rescaled, (1, n1 * n1))
-        VECT_VALUES = VECT_VALUES[0]
-        thr = np.median(VECT_VALUES) + precision_value * np.std(VECT_VALUES)
-        indices_max = np.where(res_rescaled > thr)
-        indices_max = np.array(indices_max)
-        res_rescaled = np.triu(res_rescaled)  # Centering:
-        res_rescaled[(res_rescaled) < 0] = 0
-        loops_peak = picker(res_rescaled, thr)  #   Recentring here !!
-
-        if loops_peak != "NA":
-            mask = np.array(abs(loops_peak[:, 0] - loops_peak[:, 1])) == 0
-            loops_peak = loops_peak[mask, :]
-            for l in loops_peak:
-                if l[0] in indices_matrice[0] and l[1] in indices_matrice[0]:
-                    p1 = int(l[0])
-                    p2 = int(l[1])
-                    if p1 > p2:
-                        p22 = p2
-                        p2 = p1
-                        p1 = p22
-                    if (
-                        p1 - area >= 0
-                        and p1 + area + 1 < n1
-                        and p2 - area >= 0
-                        and p2 + area + 1 < n1
-                    ):
-                        MAT_PANNEL = MAT_DETREND[
-                            np.ix_(
-                                range(p1 - area, p1 + area + 1),
-                                range(p2 - area, p2 + area + 1),
-                            )
-                        ]
-                        if (
-                            len(MAT_PANNEL[MAT_PANNEL == 1.])
-                            < ((area * 2 + 1) ** 2) * 20.0 / 100.
-                        ):
-                            n_patterns += 1
-                            score = res_rescaled[l[0], l[1]]
-                            loops_peak_selected.append(
-                                [chromo, l[0], l[1], score]
-                            )
-                            MAT_SUM = MAT_SUM + MAT_PANNEL
-                            MAT_LIST.append(MAT_PANNEL)
-                            LIST_SIZES.append(abs(p2 - p1))
-                        else:
-                            loops_peak_selected.append(
-                                [chromo, "NA", "NA", "NA"]
-                            )
-        else:
-            loops_peak_selected.append([chromo, "NA", "NA", "NA"])
-
-    # Computation of stats on the whole set - Agglomerated procedure :
-    for i in range(0, area * 2 + 1):
-        for j in range(0, area * 2 + 1):
-            list_temp = []
-            for el in range(1, len(MAT_LIST)):
-                list_temp.append(MAT_LIST[el][i, j])
-            MAT_MEDIAN[i, j] = np.median(list_temp)
-
-    return loops_peak_selected, LIST_SIZES, MAT_LIST, MAT_MEDIAN
+    # Computation of genomic distance law matrice:
+    distance_law_matrix = np.zeros((n, n))
+    for i in range(0, n):
+        for j in range(0, n):
+            distance_law_matrix[i, j] = y_savgol[abs(j - i)]
+    detrended = matscn / distance_law_matrix
+    detrended[np.isnan(detrended)] = 1.0
+    detrended[detrended < 0] = 1.0
+    # refilling of empty bins with 1.0 (neutral):
+    detrended[poor_indices[0], :] = np.ones((len(poor_indices[0]), n))
+    detrended[:, poor_indices[0]] = np.ones((n, len(poor_indices[0])))
+    return detrended, threshold_vector
 
 
 def convolve2d(signal, kernel, centered_p=True):
-    """
-    Convolution of a 2 diemensional signal with a kernel.
-    INPUT:
-    signal: a 2-dimensional numpy array Ms x Ns
-    kernel: a 2-dimensional numpy array Mk x Nk
-    centered_p: if False then return a matrix of size return a matrix of size (Ms-Mk+1) x (Ns-Nk+1)
-                otherwise return a matrix of size Ms x Ns whith values located at center of kernel.
-                (Default is True)
-    OUTPUT:
-    out: 2-dimensional numpy array corresponding of signal convolved by kernel.
-         The size of out depends on whether cenetred_p is True or False
+    """Signal-kernel 2D convolution
+
+    Convolution of a 2-diemensional signal (the contact map) with a kernel
+    (the pattern template).
+
+    Parameters
+    ----------
+    signal: array_like
+        A 2-dimensional numpy array Ms x Ns acting as the detrended Hi-C map.
+    kernel: array_like
+        A 2-dimensional numpy array Mk x Nk acting as the pattern template.
+    centered_p: bool, optional
+        If False, then return a matrix with shape (Ms-Mk+1) x (Ns-Nk+1),
+        otherwise return a matrix with shape Ms x Ns, with values located at
+        center of kernel. Default is True.
+
+    Returns
+    -------
+    out: numpy.ndarray
+        2-dimensional numpy array that's the convolution product of signal
+        by kernel. The shape of out depends on cenetred_p.
     """
 
     Ms, Ns = signal.shape
@@ -451,17 +232,3 @@ def corrcoef2d(signal, kernel, centered_p=True):
         - mean_signal * mean_kernel
     ) / (std_signal * std_kernel)
     return corrcoef
-
-
-if __name__ == "__main__":
-
-    signal = np.arange(10)
-    for ii in range(9):
-        signal = np.vstack((signal, np.arange(10)))
-    kernel = (
-        np.array([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10], [11, 12, 13, 14, 15]])
-        + 0.0
-    )
-    signal2 = convolve2d(signal, kernel)
-
-    cor = corrcoef2d(signal, kernel)
