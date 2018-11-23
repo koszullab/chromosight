@@ -6,15 +6,20 @@ Explore and detect patterns (loops, borders, centromeres, etc.) in Hi-C contact
 maps with pattern matching.
 
 Usage:
-    declooptor.py detect <contact_map> [<kernel>] [--loops] [--borders]
-                         [--precision=4] [--iterations=auto] [--output]
+    declooptor.py detect <contact_maps> [<output>] [--kernel=None] [--loops]
+                         [--borders] [--precision=4] [--iterations=auto]
+                         [--output]
 
 Arguments:
-    contact_map                 The Hi-C contact map to detect patterns on, in
-                                CSV format.
-    kernel                      A custom kernel template to use, if not using
+    -h, --help                  Display this help message.
+    --version                   Display the program's current version.
+    contact_maps                The Hi-C contact maps to detect patterns on, in
+                                CSV format. File names must be separated by a
+                                colon.
+    -k None, kernel None        A custom kernel template to use, if not using
                                 one of the presets. If not supplied, the
                                 loops or borders option must be used.
+                                [default: None]
     -L, --loops                 Whether to detect chromatin loops.
     -B, --borders               Whether to detect domain borders.
     -p 4, --precision 4         Precision threshold when assessing pattern
@@ -38,6 +43,10 @@ import pathlib
 import itertools
 import functools
 import docopt
+
+from version import __version__
+
+MAX_ITERATIONS = 50
 
 
 def pattern_detector(
@@ -170,7 +179,7 @@ loop_detector = functools.partial(
 )
 
 PATTERN_DISPATCHER = {"loops": loop_detector, "borders": border_detector}
-PRESET_KERNEL_PATH = pathlib.Path("../data")
+PRESET_KERNEL_PATH = pathlib.Path("/home/rsg/DATA/Loops_Detector/data")
 
 
 def load_kernels(pattern):
@@ -194,13 +203,16 @@ def load_kernels(pattern):
     if pattern_path.is_dir():
         pattern_globbing = pattern_path.glob("*")
     elif pattern in PATTERN_DISPATCHER.keys():
+        print("cas spécial")
         pattern_globbing = PRESET_KERNEL_PATH.glob("*{}*".format(pattern))
     else:
         pattern_globbing = (pattern_path,)
-
-    for kernel_file in pattern_globbing:
-        kernel = np.loadtxt(kernel_file)
-        yield kernel
+    pattern_kernels = [
+        np.loadtxt(kernel_file) for kernel_file in pattern_globbing
+    ]
+    print(pattern_globbing)
+    print(pattern_kernels)
+    return pattern_kernels
 
 
 def explore_patterns(
@@ -209,6 +221,7 @@ def explore_patterns(
     custom_kernels=None,
     precision=4,
     iterations="auto",
+    window=4,
 ):
     """Explore patterns in a list of matrices
 
@@ -238,6 +251,9 @@ def explore_patterns(
         order to detect more patterns. If set to 'auto', iterations are
         performed until no more patterns are detected from one pass to the
         next.
+    window : int, optional
+        The pattern window area. When a pattern is discovered in a previous
+        pass, further detected patterns falling into that area are discarded.
 
     Returns
     -------
@@ -252,9 +268,7 @@ def explore_patterns(
     # Dispatch detectors: the border detector has specificities while the
     # loop detector is more generic, so we use the generic one by default if
     # a pattern specific detector isn't implemented.
-    my_pattern_detector = PATTERN_DISPATCHER.get(
-        pattern_type, default=loop_detector
-    )
+    my_pattern_detector = PATTERN_DISPATCHER.get(pattern_type, loop_detector)
 
     if custom_kernels is None:
         chosen_kernels = load_kernels(pattern_type)
@@ -269,12 +283,11 @@ def explore_patterns(
     #   - After the first pass, instead of the starting kernel the
     #     'agglomerated pattern' is used for pattern matching.
 
-    all_patterns = {}
+    all_patterns = set()
     agglomerated_patterns = []
     agglomerated_pattern = None
     iteration_count = 0
     old_pattern_count, current_pattern_count = -1, 0
-
     # Depending on matrix resolution, a pattern may be smeared over several
     # pixels. This trimming function ensures that there won't be many patterns
     # clustering around one location.
@@ -282,125 +295,98 @@ def explore_patterns(
     def clean_by_neighborhood(coord_list):
         for my_pattern in coord_list:
 
-            chromosome, pos1, pos2, score = my_pattern
+            chromosome, pos1, pos2, _ = my_pattern
             if pos1 != "NA":
                 pos1 = int(pos1)
                 pos2 = int(pos2)
 
                 neighbours = set(
-                    itertools.product(
-                        range(pos1 - 1, pos1 + 2), range(pos2 - 1, pos2 + 2)
+                    zip(
+                        itertools.repeat(chromosome),
+                        itertools.product(
+                            range(pos1 - window, pos1 + window + 1),
+                            range(pos2 - window, pos2 + window + 1),
+                        ),
                     )
                 )
 
-                if not neighbours.intersection(all_patterns[chromosome]):
-                    yield (chromosome, pos1, pos2, score)
+                if not neighbours.intersection(all_patterns):
+                    yield (chromosome, pos1, pos2)
 
+    print(len(chosen_kernels))
     while old_pattern_count != current_pattern_count:
+        print(old_pattern_count, current_pattern_count)
 
-        if iterations != "auto" and iteration_count >= iterations:
+        if iteration_count >= MAX_ITERATIONS or (
+            iterations != "auto" and iteration_count >= iterations
+        ):
+            print("J'ai fini")
             break
 
         old_pattern_count = current_pattern_count
-        if agglomerated_pattern is None:
-            for kernel in chosen_kernels:
+        print(all_patterns)
+        for kernel in chosen_kernels:
+            if agglomerated_pattern is None:
                 (detected_coords, agglomerated_pattern) = my_pattern_detector(
                     matrices, kernel, precision=precision
                 )
-        else:
-            iteration_count += 1
-            (detected_coords, agglomerated_pattern) = my_pattern_detector(
-                matrices, agglomerated_pattern, precision=precision
-            )
-        for new_coords in clean_by_neighborhood(detected_coords):
-            chromosome, pos1, pos2, score = new_coords
-            try:
-                all_patterns[chromosome].append((pos1, pos2, score))
-            except KeyError:
-                all_patterns[chromosome] = [(pos1, pos2, score)]
+                for new_coords in clean_by_neighborhood(detected_coords):
+                    all_patterns.add(new_coords)
+                    try:
+                        agglomerated_patterns[-1].append(agglomerated_pattern)
+                    except IndexError:
+                        agglomerated_patterns.append([agglomerated_pattern])
+            else:
+                iteration_count += 1
+                print("J'itère sur l'agglomerated plot")
+                (detected_coords, agglomerated_pattern) = my_pattern_detector(
+                    matrices, agglomerated_pattern, precision=precision
+                )
+            for new_coords in clean_by_neighborhood(detected_coords):
+                all_patterns.add(new_coords)
+                try:
+                    agglomerated_patterns[-1].append(agglomerated_pattern)
+                except IndexError:
+                    agglomerated_patterns.append([agglomerated_pattern])
 
-        agglomerated_patterns.append(agglomerated_pattern)
-        current_pattern_count = sum((len(p) for p in all_patterns.values()))
+        current_pattern_count = len(all_patterns)
 
     return all_patterns, agglomerated_patterns
 
 
-def pattern_plot(matrices, labels=None, pattern_types=None):
+def pattern_plot(patterns, matrix, name=None, output=None):
 
-    if isinstance(matrices, np.ndarray):
-        matrix_list = [matrices]
-    else:
-        matrix_list = matrices
+    if name is None:
+        name = "matrix"
+    if output is None:
+        output = pathlib.Path()
 
-    if labels is None:
-        labels = range(len(matrix_list))
-    elif isinstance(labels, str):
-        labels = [labels]
+    th_sum = np.median(matrix.sum(axis=0)) - 2.0 * np.std(matrix.sum(axis=0))
+    matscn = utils.scn_func(matrix, th_sum)
+    plt.imshow(matscn ** 0.15, interpolation="none", cmap="afmhot_r")
+    plt.title(name, fontsize=8)
+    plt.colorbar()
 
-    if pattern_types is None:
-        pattern_types = ("loops", "borders")
+    for pattern_type, all_patterns in patterns.items():
+        if pattern_type == "borders":
+            for border in all_patterns:
+                if border[0] != name:
+                    continue
+                if border[1] != "NA":
+                    pos1, pos2 = border
+                    plt.plot(pos1, pos2, "D", color="white", markersize=0.5)
+        elif pattern_type == "loops":
+            for loop in all_patterns:
+                if loop[0] != name:
+                    continue
+                if loop[1] != "NA":
+                    pos1, pos2 = loop
+                    plt.scatter(
+                        pos1, pos2, s=15, facecolors="none", edgecolors="gold"
+                    )
 
-    pattern_dict = {}
-    for pattern_type in pattern_types:
-
-        all_patterns, agglomerated_patterns = explore_patterns(
-            matrices, pattern_type=pattern_type
-        )
-        pattern_dict[pattern_type] = all_patterns
-
-        for agglomerated_pattern in agglomerated_patterns:
-            plt.imshow(
-                agglomerated_pattern,
-                interpolation="none",
-                vmin=0.,
-                vmax=2.,
-                cmap="seismic",
-            )
-            plt.colorbar()
-            plt.title("Agglomerated plot of detected {}".format(pattern_type))
-            plt.savefig(
-                "agglomerated_{}.pdf".format(pattern_type),
-                dpi=100,
-                format="pdf",
-            )
-            plt.close("all")
-
-    for matrix, name in zip(matrices, labels):
-        # raw_test = np.loadtxt(matrix)
-        th_sum = np.median(matrix.sum(axis=0)) - 2.0 * np.std(
-            matrix.sum(axis=0)
-        )
-        matscn = utils.scn_func(matrix, th_sum)
-        plt.imshow(matscn ** 0.15, interpolation="none", cmap="afmhot_r")
-        plt.title(name, fontsize=8)
-        plt.colorbar()
-
-        for pattern_type, all_patterns in pattern_dict.items():
-            if pattern_type == "borders":
-                for border in all_patterns:
-                    if border[0] != name:
-                        continue
-                    if border[1] != "NA":
-                        pos1, pos2 = border
-                        plt.plot(
-                            pos1, pos2, "D", color="white", markersize=0.5
-                        )
-            elif pattern_type == "loops":
-                for loop in all_patterns:
-                    if loop[0] != name:
-                        continue
-                    if loop[1] != "NA":
-                        pos1, pos2 = loop
-                        plt.scatter(
-                            pos1,
-                            pos2,
-                            s=15,
-                            facecolors="none",
-                            edgecolors="gold",
-                        )
-
-        plt.savefig(pathlib.Path(name) / ".pdf2", dpi=100, format="pdf")
-        plt.close("all")
+    plt.savefig(output / pathlib.Path(name) + ".pdf2", dpi=100, format="pdf")
+    plt.close("all")
 
 
 def distance_plot(matrices, labels=None):
@@ -434,8 +420,64 @@ def distance_plot(matrices, labels=None):
         plt.close("all")
 
 
+def agglomerated_plot(agglomerated_pattern, pattern_type="patterns"):
+
+    plt.imshow(
+        agglomerated_pattern,
+        interpolation="none",
+        vmin=0.,
+        vmax=2.,
+        cmap="seismic",
+    )
+    plt.colorbar()
+    plt.title("Agglomerated plot of detected {}".format(pattern_type))
+    plt.savefig(
+        "agglomerated_{}.pdf".format(pattern_type), dpi=100, format="pdf"
+    )
+    plt.close("all")
+
+
 def main():
-    arguments = docopt.docopt(__doc__)
+    arguments = docopt.docopt(__doc__, version=__version__)
+
+    contact_maps = arguments["<contact_maps>"].split(",")
+    kernel = arguments["--kernel"]
+    loops = arguments["--loops"]
+    borders = arguments["--borders"]
+    precision = float(arguments["--precision"])
+    iterations = arguments["--iterations"]
+    output = arguments["<output>"]
+
+    if not output:
+        output = pathlib.Path()
+    else:
+        output = pathlib.Path(output)
+
+    output.mkdir(exist_ok=True)
+
+    try:
+        iterations = int(iterations)
+    except ValueError:
+        if iterations != "auto":
+            print('Error! Iterations must be an integer or "auto"')
+            return
+
+    patterns_to_explore = set()
+    if loops:
+        patterns_to_explore.add("loops")
+    if borders:
+        patterns_to_explore.add("borders")
+
+    patterns_to_plot = dict()
+
+    loaded_maps = [np.loadtxt(contact_map) for contact_map in contact_maps]
+    for pattern in patterns_to_explore:
+        all_patterns, agglomerated_patterns = explore_patterns(
+            loaded_maps, pattern, precision=precision
+        )
+        patterns_to_plot[pattern] = all_patterns
+    for matrix in loaded_maps:
+        pattern_plot(patterns_to_plot, matrix, name="test", output=output)
 
 
 if __name__ == "__main__":
