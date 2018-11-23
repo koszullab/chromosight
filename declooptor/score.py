@@ -46,25 +46,7 @@ def score_loop(list_predicted, list_real, n1, area):
                 set_real.remove(real)
             if is_real:
                 break
-   
-    #~ MAT_PREDICT = np.zeros( (n1+area*2,n1+area*2) )  # we put into memory all the predicted loops in one matrice
-    #~ for l in list_predicted :
-        #~ p1 = int(l[0])
-        #~ p2 = int(l[1])
-        #~ MAT_PREDICT[ np.ix_(range( p1-area, p1+area+1 )  , range( p2-area, p2+area+1)   ) ]  += 1
-        
-    #~ nb_loops_found = 0
-    #~ for l in list_real2:
-        #~ p1 = int(l[0])
-        #~ p2 = int(l[1])
-        #~ bool_find = 0
-        #~ MAT_REAL = np.zeros( (n1+area*2,n1+area*2) )
-        #~ MAT_REAL[ np.ix_(range( p1-area, p1+area+1 )  , range( p2-area, p2+area+1)   ) ]  += 1
-        #~ bool_find = ( MAT_REAL * MAT_PREDICT).sum()
-        #~ if bool_find > 0 :
-            #~ nb_loops_found +=1
-            #~ list_real.remove(l)
-
+ 
     if len(list_predicted) > 0 :      
         PREC = float(nb_loops_found) / len(list_predicted)  # consider that each pixel predicted will correspond to a different loop 
     else :
