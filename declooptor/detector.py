@@ -203,7 +203,6 @@ def load_kernels(pattern):
     if pattern_path.is_dir():
         pattern_globbing = pattern_path.glob("*")
     elif pattern in PATTERN_DISPATCHER.keys():
-        print("cas spécial")
         pattern_globbing = PRESET_KERNEL_PATH.glob("*{}*".format(pattern))
     else:
         pattern_globbing = (pattern_path,)
@@ -309,12 +308,10 @@ def explore_patterns(
                     yield (chromosome, pos1, pos2)
 
     while old_pattern_count != current_pattern_count:
-        print(old_pattern_count, current_pattern_count)
 
         if iteration_count >= MAX_ITERATIONS or (
             iterations != "auto" and iteration_count >= iterations
         ):
-            print("J'ai fini")
             break
 
         agglomerated_patterns.append([])
@@ -334,7 +331,6 @@ def explore_patterns(
 
 
 def pattern_plot(patterns, matrix, name=None, output=None):
-    print(patterns)
     if name is None:
         name = 0
     if output is None:
@@ -442,8 +438,7 @@ def main():
         iterations = int(iterations)
     except ValueError:
         if iterations != "auto":
-            print('Error! Iterations must be an integer or "auto"')
-            return
+            raise ValueError('Error! Iterations must be an integer or "auto"')
 
     patterns_to_explore = set()
     if loops:
