@@ -207,12 +207,8 @@ def load_kernels(pattern):
         pattern_globbing = PRESET_KERNEL_PATH.glob("*{}*".format(pattern))
     else:
         pattern_globbing = (pattern_path,)
-    pattern_kernels = [
-        np.loadtxt(kernel_file) for kernel_file in pattern_globbing
-    ]
-    print(pattern_globbing)
-    print(pattern_kernels)
-    return pattern_kernels
+    for kernel_file in pattern_globbing:
+        yield np.loadtxt(kernel_file)
 
 
 def explore_patterns(
@@ -284,8 +280,7 @@ def explore_patterns(
     #     'agglomerated pattern' is used for pattern matching.
 
     all_patterns = set()
-    agglomerated_patterns = []
-    agglomerated_pattern = None
+    agglomerated_patterns = [list(chosen_kernels)]
     iteration_count = 0
     old_pattern_count, current_pattern_count = -1, 0
     # Depending on matrix resolution, a pattern may be smeared over several
@@ -313,7 +308,6 @@ def explore_patterns(
                 if not neighbours.intersection(all_patterns):
                     yield (chromosome, pos1, pos2)
 
-    print(len(chosen_kernels))
     while old_pattern_count != current_pattern_count:
         print(old_pattern_count, current_pattern_count)
 
@@ -323,31 +317,16 @@ def explore_patterns(
             print("J'ai fini")
             break
 
+        agglomerated_patterns.append([])
         old_pattern_count = current_pattern_count
-        print(all_patterns)
-        for kernel in chosen_kernels:
-            if agglomerated_pattern is None:
-                (detected_coords, agglomerated_pattern) = my_pattern_detector(
-                    matrices, kernel, precision=precision
-                )
-                for new_coords in clean_by_neighborhood(detected_coords):
-                    all_patterns.add(new_coords)
-                    try:
-                        agglomerated_patterns[-1].append(agglomerated_pattern)
-                    except IndexError:
-                        agglomerated_patterns.append([agglomerated_pattern])
-            else:
-                iteration_count += 1
-                print("J'itère sur l'agglomerated plot")
-                (detected_coords, agglomerated_pattern) = my_pattern_detector(
-                    matrices, agglomerated_pattern, precision=precision
-                )
+        iteration_count += 1
+        for kernel in agglomerated_patterns[-2]:
+            (detected_coords, agglomerated_pattern) = my_pattern_detector(
+                matrices, kernel, precision=precision
+            )
             for new_coords in clean_by_neighborhood(detected_coords):
                 all_patterns.add(new_coords)
-                try:
-                    agglomerated_patterns[-1].append(agglomerated_pattern)
-                except IndexError:
-                    agglomerated_patterns.append([agglomerated_pattern])
+            agglomerated_patterns[-1].append(agglomerated_pattern)
 
         current_pattern_count = len(all_patterns)
 
@@ -355,9 +334,9 @@ def explore_patterns(
 
 
 def pattern_plot(patterns, matrix, name=None, output=None):
-
+    print(patterns)
     if name is None:
-        name = "matrix"
+        name = 0
     if output is None:
         output = pathlib.Path()
 
@@ -373,19 +352,23 @@ def pattern_plot(patterns, matrix, name=None, output=None):
                 if border[0] != name:
                     continue
                 if border[1] != "NA":
-                    pos1, pos2 = border
-                    plt.plot(pos1, pos2, "D", color="white", markersize=0.5)
+                    _, pos1, pos2 = border
+                    plt.plot(pos1, pos2, "D", color="white", markersize=.5)
         elif pattern_type == "loops":
             for loop in all_patterns:
                 if loop[0] != name:
                     continue
                 if loop[1] != "NA":
-                    pos1, pos2 = loop
+                    _, pos1, pos2 = loop
                     plt.scatter(
                         pos1, pos2, s=15, facecolors="none", edgecolors="gold"
                     )
 
-    plt.savefig(output / pathlib.Path(name) + ".pdf2", dpi=100, format="pdf")
+    plt.savefig(
+        output / (str(pathlib.Path(str(name))) + ".pdf2"),
+        dpi=100,
+        format="pdf",
+    )
     plt.close("all")
 
 
@@ -477,7 +460,7 @@ def main():
         )
         patterns_to_plot[pattern] = all_patterns
     for matrix in loaded_maps:
-        pattern_plot(patterns_to_plot, matrix, name="test", output=output)
+        pattern_plot(patterns_to_plot, matrix, output=output)
 
 
 if __name__ == "__main__":

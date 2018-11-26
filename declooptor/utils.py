@@ -17,7 +17,7 @@ def scn_func(A, threshold=0):
     n_iterations = 10
     keep = np.zeros((n1, 1))
 
-    for i in range(0, n1):
+    for i in range(n1):
         if np.sum(A[i,]) > threshold:
             keep[i] = 1
         else:
@@ -26,8 +26,8 @@ def scn_func(A, threshold=0):
     indices1 = np.where(keep > 0)
     indices2 = np.where(keep <= 0)
 
-    for _ in range(0, n_iterations):
-        for i in range(0, n1):
+    for _ in range(n_iterations):
+        for i in range(n1):
             A[indices1[0], i] = A[indices1[0], i] / np.sum(A[indices1[0], i])
             A[indices2[0], i] = 0
         A[np.isnan(A)] = 0.0
@@ -41,20 +41,20 @@ def scn_func(A, threshold=0):
 
 def distance_law(matrix):
     """Genomic distance law
-    
+
     Compute genomic distance law by averaging over each diagonal.
-    
+
     Parameters
     ----------
     matrix: array_like
         The input matrix to compute distance law from.
-        
+ 
     Returns
     -------
     dist: np.ndarray
         The output genomic distance law.
-    
-    
+
+
     Example
     -------
         >>> M = np.ones((3,3))
@@ -65,7 +65,7 @@ def distance_law(matrix):
                [2., 3., 4.]])
         >>> distance_law(M)
         array([3. , 2.5, 2. ])
-    
+
     """
     n = matrix.shape[0]
     dist = np.zeros(n)
@@ -190,7 +190,7 @@ def detrend(matrix):
     return detrended, threshold_vector
 
 
-def convolve2d(signal, kernel, centered_p=True):
+def xcorr2(signal, kernel, centered_p=True):
     """Signal-kernel 2D convolution
 
     Convolution of a 2-diemensional signal (the contact map) with a kernel
@@ -244,18 +244,21 @@ def convolve2d(signal, kernel, centered_p=True):
 
 
 def corrcoef2d(signal, kernel, centered_p=True):
-    """
+    """Signal-kernel 2D correlation
+
     Pearson correlation coefficient between signal and sliding kernel.
+
+
     """
     kernel1 = np.ones(kernel.shape) / kernel.size
-    mean_signal = convolve2d(signal, kernel1, centered_p)
+    mean_signal = xcorr2(signal, kernel1, centered_p)
     std_signal = np.sqrt(
-        convolve2d(signal ** 2, kernel1, centered_p) - mean_signal ** 2
+        xcorr2(signal ** 2, kernel1, centered_p) - mean_signal ** 2
     )
     mean_kernel = np.mean(kernel)
     std_kernel = np.std(kernel)
     corrcoef = (
-        convolve2d(signal, kernel / kernel.size, centered_p)
+        xcorr2(signal, kernel / kernel.size, centered_p)
         - mean_signal * mean_kernel
     ) / (std_signal * std_kernel)
     return corrcoef
