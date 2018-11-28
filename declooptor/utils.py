@@ -3,7 +3,7 @@
 
 """Pattern/Hi-C utils
 
-General purpose utilities related to handling Hi-C contact maps and 
+General purpose utilities related to handling Hi-C contact maps and
 loop/border data.
 """
 
@@ -48,7 +48,7 @@ def distance_law(matrix):
     ----------
     matrix: array_like
         The input matrix to compute distance law from.
- 
+
     Returns
     -------
     dist: np.ndarray
@@ -137,7 +137,7 @@ def picker(probas, thres=0.8):
         candidate_p = np.zeros((I + 1, J + 1), bool)
         candidate_p[
             raw_ijs[:, 0], raw_ijs[:, 1]
-        ] = True  #  heat map with foci of high proba
+        ] = True  # heat map with foci of high proba
         labelled_mat, num_features = measurements.label(candidate_p)
         ijs = np.zeros([num_features, 2], int)
         remove_p = np.zeros(num_features, bool)
