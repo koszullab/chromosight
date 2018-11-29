@@ -38,13 +38,16 @@ Arguments:
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
-import utils
 import pathlib
 import itertools
 import functools
 import docopt
-
+import warnings
 from version import __version__
+
+import utils
+
+warnings.filterwarnings("ignore")
 
 MAX_ITERATIONS = 50
 
@@ -518,7 +521,9 @@ def main():
                 my_name = "Agglomerated {} iteration {} kernel {}".format(
                     pattern, i, j
                 )
-                agglomerated_plot(agglomerated_matrix, name=my_name)
+                agglomerated_plot(
+                    agglomerated_matrix, name=my_name, output=output
+                )
 
 
 if __name__ == "__main__":

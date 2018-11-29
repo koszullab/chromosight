@@ -29,9 +29,9 @@ name = "declooptor"
 MAJOR = 0
 MINOR = 1
 MAINTENANCE = 0
-VERSION = f"{MAJOR}.{MINOR}.{MAINTENANCE}"
+VERSION = "{}.{}.{}".format(MAJOR, MINOR, MAINTENANCE)
 
-LICENSE = "Artistic"
+LICENSE = "GPLv3"
 
 with open("requirements.txt", "r") as f:
     REQUIREMENTS = f.read().splitlines()
@@ -49,5 +49,5 @@ setup(
     packages=find_packages(exclude=["demos"]),
     install_requires=REQUIREMENTS,
     include_package_data=True,
-    entry_points={"console_scripts": ["declooptor=declooptor.detector:_main"]},
+    entry_points={"console_scripts": ["declooptor=declooptor.detector:main"]},
 )
