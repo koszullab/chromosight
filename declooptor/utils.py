@@ -12,7 +12,8 @@ from scipy.ndimage import measurements
 from scipy.signal import savgol_filter
 
 
-def scn_func(A, threshold=0):
+def scn_func(B, threshold=0):
+    A = np.copy(B)
     n1 = A.shape[0]
     n_iterations = 10
     keep = np.zeros((n1, 1))
@@ -74,7 +75,8 @@ def distance_law(matrix):
     return dist
 
 
-def despeckles(A, th2):
+def despeckles(B, th2):
+    A = np.copy(B)
     n_speckles = 0
     outlier = []
     n1 = A.shape[0]
