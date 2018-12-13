@@ -6,9 +6,9 @@ Explore and detect patterns (loops, borders, centromeres, etc.) in Hi-C contact
 maps with pattern matching.
 
 Usage:
-    declooptor.py detect <contact_maps> [<output>] [--kernels=None] [--loops]
-                         [--borders] [--precision=4] [--iterations=auto]
-                         [--output]
+    chromovision detect <contact_maps> [<output>] [--kernels=None] [--loops]
+                        [--borders] [--precision=4] [--iterations=auto]
+                        [--output]
 
 Arguments:
     -h, --help                  Display this help message.
@@ -43,9 +43,9 @@ import itertools
 import functools
 import docopt
 import warnings
-from version import __version__
+from chromovision.version import __version__
 
-import utils
+from chromovision import utils
 
 MAX_ITERATIONS = 3
 

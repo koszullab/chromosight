@@ -20,7 +20,6 @@ benchmarking purposes.
 
     Options:
         -h, --help                      Display this help message.
-        --version                       Display the program's current version.
         -a 3, --area 3                  Pattern area (overlap will determine
                                         a match). [default: 3]
         -s, --size 1000                 Initial matrix size. [default: 1000]
@@ -29,7 +28,6 @@ benchmarking purposes.
 
 import numpy as np
 import docopt
-from declooptor.version import __version__
 
 
 def score_loop(list_predicted, list_real, n1, area):
@@ -79,7 +77,7 @@ def score_loop(list_predicted, list_real, n1, area):
 
 
 def main():
-    arguments = docopt.docopt(__doc__, version=__version__)
+    arguments = docopt.docopt(__doc__)
     predicted_patterns = arguments["<predicted_patterns>"]
     real_patterns = arguments["<real_patterns>"]
     area = arguments["--area"]

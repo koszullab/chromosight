@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 # coding: utf-8
 
-"""Loop detector
-
-Detect loops in Hi-C contact maps with pattern matching.
-
+"""Detect loops (and other patterns) in Hi-C contact maps.
 """
 
 from setuptools import setup, find_packages
@@ -24,7 +21,7 @@ CLASSIFIERS = [
     "Operating System :: MacOS",
 ]
 
-name = "declooptor"
+name = "chromovision"
 
 MAJOR = 0
 MINOR = 1
@@ -36,7 +33,7 @@ LICENSE = "GPLv3"
 with open("requirements.txt", "r") as f:
     REQUIREMENTS = f.read().splitlines()
 
-with open("serpentine/version.py", "w") as f:
+with open("chromovision/version.py", "w") as f:
     f.write("__version__ = '{}'\n".format(VERSION))
 
 setup(
@@ -49,5 +46,5 @@ setup(
     packages=find_packages(exclude=["demos"]),
     install_requires=REQUIREMENTS,
     include_package_data=True,
-    entry_points={"console_scripts": ["declooptor=declooptor.detector:main"]},
+    entry_points={"console_scripts": ["chromovision=chromovision.detector:main"]},
 )
