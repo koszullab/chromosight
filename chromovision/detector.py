@@ -34,7 +34,7 @@ Arguments:
                                 images into.
 
 """
-
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
@@ -223,8 +223,10 @@ loop_detector = functools.partial(
 )
 
 PATTERN_DISPATCHER = {"loops": loop_detector, "borders": border_detector}
-PRESET_KERNEL_PATH = pathlib.Path("/home/axel/Bureau/chromovision-master/data")
-
+PRESET_KERNEL_PATH = pathlib.Path("/media/remi/Disk1/Yeast/chromovision/data")
+if not PRESET_KERNEL_PATH.is_dir():
+    sys.stderr.write("ERROR: check PRESET_KERNEL_PATH line 227\n")
+    sys.exit(1)
 
 def load_kernels(pattern):
     """Load pattern kernels
@@ -386,7 +388,7 @@ def pattern_plot(patterns, matrix, name=None, output=None):
     th_sum = np.median(matrix.sum(axis=0)) - 2.0 * np.std(matrix.sum(axis=0))
     matscn = utils.scn_func(matrix, th_sum)
     plt.imshow(matscn ** 0.15, interpolation="none", cmap="afmhot_r")
-    plt.title(name, fontsize=8)
+    plt.title(name+1, fontsize=8)
     plt.colorbar()
 
     for pattern_type, all_patterns in patterns.items():
@@ -404,12 +406,12 @@ def pattern_plot(patterns, matrix, name=None, output=None):
                 if loop[1] != "NA":
                     _, pos1, pos2, _ = loop
                     plt.scatter(
-                        pos1, pos2, s=15, facecolors="none", edgecolors="gold"
+                        pos1, pos2, s=15, facecolors="none", edgecolors="blue"
                     )
     print(name)
     print(output)
     plt.savefig(
-        str(name) + ".pdf2",
+        str(name+1) + ".pdf2",
         dpi=100,
         format="pdf",
     )
@@ -446,6 +448,13 @@ def distance_plot(matrices, labels=None):
         plt.savefig(pathlib.Path(name) / ".pdf3", dpi=100, format="pdf")
         plt.close("all")
 
+def write_results(patterns_to_plot, output):
+    for pattern in patterns_to_plot:
+        file_name=pattern+'.txt'
+        file_path = output / file_name
+        with file_path.open('w') as outf:
+            for tup in sorted([tup for tup in patterns_to_plot[pattern] if 'NA' not in tup]):
+                outf.write(' '.join(map(str, tup))+'\n')
 
 def agglomerated_plot(
     agglomerated_pattern, name="agglomerated patterns", output=None
@@ -517,6 +526,7 @@ def main():
         patterns_to_plot[pattern] = all_patterns
         agglomerated_to_plot[pattern] = agglomerated_patterns
     print(patterns_to_plot)
+    write_results(patterns_to_plot, output)
     base_names = (
         pathlib.Path(contact_map).name for contact_map in contact_maps
     )
