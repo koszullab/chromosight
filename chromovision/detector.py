@@ -34,7 +34,7 @@ Arguments:
                                 images into.
 
 """
-import sys
+
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
@@ -49,7 +49,6 @@ from chromovision import utils
 
 MAX_ITERATIONS = 3
 
-
 def pattern_detector(
     matrices,
     kernel,
@@ -59,6 +58,7 @@ def pattern_detector(
     undetermined_percentage=1.,
     labels=None,
     matrix_indices=None,
+    nb_patterns = []
 ):
     """Pattern detector
     
@@ -122,19 +122,12 @@ def pattern_detector(
 
     for matrix, name, indices in zip(matrix_list, labels, matrix_indices):
         n = matrix.shape[0]
-
-        res2 = utils.corrcoef2d(
-            matrix, kernel, centered_p=False
-        )  # !!  Here the pattern match  !!
+        res2 = utils.corrcoef2d(matrix, kernel, centered_p=False)  # !!  Here the pattern match  !!
         res2[np.isnan(res2)] = 0.0
         n2 = res2.shape[0]
         res_rescaled = np.zeros(np.shape(matrix))
-        res_rescaled[
-            np.ix_(
-                range(int(area), n2 + int(area)),
-                range(int(area), n2 + int(area)),
-            )
-        ] = res2
+        res_rescaled[np.ix_(range(int(area), n2 + int(area)),
+                range(int(area), n2 + int(area)),)] = res2
         VECT_VALUES = np.reshape(res_rescaled, (1, n ** 2))
         VECT_VALUES = VECT_VALUES[0]
         thr = np.median(VECT_VALUES) + precision * np.std(VECT_VALUES)
@@ -142,15 +135,12 @@ def pattern_detector(
         indices_max = np.array(indices_max)
         res_rescaled = np.triu(res_rescaled)
         res_rescaled[(res_rescaled) < 0] = 0
-        assert not np.isnan(res_rescaled).any(), res_rescaled
         pattern_peak = utils.picker(res_rescaled, thr)
-        assert not np.isnan(pattern_peak).any(), pattern_peak
         if pattern_peak != "NA":
             if pattern_type == "loops":
                 # Assume all loops are not found too far-off in the matrix
                 mask = (
-                    np.array(abs(pattern_peak[:, 0] - pattern_peak[:, 1]))
-                    < 5000
+                    np.array(abs(pattern_peak[:, 0] - pattern_peak[:, 1])) < 5000
                 )
                 pattern_peak = pattern_peak[mask, :]
                 mask = (
@@ -183,7 +173,6 @@ def pattern_detector(
                                 range(p2 - area, p2 + area + 1),
                             )
                         ]
-                        assert not np.isnan(window).any(), window
                         if (
                             len(window[window == 1.])
                             < ((area * 2 + 1) ** 2)
@@ -195,7 +184,6 @@ def pattern_detector(
                             detected_patterns.append((name, l[0], l[1], score))
                             pattern_sums += window
                             pattern_windows.append(window)
-                            assert not np.isnan(window).any(), window
                         else:
                             detected_patterns.append((name, "NA", "NA", "NA"))
         else:
@@ -208,25 +196,16 @@ def pattern_detector(
             for el in range(1, len(pattern_windows)):
                 list_temp.append(pattern_windows[el][i, j])
             agglomerated_pattern[i, j] = np.median(list_temp)
-            assert not np.isnan(np.array(list_temp)).any(), list_temp
+            
+    nb_patterns = len(pattern_windows) 
+    return detected_patterns, agglomerated_pattern, nb_patterns
 
-    assert not np.isnan(agglomerated_pattern).any(), agglomerated_pattern
+border_detector = functools.partial(pattern_detector, pattern_type="borders", undetermined_percentage=20.)
 
-    return detected_patterns, agglomerated_pattern
-
-
-border_detector = functools.partial(
-    pattern_detector, pattern_type="borders", undetermined_percentage=20.
-)
-loop_detector = functools.partial(
-    pattern_detector, pattern_type="loops", undetermined_percentage=1.
-)
+loop_detector = functools.partial(pattern_detector, pattern_type="loops", undetermined_percentage=1.)
 
 PATTERN_DISPATCHER = {"loops": loop_detector, "borders": border_detector}
-PRESET_KERNEL_PATH = pathlib.Path("/media/remi/Disk1/Yeast/chromovision/data")
-if not PRESET_KERNEL_PATH.is_dir():
-    sys.stderr.write("ERROR: check PRESET_KERNEL_PATH line 227\n")
-    sys.exit(1)
+PRESET_KERNEL_PATH = pathlib.Path("../data")
 
 def load_kernels(pattern):
     """Load pattern kernels
@@ -262,8 +241,7 @@ def explore_patterns(
     custom_kernels=None,
     precision=4,
     iterations="auto",
-    window=4,
-):
+    window=4,):
     """Explore patterns in a list of matrices
 
     Given a pattern type, attempt to detect that pattern in each matrix with
@@ -329,6 +307,7 @@ def explore_patterns(
     agglomerated_patterns = [list(chosen_kernels)]
     iteration_count = 0
     old_pattern_count, current_pattern_count = -1, 0
+    list_current_pattern_count = []
     # Depending on matrix resolution, a pattern may be smeared over several
     # pixels. This trimming function ensures that there won't be many patterns
     # clustering around one location.
@@ -354,7 +333,7 @@ def explore_patterns(
         old_pattern_count = current_pattern_count
         iteration_count += 1
         for kernel in agglomerated_patterns[-2]:
-            (detected_coords, agglomerated_pattern) = my_pattern_detector(
+            (detected_coords, agglomerated_pattern, nb_patterns) = my_pattern_detector(
                 detrended_matrices, kernel, precision=precision, matrix_indices=matrix_indices
             )
             for new_coords in detected_coords:
@@ -368,13 +347,12 @@ def explore_patterns(
                     if pos2 != "NA":
                         pos2 = int(pos2)
                     all_patterns.add((chromosome, pos1, pos2, score))
-                    hashed_neighborhoods.add(
-                        neigh_hash(new_coords, window=window)
-                    )
+                    hashed_neighborhoods.add(neigh_hash(new_coords, window=window) )
             agglomerated_patterns[-1].append(agglomerated_pattern)
-        current_pattern_count = len(all_patterns)
+        current_pattern_count = nb_patterns
+        list_current_pattern_count.append(current_pattern_count)
 
-    return all_patterns, agglomerated_patterns
+    return all_patterns, agglomerated_patterns, list_current_pattern_count
 
 
 def pattern_plot(patterns, matrix, name=None, output=None):
@@ -388,10 +366,10 @@ def pattern_plot(patterns, matrix, name=None, output=None):
     th_sum = np.median(matrix.sum(axis=0)) - 2.0 * np.std(matrix.sum(axis=0))
     matscn = utils.scn_func(matrix, th_sum)
     plt.imshow(matscn ** 0.15, interpolation="none", cmap="afmhot_r")
-    plt.title(name+1, fontsize=8)
+    plt.title(name, fontsize=8)
     plt.colorbar()
 
-    for pattern_type, all_patterns in patterns.items():
+    for pattern_type, all_patterns in patterns.items() :
         if pattern_type == "borders":
             for border in all_patterns:
                 if border[0] != name:
@@ -406,12 +384,12 @@ def pattern_plot(patterns, matrix, name=None, output=None):
                 if loop[1] != "NA":
                     _, pos1, pos2, _ = loop
                     plt.scatter(
-                        pos1, pos2, s=15, facecolors="none", edgecolors="blue"
+                        pos1, pos2, s=15, facecolors="none", edgecolors="gold"
                     )
     print(name)
     print(output)
     plt.savefig(
-        str(name+1) + ".pdf2",
+        str(name) + ".pdf2",
         dpi=100,
         format="pdf",
     )
@@ -448,18 +426,9 @@ def distance_plot(matrices, labels=None):
         plt.savefig(pathlib.Path(name) / ".pdf3", dpi=100, format="pdf")
         plt.close("all")
 
-def write_results(patterns_to_plot, output):
-    for pattern in patterns_to_plot:
-        file_name=pattern+'.txt'
-        file_path = output / file_name
-        with file_path.open('w') as outf:
-            for tup in sorted([tup for tup in patterns_to_plot[pattern] if 'NA' not in tup]):
-                outf.write(' '.join(map(str, tup))+'\n')
 
-def agglomerated_plot(
-    agglomerated_pattern, name="agglomerated patterns", output=None
-):
-
+def agglomerated_plot(agglomerated_pattern, name="agglomerated patterns", output=None):
+    
     if output is None:
         output = pathlib.Path()
 
@@ -471,7 +440,7 @@ def agglomerated_plot(
         cmap="seismic",
     )
     plt.colorbar()
-    plt.title("Agglomerated plot of detected {}".format(name))
+    plt.title("Ag {}".format(name))
     plt.savefig(
         name + ".pdf", dpi=100, format="pdf"
     )
@@ -488,6 +457,7 @@ def main():
     precision = float(arguments["--precision"])
     iterations = arguments["--iterations"]
     output = arguments["<output>"]
+    list_current_pattern_count = []
 
     if not output:
         output = pathlib.Path()
@@ -516,7 +486,7 @@ def main():
     agglomerated_to_plot = dict()
     loaded_maps = tuple((np.loadtxt(contact_map) for contact_map in contact_maps if contact_map))
     for pattern in patterns_to_explore:
-        all_patterns, agglomerated_patterns = explore_patterns(
+        all_patterns, agglomerated_patterns, list_current_pattern_count = explore_patterns(
             loaded_maps,
             pattern,
             iterations=iterations,
@@ -526,21 +496,17 @@ def main():
         patterns_to_plot[pattern] = all_patterns
         agglomerated_to_plot[pattern] = agglomerated_patterns
     print(patterns_to_plot)
-    write_results(patterns_to_plot, output)
-    base_names = (
-        pathlib.Path(contact_map).name for contact_map in contact_maps
-    )
+    base_names = (pathlib.Path(contact_map).name for contact_map in contact_maps)
+    
+    
     for i, matrix in enumerate(loaded_maps):
         pattern_plot(patterns_to_plot, matrix, output=output, name=i)
     for (pattern, agglomerated_iter_list) in agglomerated_to_plot.items():
         for i, agglomerated_iteration in enumerate(agglomerated_iter_list):
             for j, agglomerated_matrix in enumerate(agglomerated_iteration):
-                my_name = "Agglomerated {} iteration {} kernel {}".format(
-                    pattern, i, j
-                )
-                agglomerated_plot(
-                    agglomerated_matrix, name=my_name, output=output
-                )
+                my_name = "Agglomerated {} of {} patterns iteration {} kernel {}".format(
+                    pattern, list_current_pattern_count[i-1], i, j)
+                agglomerated_plot(agglomerated_matrix, name=my_name, output=output)
 
 
 if __name__ == "__main__":
