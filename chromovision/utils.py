@@ -10,6 +10,7 @@ loop/border data.
 import numpy as np
 from scipy.ndimage import measurements
 from scipy.signal import savgol_filter
+import itertools
 
 
 def scn_func(B, threshold=0):
@@ -80,30 +81,26 @@ def despeckles(B, th2):
     n_speckles = 0
     outlier = []
     n1 = A.shape[0]
-    dist = {}
+    dist = {u: np.diag(A, u) for u in range(n1)}
 
-    for nw in range(n1):  # scales
-        group = []
-        for j in range(0, n1):
-            lp = j + nw
-            if lp < n1:
-                group.append(A[j, lp])
-        dist[nw] = group
+    medians, stds = {}, {}
+    for u in dist:
+        medians[u] = np.median(dist[u])
+        stds[u] = np.std(dist[u])
 
-    for nw in range(n1):  # scales
-        for j in range(0, n1):  # along the chromosome
-            lp = j + nw
-            kp = j - nw
-            if lp < n1:
-                if A[j, lp] > np.median(dist[nw]) + th2 * np.std(dist[nw]):
-                    A[j, lp] = 0
-                    n_speckles += 1
-                    outlier.append((j, lp))
-            if kp >= 0:
-                if A[j, kp] > np.median(dist[nw]) + th2 * np.std(dist[nw]):
-                    A[j, kp] = 0
-                    n_speckles += 1
-                    outlier.append((j, kp))
+    for nw, j in itertools.product(range(n1), range(n1)):
+        lp = j + nw
+        kp = j - nw
+        if lp < n1:
+            if A[j, lp] > medians[nw] + th2 * stds[nw]:
+                A[j, lp] = medians[nw]
+                n_speckles += 1
+                outlier.append((j, lp))
+        if kp >= 0:
+            if A[j, kp] > medians[nw] + th2 * stds[nw]:
+                A[j, kp] = medians[nw]
+                n_speckles += 1
+                outlier.append((j, kp))
     return dist, A, n_speckles, outlier
 
 
@@ -173,7 +170,7 @@ def detrend(matrix):
     _, matscn, _, _ = despeckles(matscn, 10.0)
 
     y = distance_law(matscn)
-    y[np.isnan(y)] = 0.
+    y[np.isnan(y)] = 0.0
     y_savgol = savgol_filter(y, window_length=17, polyorder=5)
 
     n = matrix.shape[0]
