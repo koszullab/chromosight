@@ -8,7 +8,7 @@ maps with pattern matching.
 Usage:
     chromovision detect <contact_maps> [<output>] [--kernels=None] [--loops]
                         [--borders] [--precision=4] [--iterations=auto]
-                        [--output]
+                        [--interchrom] [--output]
 
 Arguments:
     -h, --help                  Display this help message.
@@ -26,6 +26,10 @@ Arguments:
                                 probability in the contact map. A lesser value
                                 leads to potentially more detections, but more
                                 false positives. [default: 4]
+    -I FILE, --inter FILE       The matrix contains multiple chromosomes. Each
+                                line of FILE contains the start bin of a
+                                chromosome. Only one matrix can be given with
+                                this option.
     -i auto, --iterations auto  How many iterations to perform after the first
                                 template-based pass. Auto means iterations are
                                 performed until convergence. [default: auto]
@@ -196,7 +200,7 @@ def pattern_detector(
             for el in range(1, len(pattern_windows)):
                 list_temp.append(pattern_windows[el][i, j])
             agglomerated_pattern[i, j] = np.median(list_temp)
-            
+
     nb_patterns = len(pattern_windows) 
     return detected_patterns, agglomerated_pattern, nb_patterns
 
@@ -241,7 +245,8 @@ def explore_patterns(
     custom_kernels=None,
     precision=4,
     iterations="auto",
-    window=4,):
+    window=4,
+    interchrom=None):
     """Explore patterns in a list of matrices
 
     Given a pattern type, attempt to detect that pattern in each matrix with
@@ -273,6 +278,9 @@ def explore_patterns(
     window : int, optional
         The pattern window area. When a pattern is discovered in a previous
         pass, further detected patterns falling into that area are discarded.
+    interchrom : array_like
+        1D numpy array of ints containing the start position of each chromosome
+        if the matrix contains multiple chromosome.
 
     Returns
     -------
@@ -319,7 +327,10 @@ def explore_patterns(
         else:
             return (chromosome, int(pos1) // window, int(pos2) // window)
 
-    detrended_matrices, threshold_vectors = zip(*(utils.detrend(matrix) for matrix in matrices))
+    if interchrom is not None:
+        detrended_matrices, threshold_vectors = utils.interchrom_wrapper(matrices, interchrom)
+    else:
+        detrended_matrices, threshold_vectors = zip(*(utils.detrend(matrix) for matrix in matrices))
     matrix_indices = tuple((np.where(matrix.sum(axis=0) > threshold_vector) for matrix, threshold_vector in zip(matrices, threshold_vectors)))
 
     while old_pattern_count != current_pattern_count:
@@ -454,6 +465,7 @@ def main():
     kernels = arguments["--kernels"]
     loops = arguments["--loops"]
     borders = arguments["--borders"]
+    interchrom = arguments["--inter"]
     precision = float(arguments["--precision"])
     iterations = arguments["--iterations"]
     output = arguments["<output>"]
