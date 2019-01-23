@@ -46,12 +46,12 @@ import pathlib
 import os
 import functools
 import docopt
-import warnings
 from chromovision.version import __version__
 
 from chromovision import utils
 
 MAX_ITERATIONS = 3
+
 
 def pattern_detector(
     matrices,
@@ -201,7 +201,11 @@ def pattern_detector(
                 list_temp.append(pattern_windows[el][i, j])
             agglomerated_pattern[i, j] = np.median(list_temp)
 
+<<<<<<< HEAD
     nb_patterns = len(pattern_windows)
+=======
+    nb_patterns = len(pattern_windows) 
+>>>>>>> add (untested) code to handle interchromosomal matrices
     return detected_patterns, agglomerated_pattern, nb_patterns
 
 border_detector = functools.partial(pattern_detector, pattern_type="borders", undetermined_percentage=20.)
@@ -229,7 +233,6 @@ def load_kernels(pattern):
     pattern_kernels : list
         A list of array_likes corresponding to the loaded patterns.
     """
-
     pattern_path = pathlib.Path(pattern)
     if pattern_path.is_dir():
         pattern_globbing = pattern_path.glob("*")
@@ -381,7 +384,6 @@ def pattern_plot(patterns, matrix, name=None, output=None):
     plt.imshow(matscn ** 0.15, interpolation="none", cmap="afmhot_r")
     plt.title(name, fontsize=8)
     plt.colorbar()
-
     for pattern_type, all_patterns in patterns.items() :
         if pattern_type == "borders":
             for border in all_patterns:
