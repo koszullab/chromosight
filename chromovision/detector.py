@@ -8,7 +8,7 @@ maps with pattern matching.
 Usage:
     chromovision detect <contact_maps> [<output>] [--kernels=None] [--loops]
                         [--borders] [--precision=4] [--iterations=auto]
-                        [--interchrom] [--output]
+                        [--interchrom FILE] [--output]
 
 Arguments:
     -h, --help                  Display this help message.
@@ -26,10 +26,10 @@ Arguments:
                                 probability in the contact map. A lesser value
                                 leads to potentially more detections, but more
                                 false positives. [default: 4]
-    -I FILE, --inter FILE       The matrix contains multiple chromosomes. Each
-                                line of FILE contains the start bin of a
-                                chromosome. Only one matrix can be given with
-                                this option.
+    -I FILE, --inter FILE       Use if the matrix contains multiple chromosomes. 
+                                Each line of FILE contains the start bin of a
+                                chromosome. Only one matrix can be given when
+                                using this option.
     -i auto, --iterations auto  How many iterations to perform after the first
                                 template-based pass. Auto means iterations are
                                 performed until convergence. [default: auto]
@@ -246,7 +246,8 @@ def explore_patterns(
     precision=4,
     iterations="auto",
     window=4,
-    interchrom=None):
+    interchrom=None,
+    ):
     """Explore patterns in a list of matrices
 
     Given a pattern type, attempt to detect that pattern in each matrix with
@@ -470,7 +471,8 @@ def main():
     iterations = arguments["--iterations"]
     output = arguments["<output>"]
     list_current_pattern_count = []
-
+    if interchrom:
+        interchrom = np.loadtxt(interchrom)
     if not output:
         output = pathlib.Path()
     else:
@@ -504,6 +506,7 @@ def main():
             iterations=iterations,
             precision=precision,
             custom_kernels=kernel_list,
+            interchrom=interchrom,
         )
         patterns_to_plot[pattern] = all_patterns
         agglomerated_to_plot[pattern] = agglomerated_patterns
