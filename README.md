@@ -1,6 +1,9 @@
-# Declooptor
+# chromovision
 
-![PyPI - Python Version](https://img.shields.io/pypi/pyversions/declooptor.svg)
+[![PyPI version](https://badge.fury.io/py/chromovision.svg)](https://badge.fury.io/py/chromovision)
+![PyPI - Python Version](https://img.shields.io/pypi/pyversions/chromovision.svg)
+[![Build Status](https://travis-ci.org/koszullab/chromovision.svg?branch=master)](https://travis-ci.org/koszullab/chromovision)
+[![Read the docs](https://readthedocs.org/projects/chromovision/badge)](https://chromovision.readthedocs.io)
 [![License: GPLv3](https://img.shields.io/badge/License-GPL%203-0298c3.svg)](https://opensource.org/licenses/GPL-3.0)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/ambv/black)
 
@@ -9,20 +12,20 @@ Detect chromatin loops (and other patterns) in Hi-C contact maps.
 ## Installation
 
 ```sh
-    pip3 install -U declooptor
+    pip3 install -U chromovision
 ```
 
 or, if you want to get the very latest version:
 
 ```sh
-   sudo pip3 install -e git+https://github.com/koszullab/declooptor.git@master#egg=declooptor
+   sudo pip3 install -e git+https://github.com/koszullab/chromovision.git@master#egg=chromovision
 ```
 
 ## Usage
 
-    declooptor.py detect <contact_maps> [<output>] [--kernels=None] [--loops]
-                         [--borders] [--precision=4] [--iterations=auto]
-                         [--output]
+    chromovision.py detect <contact_maps> [<output>] [--kernels=None] [--loops]
+                           [--borders] [--precision=4] [--iterations=auto]
+                           [--output]
 
 ## Options
 
