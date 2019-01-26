@@ -39,15 +39,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
 import pathlib
-import itertools
+import os
 import functools
 import docopt
-import warnings
 from chromovision.version import __version__
 
 from chromovision import utils
 
 MAX_ITERATIONS = 3
+
 
 def pattern_detector(
     matrices,
@@ -58,13 +58,13 @@ def pattern_detector(
     undetermined_percentage=1.,
     labels=None,
     matrix_indices=None,
-    nb_patterns = []
+    nb_patterns=[]
 ):
     """Pattern detector
-    
+
     Detect patterns by iterated kernel matching, and compute the resulting
     'agglomerated pattern' as matched on the matrices.
-    
+
     Parameters
     ----------
     matrices : array_like
@@ -127,7 +127,7 @@ def pattern_detector(
         n2 = res2.shape[0]
         res_rescaled = np.zeros(np.shape(matrix))
         res_rescaled[np.ix_(range(int(area), n2 + int(area)),
-                range(int(area), n2 + int(area)),)] = res2
+                     range(int(area), n2 + int(area)),)] = res2
         VECT_VALUES = np.reshape(res_rescaled, (1, n ** 2))
         VECT_VALUES = VECT_VALUES[0]
         thr = np.median(VECT_VALUES) + precision * np.std(VECT_VALUES)
@@ -196,8 +196,8 @@ def pattern_detector(
             for el in range(1, len(pattern_windows)):
                 list_temp.append(pattern_windows[el][i, j])
             agglomerated_pattern[i, j] = np.median(list_temp)
-            
-    nb_patterns = len(pattern_windows) 
+
+    nb_patterns = len(pattern_windows)
     return detected_patterns, agglomerated_pattern, nb_patterns
 
 border_detector = functools.partial(pattern_detector, pattern_type="borders", undetermined_percentage=20.)
@@ -205,7 +205,9 @@ border_detector = functools.partial(pattern_detector, pattern_type="borders", un
 loop_detector = functools.partial(pattern_detector, pattern_type="loops", undetermined_percentage=1.)
 
 PATTERN_DISPATCHER = {"loops": loop_detector, "borders": border_detector}
-PRESET_KERNEL_PATH = pathlib.Path("../data")
+chromo_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PRESET_KERNEL_PATH = pathlib.Path(os.path.join(chromo_dir, "data"))
+
 
 def load_kernels(pattern):
     """Load pattern kernels
@@ -223,7 +225,6 @@ def load_kernels(pattern):
     pattern_kernels : list
         A list of array_likes corresponding to the loaded patterns.
     """
-
     pattern_path = pathlib.Path(pattern)
     if pattern_path.is_dir():
         pattern_globbing = pattern_path.glob("*")
@@ -368,7 +369,6 @@ def pattern_plot(patterns, matrix, name=None, output=None):
     plt.imshow(matscn ** 0.15, interpolation="none", cmap="afmhot_r")
     plt.title(name, fontsize=8)
     plt.colorbar()
-
     for pattern_type, all_patterns in patterns.items() :
         if pattern_type == "borders":
             for border in all_patterns:
@@ -497,8 +497,7 @@ def main():
         agglomerated_to_plot[pattern] = agglomerated_patterns
     print(patterns_to_plot)
     base_names = (pathlib.Path(contact_map).name for contact_map in contact_maps)
-    
-    
+
     for i, matrix in enumerate(loaded_maps):
         pattern_plot(patterns_to_plot, matrix, output=output, name=i)
     for (pattern, agglomerated_iter_list) in agglomerated_to_plot.items():
