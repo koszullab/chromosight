@@ -173,6 +173,7 @@ def picker(probas, thres=0.8):
 
 
 def detrend(matrix):
+
     threshold_vector = np.median(matrix.sum(axis=0)) - 2.0 * np.std(
         matrix.sum(axis=0)
     )  # Removal of poor interacting bins
@@ -299,38 +300,3 @@ def corrcoef2d(signal, kernel, centered_p=True):
         - mean_signal * mean_kernel
     ) / (std_signal * std_kernel)
     return corrcoef
-
-
-def interchrom_wrapper(matrix, chromstart):
-    """
-    Given a matrix containing multiple chromosomes, processes each
-    inter- or intra-chromosomal submatrix to be chromovision-ready.
-    Parameters
-    ----------
-    matrix : array_like
-        A 2D numpy array containing the whole Hi-C matrix made of multiple
-        chromosomes
-    chromstart : array_like
-        A 1D numpy array containing the start bins of chromosomes,
-        as intervals of bins.
-    Returns
-    array_like :
-        A 2D numpy array containing the whole processed matrix. Each
-        intra- or inter-chromosomal sub-matrix is detrended or z-transformed.
-    -------
-    """
-    matrices = []
-    vectors = []
-    chromend = np.append(chromstart[1:], matrix.shape[0])
-    chroms = np.vstack([chromstart, chromend]).T
-    for s1, e1 in chroms:
-        for s2, e2 in chroms:
-            # intrachromosomal sub matrix
-            if s1 == s2:
-                tmp = detrend(matrix[s1:e1, s2:e2])
-            else:
-                tmp = ztransform(matrix[s1:e1, s2:e2])
-            matrices.append(tmp[0])
-            vectors.append(tmp[1])
-
-    return matrices, vectors
