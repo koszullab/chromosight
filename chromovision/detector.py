@@ -8,7 +8,7 @@ maps with pattern matching.
 Usage:
     chromovision detect <contact_maps> [<output>] [--kernels=None] [--loops]
                         [--borders] [--precision=4] [--iterations=auto]
-                        [--interchrom FILE] [--output]
+                        [--inter FILE] [--output]
 
 Arguments:
     -h, --help                  Display this help message.
@@ -43,7 +43,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
 import pathlib
-import os
+import os, sys
 import functools
 import docopt
 import warnings
@@ -52,6 +52,7 @@ from chromovision.version import __version__
 from chromovision import utils
 
 MAX_ITERATIONS = 3
+
 
 def pattern_detector(
     matrices,
@@ -331,7 +332,9 @@ def explore_patterns(
             return (chromosome, int(pos1) // window, int(pos2) // window)
 
     if interchrom is not None:
-        detrended_matrices, threshold_vectors = utils.interchrom_wrapper(matrices, interchrom)
+        if len(matrices) != 1:
+            print("Warning: When using --inter, you must provide a single contact map")
+        detrended_matrices, threshold_vectors = utils.interchrom_wrapper(matrices[0], interchrom)
     else:
         detrended_matrices, threshold_vectors = zip(*(utils.detrend(matrix) for matrix in matrices))
     matrix_indices = tuple((np.where(matrix.sum(axis=0) > threshold_vector) for matrix, threshold_vector in zip(matrices, threshold_vectors)))
@@ -474,7 +477,7 @@ def main():
     output = arguments["<output>"]
     list_current_pattern_count = []
     if interchrom:
-        interchrom = np.loadtxt(interchrom)
+        interchrom = np.loadtxt(interchrom, dtype=np.int64)
     if not output:
         output = pathlib.Path()
     else:

@@ -15,28 +15,40 @@ import itertools
 
 def scn_func(B, threshold=0):
     A = np.copy(B)
-    n1 = A.shape[0]
+    nr = A.shape[0]
+    nc = A.shape[1]
     n_iterations = 10
-    keep = np.zeros((n1, 1))
+    keepr = np.zeros((nr, 1))
+    keepc = np.zeros((nc, 1))
 
-    for i in range(n1):
-        if np.sum(A[i,]) > threshold:
-            keep[i] = 1
+    for i in range(nr):
+        if np.sum(A[i, :]) > threshold:
+            keepr[i] = 1
         else:
-            keep[i] = 0
+            keepr[i] = 0
 
-    indices1 = np.where(keep > 0)
-    indices2 = np.where(keep <= 0)
+    for i in range(nc):
+        if np.sum(A[:, i]) > threshold:
+            keepc[i] = 1
+        else:
+            keepc[i] = 0
+
+    ind_r_keep = np.where(keepr > 0)
+    ind_r_drop = np.where(keepr <= 0)
+    ind_c_keep = np.where(keepc > 0)
+    ind_c_drop = np.where(keepc <= 0)
 
     for _ in range(n_iterations):
-        for i in range(n1):
-            A[indices1[0], i] = A[indices1[0], i] / np.sum(A[indices1[0], i])
-            A[indices2[0], i] = 0
+        for i in range(nc):
+            A[ind_r_keep[0], i] = A[ind_r_keep[0], i] / \
+                                  np.sum(A[ind_r_keep[0], i])
+            A[ind_r_drop[0], i] = 0
         A[np.isnan(A)] = 0.0
 
-        for i in range(0, n1):
-            A[i, indices1[0]] = A[i, indices1[0]] / np.sum(A[i, indices1[0]])
-            A[i, indices2[0]] = 0
+        for i in range(nr):
+            A[i, ind_c_keep[0]] = A[i, ind_c_keep[0]] / \
+                                  np.sum(A[i, ind_c_keep[0]])
+            A[i, ind_c_drop[0]] = 0
         A[np.isnan(A)] = 0.0
     return A
 
@@ -161,7 +173,6 @@ def picker(probas, thres=0.8):
 
 
 def detrend(matrix):
-
     threshold_vector = np.median(matrix.sum(axis=0)) - 2.0 * np.std(
         matrix.sum(axis=0)
     )  # Removal of poor interacting bins
@@ -203,9 +214,11 @@ def ztransform(matrix):
         A 2-dimensional numpy array of the z-transformed interchromosomal
         Hi-C map.
     """
+    print(matrix.shape)
     threshold_vector = np.median(matrix.sum(axis=0)) - 2.0 * np.std(
         matrix.sum(axis=0)
     )  # Removal of poor interacting bins
+    print(threshold_vector)
     matscn = scn_func(matrix, threshold_vector)
     _, matscn, _, _ = despeckles(matscn, 10.0)
 
@@ -314,9 +327,9 @@ def interchrom_wrapper(matrix, chromstart):
         for s2, e2 in chroms:
             # intrachromosomal sub matrix
             if s1 == s2:
-                tmp = [detrend(matrix[s1:e1, s2:e2])]
+                tmp = detrend(matrix[s1:e1, s2:e2])
             else:
-                tmp = [ztransform(matrix[s1:e1, s2:e2])]
+                tmp = ztransform(matrix[s1:e1, s2:e2])
             matrices.append(tmp[0])
             vectors.append(tmp[1])
 
