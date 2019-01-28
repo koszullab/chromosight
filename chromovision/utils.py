@@ -13,22 +13,36 @@ from scipy.signal import savgol_filter
 import itertools
 
 
-def scn_func(B, threshold=0):
+def scn_func(B, threshold=(0, 0)):
+    """
+    Sequential Component Normalisation (SCN) of a Hi-C matrix.
+    Parameters
+    ----------
+    B : array_like
+        The Hi-C matrix to be normalised.
+    threshold : float
+        A tuple of 2 threshold values for low interacting rows and columns that
+        must be removed before SCN.
+    Returns
+    -------
+    numpy.ndarray :
+        The SCN normalised Hi-C matrix
+    """
     A = np.copy(B)
     nr = A.shape[0]
     nc = A.shape[1]
     n_iterations = 10
     keepr = np.zeros((nr, 1))
     keepc = np.zeros((nc, 1))
-
+    print(threshold)
     for i in range(nr):
-        if np.sum(A[i, :]) > threshold:
+        if np.sum(A[i, :]) > threshold[0]:
             keepr[i] = 1
         else:
             keepr[i] = 0
 
     for i in range(nc):
-        if np.sum(A[:, i]) > threshold:
+        if np.sum(A[:, i]) > threshold[1]:
             keepc[i] = 1
         else:
             keepc[i] = 0
@@ -40,14 +54,12 @@ def scn_func(B, threshold=0):
 
     for _ in range(n_iterations):
         for i in range(nc):
-            A[ind_r_keep[0], i] = A[ind_r_keep[0], i] / \
-                                  np.sum(A[ind_r_keep[0], i])
+            A[ind_r_keep[0], i] = A[ind_r_keep[0], i] / np.sum(A[ind_r_keep[0], i])
             A[ind_r_drop[0], i] = 0
         A[np.isnan(A)] = 0.0
 
         for i in range(nr):
-            A[i, ind_c_keep[0]] = A[i, ind_c_keep[0]] / \
-                                  np.sum(A[i, ind_c_keep[0]])
+            A[i, ind_c_keep[0]] = A[i, ind_c_keep[0]] / np.sum(A[i, ind_c_keep[0]])
             A[i, ind_c_drop[0]] = 0
         A[np.isnan(A)] = 0.0
     return A
@@ -57,18 +69,14 @@ def distance_law(matrix):
     """Genomic distance law
 
     Compute genomic distance law by averaging over each diagonal.
-
     Parameters
     ----------
     matrix: array_like
         The input matrix to compute distance law from.
-
     Returns
     -------
     dist: np.ndarray
         The output genomic distance law.
-
-
     Example
     -------
         >>> M = np.ones((3,3))
@@ -173,12 +181,27 @@ def picker(probas, thres=0.8):
 
 
 def detrend(matrix):
-
+    """
+    Detrending to be applied on an intrachromosomal Hi-C matrix. The matrix is
+    first normalised using the SCN procedure and then detrended by the distance
+    law.
+    Parameters
+    ----------
+    matrix : array_like
+        The intrachromosomal Hi-C matrix to detrend
+    Returns
+    -------
+    numpy.ndarray :
+        The detrended Hi-C matrix.
+    tuple :
+        Tuple of thresholds to define low interacting rows/columns.
+    """
     threshold_vector = np.median(matrix.sum(axis=0)) - 2.0 * np.std(
         matrix.sum(axis=0)
     )  # Removal of poor interacting bins
     poor_indices = np.where(matrix.sum(axis=0) <= threshold_vector)
-    matscn = scn_func(matrix, threshold_vector)
+    threshold_vectors = (threshold_vector, threshold_vector)
+    matscn = scn_func(matrix, threshold_vectors)
     _, matscn, _, _ = despeckles(matscn, 10.0)
 
     y = distance_law(matscn)
@@ -198,12 +221,13 @@ def detrend(matrix):
     # refilling of empty bins with 1.0 (neutral):
     detrended[poor_indices[0], :] = np.ones((len(poor_indices[0]), n))
     detrended[:, poor_indices[0]] = np.ones((n, len(poor_indices[0])))
-    return detrended, threshold_vector
+    return detrended, (threshold_vector, threshold_vector)
 
 
 def ztransform(matrix):
     """
-    Z transformation for interchromosomal matrices.
+    Z transformation for interchromosomal Hi-C matrices. SCN normalisation is
+    applied before the transformation.
     Parameters
     ----------
     matrix : array_like
@@ -214,18 +238,23 @@ def ztransform(matrix):
     numpy.ndarray :
         A 2-dimensional numpy array of the z-transformed interchromosomal
         Hi-C map.
+    tuple of floats :
+        A tuple of two floats containing the threshold for low interacting
+        rows and cols, respectively.
     """
-    print(matrix.shape)
-    threshold_vector = np.median(matrix.sum(axis=0)) - 2.0 * np.std(
+    threshold_rows = np.median(matrix.sum(axis=0)) - 2.0 * np.std(
         matrix.sum(axis=0)
-    )  # Removal of poor interacting bins
-    print(threshold_vector)
-    matscn = scn_func(matrix, threshold_vector)
-    _, matscn, _, _ = despeckles(matscn, 10.0)
+    )  # Removal of poor interacting rows
+    threshold_cols = np.median(matrix.sum(axis=0)) - 2.0 * np.std(
+        matrix.sum(axis=0)
+    )  # Removal of poor interacting rows
+    threshold_vectors = (threshold_rows, threshold_cols)
 
-    mu = np.mean(matscn)
-    sd = np.sd(matscn)
-    return (matscn - mu) / sd, threshold_vector
+    mu = np.mean(matrix)
+    sd = np.std(matrix)
+    N = np.copy(matrix)
+    N = (N - mu) / sd
+    return N, threshold_vectors
 
 
 def xcorr2(signal, kernel, centered_p=True):
@@ -290,13 +319,52 @@ def corrcoef2d(signal, kernel, centered_p=True):
     """
     kernel1 = np.ones(kernel.shape) / kernel.size
     mean_signal = xcorr2(signal, kernel1, centered_p)
-    std_signal = np.sqrt(
-        xcorr2(signal ** 2, kernel1, centered_p) - mean_signal ** 2
-    )
+    std_signal = np.sqrt(xcorr2(signal ** 2, kernel1, centered_p) - mean_signal ** 2)
     mean_kernel = np.mean(kernel)
     std_kernel = np.std(kernel)
     corrcoef = (
-        xcorr2(signal, kernel / kernel.size, centered_p)
-        - mean_signal * mean_kernel
+        xcorr2(signal, kernel / kernel.size, centered_p) - mean_signal * mean_kernel
     ) / (std_signal * std_kernel)
     return corrcoef
+
+
+def interchrom_wrapper(matrix, chromstart):
+    """
+    Given a matrix containing multiple chromosomes, processes each
+    inter- or intra-chromosomal submatrix to be chromovision-ready.
+    Parameters
+    ----------
+    matrix : array_like
+        A 2D numpy array containing the whole Hi-C matrix made of multiple
+        chromosomes
+    chromstart : array_like
+        A 1D numpy array containing the start bins of chromosomes,
+        as intervals of bins.
+    Returns
+    array_like :
+        A 2D numpy array containing the whole processed matrix. Each
+        intra- or inter-chromosomal sub-matrix is detrended or z-transformed.
+    -------
+    """
+    matrices = []
+    vectors = []
+    chromend = np.append(chromstart[1:], matrix.shape[0])
+    chroms = np.vstack([chromstart, chromend]).T
+    for s1, e1 in chroms:
+        for s2, e2 in chroms:
+            # intrachromosomal sub matrix
+            if s1 == s2:
+                detrended = detrend(matrix[s1:e1, s2:e2])
+                scaled = ztransform(detrended[0])
+                # Get scaled matrix and original threshold
+                tmp = (scaled[0], detrended[1])
+            # Only use lower triangle matrices
+            elif s1 > s2:
+                tmp = ztransform(matrix[s1:e1, s2:e2])
+            else:
+                continue
+            # all submatrices are ztransformed to get same scale
+            matrices.append(tmp[0])
+            vectors.append(tmp[1])
+
+    return matrices, vectors

@@ -26,7 +26,7 @@ Arguments:
                                 probability in the contact map. A lesser value
                                 leads to potentially more detections, but more
                                 false positives. [default: 4]
-    -I FILE, --inter FILE       Use if the matrix contains multiple chromosomes. 
+    -I FILE, --inter FILE       Use if the matrix contains multiple chromosomes.
                                 Each line of FILE contains the start bin of a
                                 chromosome. Only one matrix can be given when
                                 using this option.
@@ -60,10 +60,11 @@ def pattern_detector(
     pattern_type="loops",
     precision=4.0,
     area=8,
-    undetermined_percentage=1.,
+    undetermined_percentage=1.0,
     labels=None,
     matrix_indices=None,
-    nb_patterns=[]
+    nb_patterns=[],
+    interchrom=False,
 ):
     """Pattern detector
 
@@ -81,8 +82,8 @@ def pattern_detector(
         remove spurious false positives (such as far-off loops or off-diagonal
         borders). Default is "loops".
     precision : float, optional
-        Controls the amount of false positives. A higher precision means less
-        detected patterns overall and less false positives. Default is 4.0.
+        Controls the amount of false positives. A higher precision means fewer
+        detected patterns overall and fewer false positives. Default is 4.0.
     area : int, optional
         The window size of the agglomerated pattern. Default is 8.
     undetermined_percentage : float, optional
@@ -95,7 +96,10 @@ def pattern_detector(
         name, otherwise there should be as many names as matrices. Default is
         None, which assumes a simple numbering scheme.
     matrix_indices : array_like, optional
-        A list of, for each matrix, indices of detectable bins. Default is None.
+        A list containing a tuple of two arrays for each matrix. The two arrays
+        contain the indices of detectable rows and columns. Default is None.
+    interchrom : bool
+        Whether the matrices include interchromosomal matrices.
     Returns
     -------
     detected_pattern : list
@@ -126,14 +130,19 @@ def pattern_detector(
     n_patterns = 0
 
     for matrix, name, indices in zip(matrix_list, labels, matrix_indices):
-        n = matrix.shape[0]
-        res2 = utils.corrcoef2d(matrix, kernel, centered_p=False)  # !!  Here the pattern match  !!
+        nr = matrix.shape[0]
+        nc = matrix.shape[1]
+        res2 = utils.corrcoef2d(
+            matrix, kernel, centered_p=False
+        )  # !!  Here the pattern match  !!
         res2[np.isnan(res2)] = 0.0
-        n2 = res2.shape[0]
+        n2r = res2.shape[0]
+        n2c = res2.shape[0]
         res_rescaled = np.zeros(np.shape(matrix))
-        res_rescaled[np.ix_(range(int(area), n2 + int(area)),
-                     range(int(area), n2 + int(area)),)] = res2
-        VECT_VALUES = np.reshape(res_rescaled, (1, n ** 2))
+        res_rescaled[
+            np.ix_(range(int(area), n2r + int(area)), range(int(area), n2c + int(area)))
+        ] = res2
+        VECT_VALUES = np.reshape(res_rescaled, (1, nr * nc))
         VECT_VALUES = VECT_VALUES[0]
         thr = np.median(VECT_VALUES) + precision * np.std(VECT_VALUES)
         indices_max = np.where(res_rescaled > thr)
@@ -144,22 +153,20 @@ def pattern_detector(
         if pattern_peak != "NA":
             if pattern_type == "loops":
                 # Assume all loops are not found too far-off in the matrix
-                mask = (
-                    np.array(abs(pattern_peak[:, 0] - pattern_peak[:, 1])) < 5000
-                )
-                pattern_peak = pattern_peak[mask, :]
-                mask = (
-                    np.array(abs(pattern_peak[:, 0] - pattern_peak[:, 1])) > 2
-                )
+                if not interchrom:
+                    ## NOTE: "Too far off" will depend on bin size here.
+                    mask = np.array(abs(pattern_peak[:, 0] - pattern_peak[:, 1])) < 5000
+                    pattern_peak = pattern_peak[mask, :]
+
+                mask = np.array(abs(pattern_peak[:, 0] - pattern_peak[:, 1])) > 2
                 pattern_peak = pattern_peak[mask, :]
             elif pattern_type == "borders":
                 # Borders are always on the diagonal
-                mask = (
-                    np.array(abs(pattern_peak[:, 0] - pattern_peak[:, 1])) == 0
-                )
+                mask = np.array(abs(pattern_peak[:, 0] - pattern_peak[:, 1])) == 0
                 pattern_peak = pattern_peak[mask, :]
             for l in pattern_peak:
-                if l[0] in indices[0] and l[1] in indices[0]:
+                print(indices[0])
+                if l[0] in indices[0][0] and l[1] in indices[1][0]:
                     p1 = int(l[0])
                     p2 = int(l[1])
                     if p1 > p2:
@@ -168,9 +175,9 @@ def pattern_detector(
                         p1 = p22
                     if (
                         p1 - area >= 0
-                        and p1 + area + 1 < n
+                        and p1 + area + 1 < nr
                         and p2 - area >= 0
-                        and p2 + area + 1 < n
+                        and p2 + area + 1 < nc
                     ):
                         window = matrix[
                             np.ix_(
@@ -179,10 +186,8 @@ def pattern_detector(
                             )
                         ]
                         if (
-                            len(window[window == 1.])
-                            < ((area * 2 + 1) ** 2)
-                            * undetermined_percentage
-                            / 100.
+                            len(window[window == 1.0])
+                            < ((area * 2 + 1) ** 2) * undetermined_percentage / 100.0
                         ):  # there should not be many indetermined bins
                             n_patterns += 1
                             score = res_rescaled[l[0], l[1]]
@@ -205,9 +210,14 @@ def pattern_detector(
     nb_patterns = len(pattern_windows)
     return detected_patterns, agglomerated_pattern, nb_patterns
 
-border_detector = functools.partial(pattern_detector, pattern_type="borders", undetermined_percentage=20.)
 
-loop_detector = functools.partial(pattern_detector, pattern_type="loops", undetermined_percentage=1.)
+border_detector = functools.partial(
+    pattern_detector, pattern_type="borders", undetermined_percentage=20.0
+)
+
+loop_detector = functools.partial(
+    pattern_detector, pattern_type="loops", undetermined_percentage=1.0
+)
 
 PATTERN_DISPATCHER = {"loops": loop_detector, "borders": border_detector}
 chromo_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -250,7 +260,7 @@ def explore_patterns(
     iterations="auto",
     window=4,
     interchrom=None,
-    ):
+):
     """Explore patterns in a list of matrices
 
     Given a pattern type, attempt to detect that pattern in each matrix with
@@ -282,6 +292,9 @@ def explore_patterns(
     window : int, optional
         The pattern window area. When a pattern is discovered in a previous
         pass, further detected patterns falling into that area are discarded.
+    interchrom : array_like
+        1D numpy array of ints containing the start position of each chromosome
+        if the matrix contains multiple chromosome.
 
     Returns
     -------
@@ -317,6 +330,7 @@ def explore_patterns(
     iteration_count = 0
     old_pattern_count, current_pattern_count = -1, 0
     list_current_pattern_count = []
+    inter = False
     # Depending on matrix resolution, a pattern may be smeared over several
     # pixels. This trimming function ensures that there won't be many patterns
     # clustering around one location.
@@ -328,8 +342,27 @@ def explore_patterns(
         else:
             return (chromosome, int(pos1) // window, int(pos2) // window)
 
-    detrended_matrices, threshold_vectors = zip(*(utils.detrend(matrix) for matrix in matrices))
-    matrix_indices = tuple((np.where(matrix.sum(axis=0) > threshold_vector) for matrix, threshold_vector in zip(matrices, threshold_vectors)))
+    if interchrom is not None:
+        if len(matrices) != 1:
+            print("Warning: When using --inter, you must provide a single contact map")
+            inter = True
+        detrended_matrices, threshold_vectors = utils.interchrom_wrapper(
+            matrices[0], interchrom
+        )
+    else:
+        detrended_matrices, threshold_vectors = zip(
+            *(utils.detrend(matrix) for matrix in matrices)
+        )
+
+    matrix_indices = tuple(
+        (
+            (
+                np.where(matrix.sum(axis=0) > threshold_vector[0]),
+                np.where(matrix.sum(axis=1) > threshold_vector[1]),
+            )
+            for matrix, threshold_vector in zip(matrices, threshold_vectors)
+        )
+    )
 
     while old_pattern_count != current_pattern_count:
 
@@ -343,20 +376,21 @@ def explore_patterns(
         iteration_count += 1
         for kernel in agglomerated_patterns[-2]:
             (detected_coords, agglomerated_pattern, nb_patterns) = my_pattern_detector(
-                detrended_matrices, kernel, precision=precision, matrix_indices=matrix_indices
+                detrended_matrices,
+                kernel,
+                precision=precision,
+                matrix_indices=matrix_indices,
+                interchrom=inter,
             )
             for new_coords in detected_coords:
-                if (
-                    neigh_hash(new_coords, window=window)
-                    not in hashed_neighborhoods
-                ):
+                if neigh_hash(new_coords, window=window) not in hashed_neighborhoods:
                     chromosome, pos1, pos2, score = new_coords
                     if pos1 != "NA":
                         pos1 = int(pos1)
                     if pos2 != "NA":
                         pos2 = int(pos2)
                     all_patterns.add((chromosome, pos1, pos2, score))
-                    hashed_neighborhoods.add(neigh_hash(new_coords, window=window) )
+                    hashed_neighborhoods.add(neigh_hash(new_coords, window=window))
             agglomerated_patterns[-1].append(agglomerated_pattern)
         current_pattern_count = nb_patterns
         list_current_pattern_count.append(current_pattern_count)
@@ -372,36 +406,32 @@ def pattern_plot(patterns, matrix, name=None, output=None):
     else:
         output = pathlib.Path(output)
 
-    th_sum = np.median(matrix.sum(axis=0)) - 2.0 * np.std(matrix.sum(axis=0))
+    th_sum_r = np.median(matrix.sum(axis=0)) - 2.0 * np.std(matrix.sum(axis=0))
+    th_sum_c = np.median(matrix.sum(axis=1)) - 2.0 * np.std(matrix.sum(axis=1))
+    th_sum = (th_sum_r, th_sum_c)
     matscn = utils.scn_func(matrix, th_sum)
     plt.imshow(matscn ** 0.15, interpolation="none", cmap="afmhot_r")
     plt.title(name, fontsize=8)
     plt.colorbar()
 
-    for pattern_type, all_patterns in patterns.items() :
+    for pattern_type, all_patterns in patterns.items():
         if pattern_type == "borders":
             for border in all_patterns:
                 if border[0] != name:
                     continue
                 if border[1] != "NA":
                     _, pos1, pos2, _ = border
-                    plt.plot(pos1, pos2, "D", color="white", markersize=.5)
+                    plt.plot(pos1, pos2, "D", color="white", markersize=0.5)
         elif pattern_type == "loops":
             for loop in all_patterns:
                 if loop[0] != name:
                     continue
                 if loop[1] != "NA":
                     _, pos1, pos2, _ = loop
-                    plt.scatter(
-                        pos1, pos2, s=15, facecolors="none", edgecolors="gold"
-                    )
+                    plt.scatter(pos1, pos2, s=15, facecolors="none", edgecolors="gold")
     print(name)
     print(output)
-    plt.savefig(
-        str(name) + ".pdf2",
-        dpi=100,
-        format="pdf",
-    )
+    plt.savefig(str(name) + ".pdf2", dpi=100, format="pdf")
     plt.close("all")
 
 
@@ -421,7 +451,7 @@ def distance_plot(matrices, labels=None):
         dist = utils.distance_law(matrix)
         x = np.arange(0, len(dist))
         y = dist
-        y[np.isnan(y)] = 0.
+        y[np.isnan(y)] = 0.0
         y_savgol = savgol_filter(y, window_length=17, polyorder=5)
         plt.plot(x, y, "o")
         plt.plot(x)
@@ -437,22 +467,16 @@ def distance_plot(matrices, labels=None):
 
 
 def agglomerated_plot(agglomerated_pattern, name="agglomerated patterns", output=None):
-    
+
     if output is None:
         output = pathlib.Path()
 
     plt.imshow(
-        agglomerated_pattern,
-        interpolation="none",
-        vmin=0.,
-        vmax=2.,
-        cmap="seismic",
+        agglomerated_pattern, interpolation="none", vmin=0.0, vmax=2.0, cmap="seismic"
     )
     plt.colorbar()
     plt.title("Ag {}".format(name))
-    plt.savefig(
-        name + ".pdf", dpi=100, format="pdf"
-    )
+    plt.savefig(name + ".pdf", dpi=100, format="pdf")
     plt.close("all")
 
 
@@ -495,7 +519,9 @@ def main():
 
     patterns_to_plot = dict()
     agglomerated_to_plot = dict()
-    loaded_maps = tuple((np.loadtxt(contact_map) for contact_map in contact_maps if contact_map))
+    loaded_maps = tuple(
+        (np.loadtxt(contact_map) for contact_map in contact_maps if contact_map)
+    )
     for pattern in patterns_to_explore:
         all_patterns, agglomerated_patterns, list_current_pattern_count = explore_patterns(
             loaded_maps,
@@ -516,7 +542,8 @@ def main():
         for i, agglomerated_iteration in enumerate(agglomerated_iter_list):
             for j, agglomerated_matrix in enumerate(agglomerated_iteration):
                 my_name = "Agglomerated {} of {} patterns iteration {} kernel {}".format(
-                    pattern, list_current_pattern_count[i-1], i, j)
+                    pattern, list_current_pattern_count[i - 1], i, j
+                )
                 agglomerated_plot(agglomerated_matrix, name=my_name, output=output)
 
 
