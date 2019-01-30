@@ -128,7 +128,6 @@ def pattern_detector(
     )  # median of all detected patterns
     detected_patterns = []
     n_patterns = 0
-
     for matrix, name, indices in zip(matrix_list, labels, matrix_indices):
         nr = matrix.shape[0]
         nc = matrix.shape[1]
@@ -137,7 +136,7 @@ def pattern_detector(
         )  # !!  Here the pattern match  !!
         res2[np.isnan(res2)] = 0.0
         n2r = res2.shape[0]
-        n2c = res2.shape[0]
+        n2c = res2.shape[1]
         res_rescaled = np.zeros(np.shape(matrix))
         res_rescaled[
             np.ix_(range(int(area), n2r + int(area)), range(int(area), n2c + int(area)))
@@ -165,8 +164,7 @@ def pattern_detector(
                 mask = np.array(abs(pattern_peak[:, 0] - pattern_peak[:, 1])) == 0
                 pattern_peak = pattern_peak[mask, :]
             for l in pattern_peak:
-                print(indices[0])
-                if l[0] in indices[0][0] and l[1] in indices[1][0]:
+                if l[0] in indices[0] and l[1] in indices[1]:
                     p1 = int(l[0])
                     p2 = int(l[1])
                     if p1 > p2:
@@ -346,24 +344,17 @@ def explore_patterns(
         if len(matrices) != 1:
             print("Warning: When using --inter, you must provide a single contact map")
             inter = True
-        detrended_matrices, threshold_vectors = utils.interchrom_wrapper(
+        detrended_matrices, matrix_indices = utils.interchrom_wrapper(
             matrices[0], interchrom
         )
     else:
-        detrended_matrices, threshold_vectors = zip(
-            *(utils.detrend(matrix) for matrix in matrices)
+        # Get good indices ()
+        matrix_indices = (utils.get_mat_idx(matrix) for matrix in matrices)
+        scn_mat = (utils.scn_func(matrix, matrice_indices) for matrix in matrices)
+        detrended_matrices = (
+            utils.detrend(matrix, idx) for idx, matrix in zip(matrix_indices, scn_mat)
         )
-
-    matrix_indices = tuple(
-        (
-            (
-                np.where(matrix.sum(axis=0) > threshold_vector[0]),
-                np.where(matrix.sum(axis=1) > threshold_vector[1]),
-            )
-            for matrix, threshold_vector in zip(matrices, threshold_vectors)
-        )
-    )
-
+        print(matrix_indices[0])
     while old_pattern_count != current_pattern_count:
 
         if iteration_count >= MAX_ITERATIONS or (
@@ -406,9 +397,7 @@ def pattern_plot(patterns, matrix, name=None, output=None):
     else:
         output = pathlib.Path(output)
 
-    th_sum_r = np.median(matrix.sum(axis=0)) - 2.0 * np.std(matrix.sum(axis=0))
-    th_sum_c = np.median(matrix.sum(axis=1)) - 2.0 * np.std(matrix.sum(axis=1))
-    th_sum = (th_sum_r, th_sum_c)
+    th_sum = utils.get_mat_idx(matrix)
     matscn = utils.scn_func(matrix, th_sum)
     plt.imshow(matscn ** 0.15, interpolation="none", cmap="afmhot_r")
     plt.title(name, fontsize=8)
@@ -492,8 +481,6 @@ def main():
     iterations = arguments["--iterations"]
     output = arguments["<output>"]
     list_current_pattern_count = []
-    if interchrom:
-        interchrom = np.loadtxt(interchrom, dtype=np.int64)
     if not output:
         output = pathlib.Path()
     else:
@@ -522,6 +509,11 @@ def main():
     loaded_maps = tuple(
         (np.loadtxt(contact_map) for contact_map in contact_maps if contact_map)
     )
+    if interchrom:
+        interchrom = np.loadtxt(interchrom, dtype=np.int64)
+        # Getting start and end coordinates of chromosomes
+        chromend = np.append(chromstart[1:], loaded_maps[0].shape[0])
+        chroms = np.vstack([chromstart, chromend]).T
     for pattern in patterns_to_explore:
         all_patterns, agglomerated_patterns, list_current_pattern_count = explore_patterns(
             loaded_maps,
@@ -529,7 +521,7 @@ def main():
             iterations=iterations,
             precision=precision,
             custom_kernels=kernel_list,
-            interchrom=interchrom,
+            interchrom=chroms,
         )
         patterns_to_plot[pattern] = all_patterns
         agglomerated_to_plot[pattern] = agglomerated_patterns
