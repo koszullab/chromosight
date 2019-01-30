@@ -13,54 +13,39 @@ from scipy.signal import savgol_filter
 import itertools
 
 
-def scn_func(B, threshold=(0, 0)):
+def scn_func(B, poor_idx=([], [])):
     """
     Sequential Component Normalisation (SCN) of a Hi-C matrix.
     Parameters
     ----------
     B : array_like
         The Hi-C matrix to be normalised.
-    threshold : float
-        A tuple of 2 threshold values for low interacting rows and columns that
-        must be removed before SCN.
+    poor_idx : tuple
+        A tuple of 2 lists, cotaining the indices of poorly interacting rows and
+        columns.
     Returns
     -------
     numpy.ndarray :
         The SCN normalised Hi-C matrix
     """
+
     A = np.copy(B)
     nr = A.shape[0]
     nc = A.shape[1]
+    poor_mask_r = np.zeros(nr, dtype=bool)
+    poor_mask_c = np.zeros(nc, dtype=bool)
+    poor_mask_r[poor_idx[0]] = 1
+    poor_mask_c[poor_idx[1]] = 1
     n_iterations = 10
-    keepr = np.zeros((nr, 1))
-    keepc = np.zeros((nc, 1))
-    print(threshold)
-    for i in range(nr):
-        if np.sum(A[i, :]) > threshold[0]:
-            keepr[i] = 1
-        else:
-            keepr[i] = 0
-
-    for i in range(nc):
-        if np.sum(A[:, i]) > threshold[1]:
-            keepc[i] = 1
-        else:
-            keepc[i] = 0
-
-    ind_r_keep = np.where(keepr > 0)
-    ind_r_drop = np.where(keepr <= 0)
-    ind_c_keep = np.where(keepc > 0)
-    ind_c_drop = np.where(keepc <= 0)
-
     for _ in range(n_iterations):
         for i in range(nc):
-            A[ind_r_keep[0], i] = A[ind_r_keep[0], i] / np.sum(A[ind_r_keep[0], i])
-            A[ind_r_drop[0], i] = 0
+            A[~poor_mask_r, i] = A[~poor_mask_r, i] / np.sum(A[~poor_mask_r, i])
+            A[poor_mask_r, i] = 0
         A[np.isnan(A)] = 0.0
 
         for i in range(nr):
-            A[i, ind_c_keep[0]] = A[i, ind_c_keep[0]] / np.sum(A[i, ind_c_keep[0]])
-            A[i, ind_c_drop[0]] = 0
+            A[i, ~poor_mask_c] = A[i, ~poor_mask_c] / np.sum(A[i, ~poor_mask_c])
+            A[i, poor_mask_c] = 0
         A[np.isnan(A)] = 0.0
     return A
 
@@ -180,15 +165,44 @@ def picker(probas, thres=0.8):
     return ijs
 
 
-def detrend(matrix):
+def get_poor_idx(matrix):
     """
-    Detrending to be applied on an intrachromosomal Hi-C matrix. The matrix is
-    first normalised using the SCN procedure and then detrended by the distance
-    law.
+    Returns lists of indices for low interacting bin based on the distribution
+    of pixel values in the matrix.
+    Parameters
+    ----------
+    matrix : array_like
+        A Hi-C matrix in the form of a 2D numpy array
+    Returns
+    tuple :
+        A tuple of two 1D arrays containing indices of low interacting rows
+        and columns, respectively.
+    -------
+    """
+    threshold_rows = np.median(matrix.sum(axis=0)) - 2.0 * np.std(
+        matrix.sum(axis=0)
+    )  # Removal of poor interacting rows
+    threshold_cols = np.median(matrix.sum(axis=1)) - 2.0 * np.std(
+        matrix.sum(axis=1)
+    )  # Removal of poor interacting rows
+    ind_rows = np.where(matrix.sum(axis=0) <= threshold_rows)[0]
+    ind_cols = np.where(matrix.sum(axis=1) <= threshold_cols)[0]
+    poor_bins = (ind_rows, ind_cols)
+    return poor_bins
+
+
+def detrend(matrix, poor_indices=([], [])):
+    """
+    Detrending a Hi-C matrix by the distance law. The matrix should have been
+    normalised using the SCN procedure beforehandand then detrended by the
+    distance law.
     Parameters
     ----------
     matrix : array_like
         The intrachromosomal Hi-C matrix to detrend
+    poor_indices : tuple
+        Tuple containing a list of indices for poorly interacting rows and
+        another for poorly interacting columns.
     Returns
     -------
     numpy.ndarray :
@@ -196,15 +210,7 @@ def detrend(matrix):
     tuple :
         Tuple of thresholds to define low interacting rows/columns.
     """
-    threshold_vector = np.median(matrix.sum(axis=0)) - 2.0 * np.std(
-        matrix.sum(axis=0)
-    )  # Removal of poor interacting bins
-    poor_indices = np.where(matrix.sum(axis=0) <= threshold_vector)
-    threshold_vectors = (threshold_vector, threshold_vector)
-    matscn = scn_func(matrix, threshold_vectors)
-    _, matscn, _, _ = despeckles(matscn, 10.0)
-
-    y = distance_law(matscn)
+    y = distance_law(matrix)
     y[np.isnan(y)] = 0.0
     y_savgol = savgol_filter(y, window_length=17, polyorder=5)
 
@@ -215,19 +221,18 @@ def detrend(matrix):
     for i in range(0, n):
         for j in range(0, n):
             distance_law_matrix[i, j] = y_savgol[abs(j - i)]
-    detrended = matscn / distance_law_matrix
+    detrended = matrix / distance_law_matrix
     detrended[np.isnan(detrended)] = 1.0
     detrended[detrended < 0] = 1.0
     # refilling of empty bins with 1.0 (neutral):
-    detrended[poor_indices[0], :] = np.ones((len(poor_indices[0]), n))
-    detrended[:, poor_indices[0]] = np.ones((n, len(poor_indices[0])))
-    return detrended, (threshold_vector, threshold_vector)
+    detrended[poor_indices[0], :] = np.ones((len(poor_indices), n))
+    detrended[:, poor_indices[0]] = np.ones((n, len(poor_indices)))
+    return detrended
 
 
 def ztransform(matrix):
     """
-    Z transformation for interchromosomal Hi-C matrices. SCN normalisation is
-    applied before the transformation.
+    Z transformation for Hi-C matrices.
     Parameters
     ----------
     matrix : array_like
@@ -242,19 +247,12 @@ def ztransform(matrix):
         A tuple of two floats containing the threshold for low interacting
         rows and cols, respectively.
     """
-    threshold_rows = np.median(matrix.sum(axis=0)) - 2.0 * np.std(
-        matrix.sum(axis=0)
-    )  # Removal of poor interacting rows
-    threshold_cols = np.median(matrix.sum(axis=0)) - 2.0 * np.std(
-        matrix.sum(axis=0)
-    )  # Removal of poor interacting rows
-    threshold_vectors = (threshold_rows, threshold_cols)
 
     mu = np.mean(matrix)
     sd = np.std(matrix)
     N = np.copy(matrix)
     N = (N - mu) / sd
-    return N, threshold_vectors
+    return N
 
 
 def xcorr2(signal, kernel, centered_p=True):
@@ -350,21 +348,27 @@ def interchrom_wrapper(matrix, chromstart):
     vectors = []
     chromend = np.append(chromstart[1:], matrix.shape[0])
     chroms = np.vstack([chromstart, chromend]).T
+    poor_idx = get_poor_idx(matrix)
+    matscn = scn_func(matrix, poor_idx)
     for s1, e1 in chroms:
         for s2, e2 in chroms:
+            # Get new indices of low interacting bins within sub matrix
+            sub_idx = (
+                poor_idx[0][poor_idx[0] <= s1 & poor_idx[0] < e1] - s1,
+                poor_idx[1][poor_idx[1] <= s2 & poor_idx[1] < e2] - s2,
+            )
             # intrachromosomal sub matrix
             if s1 == s2:
-                detrended = detrend(matrix[s1:e1, s2:e2])
-                scaled = ztransform(detrended[0])
-                # Get scaled matrix and original threshold
-                tmp = (scaled[0], detrended[1])
+
+                detrended = detrend(matrix[s1:e1, s2:e2], sub_idx)
+                sub_mat = ztransform(detrended[0])
             # Only use lower triangle matrices
             elif s1 > s2:
-                tmp = ztransform(matrix[s1:e1, s2:e2])
+                sub_mat = ztransform(matrix[s1:e1, s2:e2])
             else:
                 continue
             # all submatrices are ztransformed to get same scale
-            matrices.append(tmp[0])
-            vectors.append(tmp[1])
+            matrices.append(sub_mat)
+            vectors.append(sub_idx)
 
     return matrices, vectors
