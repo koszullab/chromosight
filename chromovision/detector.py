@@ -397,8 +397,8 @@ def pattern_plot(patterns, matrix, name=None, output=None):
     else:
         output = pathlib.Path(output)
 
-    th_sum = utils.get_mat_idx(matrix)
-    matscn = utils.scn_func(matrix, th_sum)
+    detectable = utils.get_mat_idx(matrix)
+    matscn = utils.scn_func(matrix, detectable)
     plt.imshow(matscn ** 0.15, interpolation="none", cmap="afmhot_r")
     plt.title(name, fontsize=8)
     plt.colorbar()
@@ -417,7 +417,8 @@ def pattern_plot(patterns, matrix, name=None, output=None):
                     continue
                 if loop[1] != "NA":
                     _, pos1, pos2, _ = loop
-                    plt.scatter(pos1, pos2, s=15, facecolors="none", edgecolors="gold")
+                    print(pos1, pos2)
+                    plt.scatter(pos1, pos2, s=15, facecolors="none", edgecolors="blue")
     print(name)
     print(output)
     plt.savefig(str(name) + ".pdf2", dpi=100, format="pdf")
@@ -512,8 +513,9 @@ def main():
     if interchrom:
         interchrom = np.loadtxt(interchrom, dtype=np.int64)
         # Getting start and end coordinates of chromosomes
-        chromend = np.append(chromstart[1:], loaded_maps[0].shape[0])
-        chroms = np.vstack([chromstart, chromend]).T
+        chromend = np.append(interchrom[1:], loaded_maps[0].shape[0])
+        chroms = np.vstack([interchrom, chromend]).T
+
     for pattern in patterns_to_explore:
         all_patterns, agglomerated_patterns, list_current_pattern_count = explore_patterns(
             loaded_maps,
@@ -523,11 +525,15 @@ def main():
             custom_kernels=kernel_list,
             interchrom=chroms,
         )
+        if interchrom is not False:
+            # Get index of patterns in full genome matrix.
+            all_patterns = (
+                utils.get_inter_idx(pattern, chroms) for pattern in all_patterns
+            )
+            # all_patterns = map(utils.get_inter_idx, all_patterns)
         patterns_to_plot[pattern] = all_patterns
         agglomerated_to_plot[pattern] = agglomerated_patterns
-    print(patterns_to_plot)
     base_names = (pathlib.Path(contact_map).name for contact_map in contact_maps)
-
     for i, matrix in enumerate(loaded_maps):
         pattern_plot(patterns_to_plot, matrix, output=output, name=i)
     for (pattern, agglomerated_iter_list) in agglomerated_to_plot.items():

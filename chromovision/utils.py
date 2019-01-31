@@ -11,6 +11,7 @@ import numpy as np
 from scipy.ndimage import measurements
 from scipy.signal import savgol_filter
 import itertools
+from copy import copy
 
 
 def scn_func(B, mat_idx=None):
@@ -170,8 +171,8 @@ def picker(probas, thres=0.8):
 
 def get_mat_idx(matrix):
     """
-    Returns lists of indices after excluding low interacting bin based on the
-    distribution of pixel values in the matrix.
+    Returns lists of detectable indices after excluding low interacting bin
+    based on the distribution of pixel values in the matrix.
     Parameters
     ----------
     matrix : array_like
@@ -337,14 +338,16 @@ def corrcoef2d(signal, kernel, centered_p=True):
     return corrcoef
 
 
-def get_inter_idx(sub_idx, label, chroms):
+def get_inter_idx(pattern, chroms):
     """
-    Converts bin indices from an submatrix into their value in the original
-    full-genome matrix.
+    Converts bin indices of a pattern from an submatrix into their value in the
+    original full-genome matrix.
     Parameters
     ----------
-    sub_idx : array_like
-        List of bin indices from the sub matrix.
+    pattern : tuple
+        A pattern as given by explore_pattern (chrom, pos1, pos2, score). When
+        using interchromosomal matrices, chrom represents the order in which sub
+        matrices where split.
     label : int
         The index of the submatrix in the list of submatrices. Depends on the
         order in which interchrom_wrapper split them.
@@ -352,12 +355,22 @@ def get_inter_idx(sub_idx, label, chroms):
         2D numpy array containing start and end bins of chromosomes as columns,
         and one chromosome per row.
     """
-    # Select chromosomes of interest
-    start, end = chroms[label, :]
-    # Make sure indexes are a numpy array
-    pre_idx = sub_idx if isinstance(sub_idx, np.ndarray) else np.array(sub_idx)
-    inter_idx = 0
-    return inter_idx
+
+    if pattern[1] == "NA":
+        return pattern
+
+    # Fancy trick to get chromosomes from matrix index in lower triangle of
+    # whole genome matrix
+    submat_idx = pattern[0]
+    chrA = int(np.floor(-0.5 + np.sqrt(0.25 + 2 * submat_idx)))
+    triangular_number = chrA * (chrA + 1) / 2
+    chrB = int(submat_idx - triangular_number)
+    # Get start bin for chromosomes of interest
+    startA = chroms[chrA, 0]
+    startB = chroms[chrB, 0]
+    # Shift index by start bin of chromosomes
+    inter_pattern = (0, pattern[1] + startA, pattern[2] + startB, pattern[3])
+    return inter_pattern
 
 
 def interchrom_wrapper(matrix, chroms):
@@ -394,10 +407,12 @@ def interchrom_wrapper(matrix, chroms):
             if s1 == s2:
 
                 detrended = detrend(sub_mat, sub_mat_idx)
-                sub_mat = ztransform(detrended)
+                sub_mat = detrended
+                # sub_mat = ztransform(detrended)
             # Only use lower triangle matrices
             elif s1 > s2:
-                sub_mat = ztransform(sub_mat)
+                # sub_mat = ztransform(sub_mat)
+                pass
             else:
                 continue
             # all submatrices are ztransformed to get same scale
