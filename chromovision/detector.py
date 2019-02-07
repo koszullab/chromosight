@@ -45,7 +45,7 @@ import docopt
 import warnings
 from chromovision.version import __version__
 import sys
-
+import os
 from chromovision import utils
 
 MAX_ITERATIONS = 1
