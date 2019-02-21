@@ -510,6 +510,7 @@ def main():
     loaded_maps = tuple(
         (np.loadtxt(contact_map) for contact_map in contact_maps if contact_map)
     )
+    chroms = None
     if interchrom:
         interchrom = np.loadtxt(interchrom, dtype=np.int64)
         # Getting start and end coordinates of chromosomes
