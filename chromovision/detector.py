@@ -349,12 +349,11 @@ def explore_patterns(
         )
     else:
         # Get good indices ()
-        matrix_indices = (utils.get_mat_idx(matrix) for matrix in matrices)
-        scn_mat = (utils.scn_func(matrix, matrice_indices) for matrix in matrices)
-        detrended_matrices = (
+        matrix_indices = [utils.get_mat_idx(matrix) for matrix in matrices]
+        scn_mat = [utils.scn_func(matrix, matrix_indices) for matrix in matrices]
+        detrended_matrices = [
             utils.detrend(matrix, idx) for idx, matrix in zip(matrix_indices, scn_mat)
-        )
-        print(matrix_indices[0])
+        ]
     while old_pattern_count != current_pattern_count:
 
         if iteration_count >= MAX_ITERATIONS or (
