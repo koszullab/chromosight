@@ -35,7 +35,7 @@ def scn_func(B, mat_idx=None):
     nc = A.shape[1]
     # If no list of bins is specified, include all bins
     if not mat_idx:
-        mat_idx = (np.array(range(nr)), np.array(range(nc)))
+        mat_idx = (np.arange(nr), np.arange(nc))
     mask_r = np.zeros(nr, dtype=bool)
     mask_c = np.zeros(nc, dtype=bool)
     mask_r[mat_idx[0]] = 1

@@ -240,14 +240,14 @@ def load_kernels(pattern):
     """
 
     pattern_path = pathlib.Path(pattern)
-    if pattern_path.is_dir():
-        pattern_globbing = pattern_path.glob("*")
-    elif pattern in PATTERN_DISPATCHER.keys():
+    if pattern in PATTERN_DISPATCHER.keys():
         pattern_globbing = PRESET_KERNEL_PATH.glob("*{}*".format(pattern))
+    elif pattern_path.is_dir():
+        pattern_globbing = pattern_path.glob("*")
     else:
         pattern_globbing = (pattern_path,)
     for kernel_file in pattern_globbing:
-        yield np.loadtxt(kernel_file)
+        yield np.loadtxt(kernel_file, dtype=np.float)
 
 
 def explore_patterns(
@@ -308,7 +308,6 @@ def explore_patterns(
     # loop detector is more generic, so we use the generic one by default if
     # a pattern specific detector isn't implemented.
     my_pattern_detector = PATTERN_DISPATCHER.get(pattern_type, loop_detector)
-
     if custom_kernels is None:
         chosen_kernels = load_kernels(pattern_type)
     else:
@@ -350,7 +349,7 @@ def explore_patterns(
     else:
         # Get good indices ()
         matrix_indices = [utils.get_mat_idx(matrix) for matrix in matrices]
-        scn_mat = [utils.scn_func(matrix, matrix_indices) for matrix in matrices]
+        scn_mat = [utils.scn_func(matrix, matrix_indices[i]) for i, matrix in enumerate(matrices)]
         detrended_matrices = [
             utils.detrend(matrix, idx) for idx, matrix in zip(matrix_indices, scn_mat)
         ]
@@ -364,6 +363,7 @@ def explore_patterns(
         agglomerated_patterns.append([])
         old_pattern_count = current_pattern_count
         iteration_count += 1
+
         for kernel in agglomerated_patterns[-2]:
             (detected_coords, agglomerated_pattern, nb_patterns) = my_pattern_detector(
                 detrended_matrices,
@@ -409,7 +409,7 @@ def pattern_plot(patterns, matrix, name=None, output=None):
                     continue
                 if border[1] != "NA":
                     _, pos1, pos2, _ = border
-                    plt.plot(pos1, pos2, "D", color="white", markersize=0.5)
+                    plt.plot(pos1, pos2, "D", color="white", markersize=0.1)
         elif pattern_type == "loops":
             for loop in all_patterns:
                 if loop[0] != name:
@@ -468,6 +468,13 @@ def agglomerated_plot(agglomerated_pattern, name="agglomerated patterns", output
     plt.savefig(name + ".pdf", dpi=100, format="pdf")
     plt.close("all")
 
+def write_results(patterns_to_plot, output):
+    for pattern in patterns_to_plot:
+        file_name=pattern+'.txt'
+        file_path = output / file_name
+        with file_path.open('w') as outf:
+            for tup in sorted([tup for tup in patterns_to_plot[pattern] if 'NA' not in tup]):
+                outf.write(' '.join(map(str, tup))+'\n')
 
 def main():
     arguments = docopt.docopt(__doc__, version=__version__)
@@ -525,7 +532,7 @@ def main():
             custom_kernels=kernel_list,
             interchrom=chroms,
         )
-        if interchrom is not False:
+        if interchrom:
             # Get index of patterns in full genome matrix.
             all_patterns = (
                 utils.get_inter_idx(pattern, chroms) for pattern in all_patterns
@@ -543,7 +550,9 @@ def main():
                     pattern, list_current_pattern_count[i - 1], i, j
                 )
                 agglomerated_plot(agglomerated_matrix, name=my_name, output=output)
-
+    write_results(patterns_to_plot, output)
+    
+    return 0
 
 if __name__ == "__main__":
     main()
