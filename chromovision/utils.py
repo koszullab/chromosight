@@ -394,7 +394,7 @@ def interchrom_wrapper(matrix, chroms):
     matrices = []
     vectors = []
     mat_idx = get_mat_idx(matrix)
-    matscn = scn_func(matrix, mat_idx)
+    matrix = scn_func(matrix, mat_idx)
     for s1, e1 in chroms:
         for s2, e2 in chroms:
             sub_mat = matrix[s1:e1, s2:e2]
@@ -408,7 +408,7 @@ def interchrom_wrapper(matrix, chroms):
 
                 detrended = detrend(sub_mat, sub_mat_idx)
                 sub_mat = detrended
-                # sub_mat = ztransform(detrended)
+                sub_mat = ztransform(detrended)
             # Only use lower triangle matrices
             elif s1 > s2:
                 # sub_mat = ztransform(sub_mat)

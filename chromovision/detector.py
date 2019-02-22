@@ -544,15 +544,15 @@ def main():
             custom_kernels=kernel_list,
             interchrom=chroms,
         )
-        if interchrom:
+        if interchrom is not None:
             # Get index of patterns in full genome matrix.
             all_patterns = (
                 utils.get_inter_idx(pattern, chroms) for pattern in all_patterns
             )
             # all_patterns = map(utils.get_inter_idx, all_patterns)
-        patterns_to_plot[pattern] = all_patterns
+        patterns_to_plot[pattern] = list(all_patterns)
         agglomerated_to_plot[pattern] = agglomerated_patterns
-    print(patterns_to_plot)
+    print(patterns_to_plot['loops'])
     write_results(patterns_to_plot, output)
     base_names = (pathlib.Path(contact_map).name for contact_map in contact_maps)
 
