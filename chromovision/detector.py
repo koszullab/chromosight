@@ -16,6 +16,7 @@ Arguments:
     contact_maps                The Hi-C contact maps to detect patterns on, in
                                 CSV format. File names must be separated by a
                                 colon.
+    output                      name of the output directory
     -k None, kernels None       A custom kernel template to use, if not using
                                 one of the presets. If not supplied, the
                                 loops or borders option must be used.
@@ -388,7 +389,7 @@ def explore_patterns(
     return all_patterns, agglomerated_patterns, list_current_pattern_count
 
 
-def pattern_plot(patterns, matrix, name=None, output=None):
+def pattern_plot(patterns, matrix, output=None, name=None):
     if name is None:
         name = 0
     if output is None:
@@ -409,7 +410,7 @@ def pattern_plot(patterns, matrix, name=None, output=None):
                     continue
                 if border[1] != "NA":
                     _, pos1, pos2, _ = border
-                    plt.plot(pos1, pos2, "D", color="white", markersize=0.1)
+                    plt.plot(pos1, pos2, "D", color="green", markersize=0.1)
         elif pattern_type == "loops":
             for loop in all_patterns:
                 if loop[0] != name:
@@ -419,10 +420,11 @@ def pattern_plot(patterns, matrix, name=None, output=None):
                     plt.scatter(
                         pos1, pos2, s=15, facecolors="none", edgecolors="gold"
                     )
-    print(name)
-    print(output)
+
+    emplacement = output / pathlib.Path(str(name+1)+".pdf2")
+    print(emplacement)
     plt.savefig(
-        str(name) + ".pdf2",
+        emplacement,
         dpi=100,
         format="pdf",
     )
@@ -471,6 +473,8 @@ def agglomerated_plot(agglomerated_pattern, name="agglomerated patterns", output
 
     if output is None:
         output = pathlib.Path()
+    else:
+        output = pathlib.Path(output)
 
     plt.imshow(
         agglomerated_pattern,
@@ -481,8 +485,9 @@ def agglomerated_plot(agglomerated_pattern, name="agglomerated patterns", output
     )
     plt.colorbar()
     plt.title("Ag {}".format(name))
+    emplacement = output / pathlib.Path(name+".pdf")
     plt.savefig(
-        name + ".pdf", dpi=100, format="pdf"
+        emplacement, dpi=100, format="pdf"
     )
     plt.close("all")
 
@@ -552,12 +557,12 @@ def main():
             # all_patterns = map(utils.get_inter_idx, all_patterns)
         patterns_to_plot[pattern] = list(all_patterns)
         agglomerated_to_plot[pattern] = agglomerated_patterns
-    print(patterns_to_plot['loops'])
+
     write_results(patterns_to_plot, output)
     base_names = (pathlib.Path(contact_map).name for contact_map in contact_maps)
 
-    for i, matrix in enumerate(loaded_maps):
-        pattern_plot(patterns_to_plot, matrix, output=output, name=i)
+    for k, matrix in enumerate(loaded_maps):
+        pattern_plot(patterns_to_plot, matrix, output=output, name=k)
     for (pattern, agglomerated_iter_list) in agglomerated_to_plot.items():
         for i, agglomerated_iteration in enumerate(agglomerated_iter_list):
             for j, agglomerated_matrix in enumerate(agglomerated_iteration):
