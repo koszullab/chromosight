@@ -17,6 +17,7 @@ from copy import copy
 def scn_func(B, mat_idx=None):
     """
     Sequential Component Normalisation (SCN) of a Hi-C matrix.
+
     Parameters
     ----------
     B : array_like
@@ -24,6 +25,7 @@ def scn_func(B, mat_idx=None):
     mat_idx : tuple
         A tuple of 2 lists, containing the indices of detectable rows and
         columns on which SCN should be applied.
+        
     Returns
     -------
     numpy.ndarray :
@@ -58,14 +60,17 @@ def distance_law(matrix):
     """Genomic distance law
 
     Compute genomic distance law by averaging over each diagonal.
+
     Parameters
     ----------
     matrix: array_like
         The input matrix to compute distance law from.
+        
     Returns
     -------
     dist: np.ndarray
         The output genomic distance law.
+
     Example
     -------
         >>> M = np.ones((3,3))
@@ -173,11 +178,14 @@ def get_mat_idx(matrix):
     """
     Returns lists of detectable indices after excluding low interacting bin
     based on the distribution of pixel values in the matrix.
+    
     Parameters
     ----------
     matrix : array_like
         A Hi-C matrix in the form of a 2D numpy array
+
     Returns
+    -------
     tuple :
         A tuple of two 1D arrays containing indices of low interacting rows
         and columns, respectively.
@@ -200,6 +208,7 @@ def detrend(matrix, mat_idx=None):
     Detrending a Hi-C matrix by the distance law. The matrix should have been
     normalised using the SCN procedure beforehandand then detrended by the
     distance law.
+    
     Parameters
     ----------
     matrix : array_like
@@ -208,6 +217,7 @@ def detrend(matrix, mat_idx=None):
         Tuple containing a list of detectable rows and a list of columns on
         which to perform detrending. Poorly interacting indices have been
         excluded.
+        
     Returns
     -------
     numpy.ndarray :
@@ -245,11 +255,13 @@ def detrend(matrix, mat_idx=None):
 def ztransform(matrix):
     """
     Z transformation for Hi-C matrices.
+    
     Parameters
     ----------
     matrix : array_like
         A 2-dimensional numpy array Ms x Ns acting as a raw
         interchromosomal Hi-C map.
+
     Returns
     -------
     numpy.ndarray :
@@ -342,6 +354,7 @@ def get_inter_idx(pattern, chroms):
     """
     Converts bin indices of a pattern from an submatrix into their value in the
     original full-genome matrix.
+
     Parameters
     ----------
     pattern : tuple
@@ -377,6 +390,7 @@ def interchrom_wrapper(matrix, chroms):
     """
     Given a matrix containing multiple chromosomes, processes each
     inter- or intra-chromosomal submatrix to be chromovision-ready.
+    
     Parameters
     ----------
     matrix : array_like
@@ -385,11 +399,12 @@ def interchrom_wrapper(matrix, chroms):
     chromstart : array_like
         A 2D numpy array containing with start and end bins of chromosomes,
         as columns and 1 chromosome per row.
+    
     Returns
+    -------
     array_like :
         A 2D numpy array containing the whole processed matrix. Each
         intra- or inter-chromosomal sub-matrix is detrended or z-transformed.
-    -------
     """
     matrices = []
     vectors = []
