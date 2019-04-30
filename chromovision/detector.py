@@ -8,7 +8,7 @@ maps with pattern matching.
 Usage:
     chromovision detect <contact_maps> [<output>] [--kernels=None] [--loops]
                         [--borders] [--precision=4] [--iterations=auto]
-                        [--inter FILE] [--output]
+                        [--inter FILE]
 
 Arguments:
     -h, --help                  Display this help message.
@@ -34,10 +34,6 @@ Arguments:
     -i auto, --iterations auto  How many iterations to perform after the first
                                 template-based pass. Auto means iterations are
                                 performed until convergence. [default: auto]
-    -o, --output                Output directory to write the detected pattern
-                                coordinates, agglomerated plots and matrix
-                                images into.
-
 """
 
 import numpy as np
@@ -50,6 +46,7 @@ import docopt
 import warnings
 from chromovision.version import __version__
 from chromovision import utils
+from chromovision import io
 
 MAX_ITERATIONS = 3
 
@@ -209,9 +206,14 @@ def pattern_detector(
     nb_patterns = len(pattern_windows)
     return detected_patterns, agglomerated_pattern, nb_patterns
 
-border_detector = functools.partial(pattern_detector, pattern_type="borders", undetermined_percentage=20.)
 
-loop_detector = functools.partial(pattern_detector, pattern_type="loops", undetermined_percentage=1.)
+border_detector = functools.partial(
+    pattern_detector, pattern_type="borders", undetermined_percentage=20.0
+)
+
+loop_detector = functools.partial(
+    pattern_detector, pattern_type="loops", undetermined_percentage=1.0
+)
 
 PATTERN_DISPATCHER = {"loops": loop_detector, "borders": border_detector}
 chromo_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -346,7 +348,10 @@ def explore_patterns(
     else:
         # Get good indices ()
         matrix_indices = [utils.get_mat_idx(matrix) for matrix in matrices]
-        scn_mat = [utils.scn_func(matrix, matrix_indices[i]) for i, matrix in enumerate(matrices)]
+        scn_mat = [
+            utils.scn_func(matrix, matrix_indices[i])
+            for i, matrix in enumerate(matrices)
+        ]
         detrended_matrices = [
             utils.detrend(matrix, idx) for idx, matrix in zip(matrix_indices, scn_mat)
         ]
@@ -370,17 +375,14 @@ def explore_patterns(
                 interchrom=inter,
             )
             for new_coords in detected_coords:
-                if (
-                    neigh_hash(new_coords, window=window)
-                    not in hashed_neighborhoods
-                ):
+                if neigh_hash(new_coords, window=window) not in hashed_neighborhoods:
                     chromosome, pos1, pos2, score = new_coords
                     if pos1 != "NA":
                         pos1 = int(pos1)
                     if pos2 != "NA":
                         pos2 = int(pos2)
                     all_patterns.add((chromosome, pos1, pos2, score))
-                    hashed_neighborhoods.add(neigh_hash(new_coords, window=window) )
+                    hashed_neighborhoods.add(neigh_hash(new_coords, window=window))
             agglomerated_patterns[-1].append(agglomerated_pattern)
         current_pattern_count = nb_patterns
         list_current_pattern_count.append(current_pattern_count)
@@ -398,7 +400,7 @@ def pattern_plot(patterns, matrix, output=None, name=None):
 
     detectable = utils.get_mat_idx(matrix)
     matscn = utils.scn_func(matrix, detectable)
-    plt.imshow(matscn ** 0.15, interpolation="none", cmap="afmhot_r")
+    plt.imshow(matscn.toarray() ** 0.15, interpolation="none", cmap="afmhot_r")
     plt.title(name, fontsize=8)
     plt.colorbar()
 
@@ -416,17 +418,11 @@ def pattern_plot(patterns, matrix, output=None, name=None):
                     continue
                 if loop[1] != "NA":
                     _, pos1, pos2, _ = loop
-                    plt.scatter(
-                        pos1, pos2, s=15, facecolors="none", edgecolors="gold"
-                    )
+                    plt.scatter(pos1, pos2, s=15, facecolors="none", edgecolors="gold")
 
-    emplacement = output / pathlib.Path(str(name+1)+".pdf2")
+    emplacement = output / pathlib.Path(str(name + 1) + ".pdf2")
     print(emplacement)
-    plt.savefig(
-        emplacement,
-        dpi=100,
-        format="pdf",
-    )
+    plt.savefig(emplacement, dpi=100, format="pdf")
     plt.close("all")
 
 
@@ -460,13 +456,17 @@ def distance_plot(matrices, labels=None):
         plt.savefig(pathlib.Path(name) / ".pdf3", dpi=100, format="pdf")
         plt.close("all")
 
+
 def write_results(patterns_to_plot, output):
     for pattern in patterns_to_plot:
-        file_name=pattern+'.txt'
+        file_name = pattern + ".txt"
         file_path = output / file_name
-        with file_path.open('w') as outf:
-            for tup in sorted([tup for tup in patterns_to_plot[pattern] if 'NA' not in tup]):
-                outf.write(' '.join(map(str, tup))+'\n')
+        with file_path.open("w") as outf:
+            for tup in sorted(
+                [tup for tup in patterns_to_plot[pattern] if "NA" not in tup]
+            ):
+                outf.write(" ".join(map(str, tup)) + "\n")
+
 
 def agglomerated_plot(agglomerated_pattern, name="agglomerated patterns", output=None):
 
@@ -476,18 +476,12 @@ def agglomerated_plot(agglomerated_pattern, name="agglomerated patterns", output
         output = pathlib.Path(output)
 
     plt.imshow(
-        agglomerated_pattern,
-        interpolation="none",
-        vmin=0.,
-        vmax=2.,
-        cmap="seismic",
+        agglomerated_pattern, interpolation="none", vmin=0.0, vmax=2.0, cmap="seismic"
     )
     plt.colorbar()
     plt.title("Ag {}".format(name))
-    emplacement = output / pathlib.Path(name+".pdf")
-    plt.savefig(
-        emplacement, dpi=100, format="pdf"
-    )
+    emplacement = output / pathlib.Path(name + ".pdf")
+    plt.savefig(emplacement, dpi=100, format="pdf")
     plt.close("all")
 
 
@@ -529,9 +523,21 @@ def main():
 
     patterns_to_plot = dict()
     agglomerated_to_plot = dict()
-    loaded_maps = tuple(
-        (np.loadtxt(contact_map) for contact_map in contact_maps if contact_map)
+    if str(contact_maps[0]).endswith(".2bg"):
+        loaded_maps = [
+            io.load_bedgraph2d(contact_map)[0] for contact_map in contact_maps
+        ]
+    else:
+        loaded_maps = [np.loadtxt(contact_map) for contact_map in contact_maps]
+
+    print(
+        "detector.py::main l533: dowload symetric txt matrix and change it in coo matrix. \
+        To delete after test"
     )
+    from scipy.sparse import coo_matrix
+
+    loaded_maps.append(coo_matrix(loaded_maps.pop()))
+
     chroms = None
     if interchrom:
         interchrom = np.loadtxt(interchrom, dtype=np.int64)
@@ -561,7 +567,8 @@ def main():
     base_names = (pathlib.Path(contact_map).name for contact_map in contact_maps)
 
     for k, matrix in enumerate(loaded_maps):
-        pattern_plot(patterns_to_plot, matrix, output=output, name=k)
+        if isinstance(matrix, np.ndarray):
+            pattern_plot(patterns_to_plot, matrix, output=output, name=k)
     for (pattern, agglomerated_iter_list) in agglomerated_to_plot.items():
         for i, agglomerated_iteration in enumerate(agglomerated_iter_list):
             for j, agglomerated_matrix in enumerate(agglomerated_iteration):
@@ -570,8 +577,9 @@ def main():
                 )
                 agglomerated_plot(agglomerated_matrix, name=my_name, output=output)
     write_results(patterns_to_plot, output)
-    
+
     return 0
+
 
 if __name__ == "__main__":
     main()

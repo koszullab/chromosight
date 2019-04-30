@@ -13,6 +13,7 @@ def load_bedgraph2d(mat_path):
     Loads a sparse Hi-C contact matrix in 2D bedgraph format into a sparse
     matrix and an array of chromosome start bins. Expects the file to have 7
     space-separated columns: chr1, start1, end1, chr2, start2, end2, contacts.
+    Expects the file to contain same-size fragments (and not restriction fragments)
 
     Parameters
     ----------
@@ -32,34 +33,44 @@ def load_bedgraph2d(mat_path):
     # estimate bin size from file
     bin_size = np.median(bg2.end1 - bg2.start1).astype(int)
 
+    # Convert from BP to #bin
+    bg2["start1"] = bg2["start1"] // bin_size
+    bg2["end1"] = bg2["end1"] // bin_size
+    bg2["start2"] = bg2["start2"] // bin_size
+    bg2["end2"] = bg2["end2"] // bin_size
+
     # Get number of bins per chromosome
-    fragsA = bg2.loc[:, ["chr1", "end1"]].rename(columns={"chr1": "chr", "end1": "end"})
-    fragsB = bg2.loc[:, ["chr2", "end2"]].rename(columns={"chr2": "chr", "end2": "end"})
+    fragsA = bg2[["chr1", "end1"]].rename(columns={"chr1": "chr", "end1": "end"})
+    fragsB = bg2[["chr2", "end2"]].rename(columns={"chr2": "chr", "end2": "end"})
     frags = pd.concat([fragsA, fragsB])
     chroms = frags.groupby("chr", sort=False).apply(lambda x: max(x.end))
 
-    # Convert from BP to #bin
-    chrom_start = chroms // bin_size
-
     # Shift by one to get starting bin, first one is zero
-    chrom_start[1:] = chrom_start[:-1]
+    chrom_start = chroms.shift(1)
     chrom_start[0] = 0
-    chrom_start = chrom_start.cumsum()
+    chrom_start = pd.DataFrame(chrom_start.cumsum(), columns=["cumsum"])
 
     # Get frags indices
-    bg2["frag1"] = bg2.apply(lambda x: (x.start1 // bin_size) + chroms[x.chr1], axis=1)
-    bg2["frag2"] = bg2.apply(lambda x: (x.start2 // bin_size) + chroms[x.chr2], axis=1)
+    bg2 = bg2.merge(chrom_start, left_on="chr1", right_index=True)
+    bg2["frag1"] = bg2["start1"] + bg2["cumsum"]
+    bg2 = bg2.merge(chrom_start, left_on="chr2", right_index=True)
+    bg2["frag2"] = bg2["start1"] + bg2["cumsum_y"]
 
     # Build sparse matrix from fragment indices
-    n = chroms.sum() // bin_size
+    n = int(max(max(bg2["frag1"]), max(bg2["frag2"]))) + 1
     mat = coo_matrix(
         (bg2.contacts, (bg2.frag1, bg2.frag2)), shape=(n, n), dtype=np.float64
     )
 
+    # Making full symmetric matrix if not symmetric already (e.g. upper triangle)
+    r = csr_matrix(mat)
+    if (abs(r - r.T) > 1e-10).nnz != 0:
+        r += r.T
+        r.setdiag(r.diagonal() / 2)
+        r.eliminate_zeros()
+    r = r.tocoo()
+
     # Get chroms into a 1D array of bin starts
-    chrom_start = np.array(chrom_start.tolist())
+    chrom_start = np.array(chrom_start["cumsum"])
+
     return mat, chrom_start
-
-
-load_bedgraph2d("../data/cooler.mat.2bg")
-

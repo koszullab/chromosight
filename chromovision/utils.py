@@ -6,8 +6,9 @@
 General purpose utilities related to handling Hi-C contact maps and
 loop/border data.
 """
-
+import sys
 import numpy as np
+from scipy.sparse import find
 from scipy.ndimage import measurements
 from scipy.signal import savgol_filter
 import itertools
@@ -31,28 +32,42 @@ def scn_func(B, mat_idx=None):
     numpy.ndarray :
         The SCN normalised Hi-C matrix
     """
-
-    A = np.copy(B)
-    nr = A.shape[0]
-    nc = A.shape[1]
-    # If no list of bins is specified, include all bins
-    if not mat_idx:
-        mat_idx = (np.arange(nr), np.arange(nc))
-    mask_r = np.zeros(nr, dtype=bool)
-    mask_c = np.zeros(nc, dtype=bool)
-    mask_r[mat_idx[0]] = 1
-    mask_c[mat_idx[1]] = 1
-    n_iterations = 10
-    for _ in range(n_iterations):
-        for i in range(nc):
-            A[mask_r, i] = A[mask_r, i] / np.sum(A[mask_r, i])
-            A[~mask_r, i] = 0
-        A[np.isnan(A)] = 0.0
-
-        for i in range(nr):
-            A[i, mask_c] = A[i, mask_c] / np.sum(A[i, mask_c])
-            A[i, ~mask_c] = 0
-        A[np.isnan(A)] = 0.0
+    try:
+        m_format = B.getformat()  # raises an  AttributeError if matrix is dense
+        A = B.copy()
+        A = A.tolil()
+    except:
+        if isinstance(B, np.ndarray):
+            m_format = "dense"
+            A = np.copy(B)
+        else:
+            sys.stderr.write(
+                "ERROR: the matrix to normalize is neither dense or sparse."
+            )
+            sys.exit(1)
+    finally:
+        nr = A.shape[0]
+        nc = A.shape[1]
+        # If no list of bins is specified, include all bins
+        if not mat_idx:
+            mat_idx = (np.arange(nr), np.arange(nc))
+        mask_r = np.zeros(nr, dtype=bool)
+        mask_c = np.zeros(nc, dtype=bool)
+        mask_r[mat_idx[0]] = 1
+        mask_c[mat_idx[1]] = 1
+        n_iterations = 10
+        for _ in range(n_iterations):
+            for i in range(nc):
+                A[mask_r, i] = A[mask_r, i] / np.sum(A[mask_r, i])
+                A[~mask_r, i] = 0
+                A.data = np.nan_to_num(A.data)
+            for i in range(nr):
+                A[i, mask_c] = A[i, mask_c] / np.sum(A[i, mask_c])
+                A[i, ~mask_c] = 0
+                A.data = np.nan_to_num(A.data)
+    if m_format != "dense":
+        A = A.tocoo()
+        A.eliminate_zeros()
     return A
 
 
@@ -86,7 +101,7 @@ def distance_law(matrix):
     n = matrix.shape[0]
     dist = np.zeros(n)
     for diag in range(n):
-        dist[diag] = np.mean(np.diag(matrix, -diag))
+        dist[diag] = np.mean(np.array(matrix.diagonal(-diag)))
     return dist
 
 
@@ -182,7 +197,7 @@ def get_mat_idx(matrix):
     Parameters
     ----------
     matrix : array_like
-        A Hi-C matrix in the form of a 2D numpy array
+        A Hi-C matrix in tihe form of a 2D numpy array or coo matrix
 
     Returns
     -------
@@ -191,15 +206,27 @@ def get_mat_idx(matrix):
         and columns, respectively.
     -------
     """
-    threshold_rows = np.median(matrix.sum(axis=0)) - 2.0 * np.std(
-        matrix.sum(axis=0)
-    )  # Removal of poor interacting rows
-    threshold_cols = np.median(matrix.sum(axis=1)) - 2.0 * np.std(
-        matrix.sum(axis=1)
-    )  # Removal of poor interacting rows
-    ind_rows = np.where(matrix.sum(axis=0) > threshold_rows)[0]
-    ind_cols = np.where(matrix.sum(axis=1) > threshold_cols)[0]
-    good_bins = (ind_rows, ind_cols)
+    try:
+        m_format = matrix.getformat()  # raises an  AttributeError if matrix is dense
+        matrix = matrix.tolil()
+    except:
+        if not isinstance(B, np.ndarray):
+            sys.stderr.write(
+                "ERROR: the matrix to get idx from is neither dense or sparse."
+            )
+            sys.exit(1)
+    finally:
+        # Sum raws and columns
+        sum_axis0 = np.array(matrix.sum(axis=0))
+        to_reshape = sum_axis0.shape
+        sum_axis1 = np.array(matrix.sum(axis=1)).reshape(to_reshape)
+        # Find poor interacting raws and columns
+        threshold_rows = np.median(sum_axis0) - 2.0 * np.std(sum_axis0)
+        threshold_cols = np.median(sum_axis1) - 2.0 * np.std(sum_axis1)
+        # Removal of poor interacting rows and columns
+        ind_rows = np.where(sum_axis0 > threshold_rows)[0]
+        ind_cols = np.where(sum_axis1 > threshold_cols)[0]
+        good_bins = (ind_rows, ind_cols)
     return good_bins
 
 
