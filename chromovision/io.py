@@ -63,7 +63,7 @@ def load_bedgraph2d(mat_path):
     )
 
     # Making full symmetric matrix if not symmetric already (e.g. upper triangle)
-    r = csr_matrix(mat)
+    r = mat.tocsr()
     if (abs(r - r.T) > 1e-10).nnz != 0:
         r += r.T
         r.setdiag(r.diagonal() / 2)
