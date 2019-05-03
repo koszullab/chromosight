@@ -238,11 +238,13 @@ def load_kernels(pattern):
     """
 
     pattern_path = pathlib.Path(pattern)
-    if pattern_path.is_dir():
-        pattern_globbing = pattern_path.glob("*")
-    elif pattern in PATTERN_DISPATCHER.keys():
+    if pattern in PATTERN_DISPATCHER.keys():
+        print("detector::load_kernels l242: pattern in PATTERN_DISPATCHER")
         pattern_globbing = PRESET_KERNEL_PATH.glob("*{}*".format(pattern))
+    elif pattern_path.is_dir():
+        pattern_globbing = pattern_path.glob("*")
     else:
+        # Not finished ?
         pattern_globbing = (pattern_path,)
     for kernel_file in pattern_globbing:
         yield np.loadtxt(kernel_file, dtype=np.float)
@@ -306,6 +308,11 @@ def explore_patterns(
     # loop detector is more generic, so we use the generic one by default if
     # a pattern specific detector isn't implemented.
     my_pattern_detector = PATTERN_DISPATCHER.get(pattern_type, loop_detector)
+    print(
+        "detector::explore_patterns l311: my_pattern_detector: {0}".format(
+            my_pattern_detector
+        )
+    )
 
     if custom_kernels is None:
         chosen_kernels = load_kernels(pattern_type)
@@ -322,7 +329,7 @@ def explore_patterns(
 
     all_patterns = set()
     hashed_neighborhoods = set()
-    agglomerated_patterns = [list(chosen_kernels)]
+    agglomerated_patterns = list(chosen_kernels)
     iteration_count = 0
     old_pattern_count, current_pattern_count = -1, 0
     list_current_pattern_count = []
@@ -338,6 +345,7 @@ def explore_patterns(
         else:
             return (chromosome, int(pos1) // window, int(pos2) // window)
 
+    # Get the matrices
     if interchrom is not None:
         if len(matrices) != 1:
             print("Warning: When using --inter, you must provide a single contact map")
@@ -355,6 +363,9 @@ def explore_patterns(
         detrended_matrices = [
             utils.detrend(matrix, idx) for idx, matrix in zip(matrix_indices, scn_mat)
         ]
+
+    # Loop on the patterns to convolve the matrices
+    ## condition for ending the loop. Meh
     while old_pattern_count != current_pattern_count:
 
         if iteration_count >= MAX_ITERATIONS or (
@@ -362,18 +373,23 @@ def explore_patterns(
         ):
             break
 
-        agglomerated_patterns.append([])
+        # agglomerated_patterns.append([])
+
         old_pattern_count = current_pattern_count
         iteration_count += 1
 
-        for kernel in agglomerated_patterns[-2]:
-            (detected_coords, agglomerated_pattern, nb_patterns) = my_pattern_detector(
+        ## do the actual computation
+
+        for kernel in agglomerated_patterns:
+            detected_coords, agglomerated_pattern, nb_patterns = my_pattern_detector(
                 detrended_matrices,
                 kernel,
                 precision=precision,
                 matrix_indices=matrix_indices,
                 interchrom=inter,
             )
+            print("detector::explore_patterns l380")
+            print(nb_patterns)
             for new_coords in detected_coords:
                 if neigh_hash(new_coords, window=window) not in hashed_neighborhoods:
                     chromosome, pos1, pos2, score = new_coords
@@ -383,9 +399,8 @@ def explore_patterns(
                         pos2 = int(pos2)
                     all_patterns.add((chromosome, pos1, pos2, score))
                     hashed_neighborhoods.add(neigh_hash(new_coords, window=window))
-            agglomerated_patterns[-1].append(agglomerated_pattern)
-        current_pattern_count = nb_patterns
-        list_current_pattern_count.append(current_pattern_count)
+            agglomerated_patterns.append(agglomerated_pattern)
+        list_current_pattern_count.append(nb_patterns)
 
     return all_patterns, agglomerated_patterns, list_current_pattern_count
 
@@ -523,20 +538,12 @@ def main():
 
     patterns_to_plot = dict()
     agglomerated_to_plot = dict()
-    if str(contact_maps[0]).endswith(".2bg"):
+    if str(contact_maps[0]).endswith(".2bg") or str(contact_maps[0]).endswith(".bg2"):
         loaded_maps = [
             io.load_bedgraph2d(contact_map)[0] for contact_map in contact_maps
         ]
     else:
         loaded_maps = [np.loadtxt(contact_map) for contact_map in contact_maps]
-
-    print(
-        "detector.py::main l533: dowload symetric txt matrix and change it in coo matrix. \
-        To delete after test"
-    )
-    from scipy.sparse import coo_matrix
-
-    loaded_maps.append(coo_matrix(loaded_maps.pop()))
 
     chroms = None
     if interchrom:

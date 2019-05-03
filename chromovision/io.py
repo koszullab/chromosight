@@ -27,7 +27,8 @@ def load_bedgraph2d(mat_path):
     chrom_start : list of numpy.array
         List of chromosome start bins.
     """
-    bg2 = pd.read_csv(mat_path, delimiter=" ", header=None)
+    bg2 = pd.read_csv(mat_path, delimiter="\t", header=None)
+    bg2.head()
     bg2.columns = ["chr1", "start1", "end1", "chr2", "start2", "end2", "contacts"]
 
     # estimate bin size from file
@@ -63,14 +64,15 @@ def load_bedgraph2d(mat_path):
     )
 
     # Making full symmetric matrix if not symmetric already (e.g. upper triangle)
-    r = mat.tocsr()
+    r = mat.tolil()
     if (abs(r - r.T) > 1e-10).nnz != 0:
         r += r.T
         r.setdiag(r.diagonal() / 2)
-        r.eliminate_zeros()
     r = r.tocoo()
+    r.eliminate_zeros()
 
     # Get chroms into a 1D array of bin starts
     chrom_start = np.array(chrom_start["cumsum"])
 
+    print("sparse matrix loaded. Sent to pattern_detector.")
     return mat, chrom_start
