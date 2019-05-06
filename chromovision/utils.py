@@ -210,7 +210,7 @@ def get_mat_idx(matrix):
         m_format = matrix.getformat()  # raises an  AttributeError if matrix is dense
         matrix = matrix.tolil()
     except:
-        if not isinstance(B, np.ndarray):
+        if not isinstance(matrix, np.ndarray):
             sys.stderr.write(
                 "ERROR: the matrix to get idx from is neither dense or sparse."
             )
