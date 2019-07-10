@@ -8,8 +8,7 @@ loop/border data.
 """
 import sys
 import numpy as np
-from scipy.sparse import find
-from scipy.sparse import issparse
+from scipy.sparse import find, issparse, csr_matrix, lil_matrix
 from scipy.ndimage import measurements
 from scipy.signal import savgol_filter
 import itertools
@@ -123,7 +122,7 @@ def despeckles(B, th2):
         A = B.copy()
         n1 = A.shape[0]
         matrix_format = A.getformat()
-        if matrix_format not in {'csr', 'csc'}:
+        if matrix_format not in {"csr", "csc"}:
             A = A.tocsr()
         dist = {u: A.diagonal(u) for u in range(n1)}
 
@@ -331,11 +330,16 @@ def ztransform(matrix):
         N = matrix.copy()
         N.data -= mu
         N.data /= sd
+    
+    else:
+        raise ValueError("Matrix must be in sparse or dense format.")
 
     return N
 
 
-def xcorr2(signal, kernel, centered_p=True, threshold=DEFAULT_PRECISION_CORR_THRESHOLD):
+def xcorr2(
+    signal, kernel, centered_p=True, max_size=None, threshold=DEFAULT_PRECISION_CORR_THRESHOLD
+):
     """Signal-kernel 2D convolution
 
     Convolution of a 2-diemensional signal (the contact map) with a kernel
@@ -351,6 +355,9 @@ def xcorr2(signal, kernel, centered_p=True, threshold=DEFAULT_PRECISION_CORR_THR
         If False, then return a matrix with shape (Ms-Mk+1) x (Ns-Nk+1),
         otherwise return a matrix with shape Ms x Ns, with values located at
         center of kernel. Default is True.
+    max_size : int or None, optional
+        Limits the range of computations beyond the diagonal. Default is None,
+        which means no such limit is taken into account.
     threshold : float, optional
         Sets all values in the final matrix below this threshold to zero to
         reduce memory issues when handling sparse matrices. Default is set
@@ -369,10 +376,13 @@ def xcorr2(signal, kernel, centered_p=True, threshold=DEFAULT_PRECISION_CORR_THR
     if (Mk > Ms) or (Nk > Ns):
         raise ValueError("cannot have kernel bigger than signal")
 
-    if not (centered_p):
+    if max_size is None:
+        max_size = max(Ms, Ns)
+
+    if not centered_p:
         out = np.zeros((Ms - Mk + 1, Ns - Nk + 1))
         for ki in range(Mk):
-            for kj in range(Nk):
+            for kj in range(ki, max(Nk, ki + max_size)):
                 out += (
                     kernel[ki, kj]
                     * signal[ki : Ms - Mk + 1 + ki, kj : Ns - Nk + 1 + kj]
@@ -380,16 +390,16 @@ def xcorr2(signal, kernel, centered_p=True, threshold=DEFAULT_PRECISION_CORR_THR
     else:
         Ki = (Mk - 1) // 2
         Kj = (Nk - 1) // 2
-        out = np.zeros((Ms, Ns)) + np.nan
+        out = lil_matrix((Ms, Ns))
         out[Ki : Ms - (Mk - 1 - Ki), Kj : Ns - (Nk - 1 - Kj)] = 0.0
         for ki in range(Mk):
-            for kj in range(Nk):
+            for kj in range(ki, max(Nk, ki + max_size)):
                 out[Ki : Ms - (Mk - 1 - Ki), Kj : Ns - (Nk - 1 - Kj)] += (
                     kernel[ki, kj]
                     * signal[ki : Ms - Mk + 1 + ki, kj : Ns - Nk + 1 + kj]
                 )
 
-    return out
+    return out.tocsr()
 
 
 def corrcoef2d(signal, kernel, centered_p=True):
