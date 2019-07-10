@@ -90,11 +90,13 @@ def load_bedgraph2d(mat_path):
     return mat, chrom_start
 
 
-def dense2sparse(M, format='coo'):
-    format_dict = {'coo': lambda x: x,
-                   'csr': csr_matrix,
-                   'csc': csc_matrix,
-                   'lil': lil_matrix}
+def dense2sparse(M, format="coo"):
+    format_dict = {
+        "coo": lambda x: x,
+        "csr": csr_matrix,
+        "csc": csc_matrix,
+        "lil": lil_matrix,
+    }
     N = np.triu(M)
     shape = N.shape
     nonzeros = N.nonzero()

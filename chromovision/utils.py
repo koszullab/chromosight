@@ -9,10 +9,13 @@ loop/border data.
 import sys
 import numpy as np
 from scipy.sparse import find
+from scipy.sparse import issparse
 from scipy.ndimage import measurements
 from scipy.signal import savgol_filter
 import itertools
 from copy import copy
+
+DEFAULT_PRECISION_CORR_THRESHOLD = 1e-4
 
 
 def scn_func(B, mat_idx=None):
@@ -115,17 +118,14 @@ def despeckles(B, th2):
         A = np.copy(B)
         n1 = A.shape[0]
         dist = {u: np.diag(A, u) for u in range(n1)}
-    else:
-        try:
-            A = B.copy()
-            n1 = A.shape[0]
-            matrix_format = A.getformat()
-            if matrix_format not in {'csr', 'csc'}:
-                A = A.tocsr()
-            dist = {u: A.diagonal(u) for u in range(n1)}
-        except AttributeError:
-            raise ValueError("Input matrix must be a numpy array or a scipy"
-                             "sparse array")
+    elif issparse(B):
+
+        A = B.copy()
+        n1 = A.shape[0]
+        matrix_format = A.getformat()
+        if matrix_format not in {'csr', 'csc'}:
+            A = A.tocsr()
+        dist = {u: A.diagonal(u) for u in range(n1)}
 
     medians, stds = {}, {}
     for u in dist:
@@ -301,7 +301,7 @@ def detrend(matrix, mat_idx=None):
 def ztransform(matrix):
     """
     Z transformation for Hi-C matrices.
-    
+
     Parameters
     ----------
     matrix : array_like
@@ -318,14 +318,24 @@ def ztransform(matrix):
         rows and cols, respectively.
     """
 
-    mu = np.mean(matrix)
-    sd = np.std(matrix)
-    N = np.copy(matrix)
-    N = (N - mu) / sd
+    if isinstance(matrix, np.ndarray):
+        mu = np.mean(matrix)
+        sd = np.std(matrix)
+        N = np.copy(matrix)
+        N = (N - mu) / sd
+
+    elif issparse(matrix):
+        data = matrix.data
+        mu = np.mean(data)
+        sd = np.std(data)
+        N = matrix.copy()
+        N.data -= mu
+        N.data /= sd
+
     return N
 
 
-def xcorr2(signal, kernel, centered_p=True):
+def xcorr2(signal, kernel, centered_p=True, threshold=DEFAULT_PRECISION_CORR_THRESHOLD):
     """Signal-kernel 2D convolution
 
     Convolution of a 2-diemensional signal (the contact map) with a kernel
@@ -341,6 +351,10 @@ def xcorr2(signal, kernel, centered_p=True):
         If False, then return a matrix with shape (Ms-Mk+1) x (Ns-Nk+1),
         otherwise return a matrix with shape Ms x Ns, with values located at
         center of kernel. Default is True.
+    threshold : float, optional
+        Sets all values in the final matrix below this threshold to zero to
+        reduce memory issues when handling sparse matrices. Default is set
+        by the library, 1e-8.
 
     Returns
     -------
@@ -382,8 +396,6 @@ def corrcoef2d(signal, kernel, centered_p=True):
     """Signal-kernel 2D correlation
 
     Pearson correlation coefficient between signal and sliding kernel.
-
-
     """
     kernel1 = np.ones(kernel.shape) / kernel.size
     mean_signal = xcorr2(signal, kernel1, centered_p)
