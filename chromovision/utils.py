@@ -8,11 +8,10 @@ loop/border data.
 """
 import sys
 import numpy as np
-from scipy.sparse import find, issparse, csr_matrix, lil_matrix
+from scipy.sparse import issparse, lil_matrix
 from scipy.ndimage import measurements
 from scipy.signal import savgol_filter
 import itertools
-from copy import copy
 
 DEFAULT_PRECISION_CORR_THRESHOLD = 1e-4
 
@@ -28,7 +27,7 @@ def scn_func(B, mat_idx=None):
     mat_idx : tuple
         A tuple of 2 lists, containing the indices of detectable rows and
         columns on which SCN should be applied.
-        
+
     Returns
     -------
     numpy.ndarray :
@@ -40,7 +39,7 @@ def scn_func(B, mat_idx=None):
         )  # raises an  AttributeError if matrix is dense
         A = B.copy()
         A = A.tolil()
-    except:
+    except AttributeError:
         if isinstance(B, np.ndarray):
             m_format = "dense"
             A = np.copy(B)
@@ -84,7 +83,7 @@ def distance_law(matrix):
     ----------
     matrix: array_like
         The input matrix to compute distance law from.
-   
+
     Returns
     -------
     dist: np.ndarray
@@ -112,7 +111,10 @@ def distance_law(matrix):
 def despeckles(B, th2):
 
     n_speckles = 0
+    n1 = 0
     outlier = []
+    dist = dict()
+    A = np.copy(B)
     if isinstance(B, np.ndarray):
         A = np.copy(B)
         n1 = A.shape[0]
@@ -221,7 +223,7 @@ def get_mat_idx(matrix):
     -------
     """
     try:
-        m_format = (
+        _ = (
             matrix.getformat()
         )  # raises an AttributeError if matrix is dense
         matrix = matrix.tolil()
@@ -260,7 +262,7 @@ def detrend(matrix, mat_idx=None):
         Tuple containing a list of detectable rows and a list of columns on
         which to perform detrending. Poorly interacting indices have been
         excluded.
- 
+
     Returns
     -------
     numpy.ndarray :
@@ -330,7 +332,7 @@ def ztransform(matrix):
         N = matrix.copy()
         N.data -= mu
         N.data /= sd
-    
+
     else:
         raise ValueError("Matrix must be in sparse or dense format.")
 
@@ -338,7 +340,8 @@ def ztransform(matrix):
 
 
 def xcorr2(
-    signal, kernel, centered_p=True, max_size=None, threshold=DEFAULT_PRECISION_CORR_THRESHOLD
+    signal, kernel, centered_p=True, max_size=None,
+    threshold=DEFAULT_PRECISION_CORR_THRESHOLD
 ):
     """Signal-kernel 2D convolution
 
@@ -430,8 +433,8 @@ def get_inter_idx(pattern, chroms):
     ----------
     pattern : tuple
         A pattern as given by explore_pattern (chrom, pos1, pos2, score). When
-        using interchromosomal matrices, chrom represents the order in which sub
-        matrices where split.
+        using interchromosomal matrices, chrom represents the order in which
+        submatrices where split.
     label : int
         The index of the submatrix in the list of submatrices. Depends on the
         order in which interchrom_wrapper split them.

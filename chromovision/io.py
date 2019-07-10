@@ -13,7 +13,8 @@ def load_bedgraph2d(mat_path):
     Loads a sparse Hi-C contact matrix in 2D bedgraph format into a sparse
     matrix and an array of chromosome start bins. Expects the file to have 7
     space-separated columns: chr1, start1, end1, chr2, start2, end2, contacts.
-    Expects the file to contain same-size fragments (and not restriction fragments)
+    Expects the file to contain same-size fragments (and not restriction
+    fragments)
 
     Parameters
     ----------
@@ -23,7 +24,7 @@ def load_bedgraph2d(mat_path):
     Returns
     -------
     mat: scipy.sparse.coo_matrix
-        Matrix 
+        Output sparse matrix in coordinate format
     chrom_start : list of numpy.array
         List of chromosome start bins.
     """
@@ -75,7 +76,8 @@ def load_bedgraph2d(mat_path):
         (bg2.contacts, (bg2.frag1, bg2.frag2)), shape=(n, n), dtype=np.float64
     )
 
-    # Making full symmetric matrix if not symmetric already (e.g. upper triangle)
+    # Making full symmetric matrix if not symmetric already (e.g. upper
+    # triangle)
     r = mat.tolil()
     if (abs(r - r.T) > 1e-10).nnz != 0:
         r += r.T

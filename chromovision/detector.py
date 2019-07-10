@@ -27,7 +27,7 @@ Arguments:
                                 probability in the contact map. A lesser value
                                 leads to potentially more detections, but more
                                 false positives. [default: 4]
-    -I FILE, --inter FILE       Use if the matrix contains multiple chromosomes.
+    -I FILE, --inter FILE       Use if the matrix has multiple chromosomes.
                                 Each line of FILE contains the start bin of a
                                 chromosome. Only one matrix can be given when
                                 using this option.
@@ -40,10 +40,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
 import pathlib
-import os, sys
+import os
 import functools
 import docopt
-import warnings
 from chromovision.version import __version__
 from chromovision import utils
 from chromovision import io
@@ -154,7 +153,7 @@ def pattern_detector(
             if pattern_type == "loops":
                 # Assume all loops are not found too far-off in the matrix
                 if not interchrom:
-                    ## NOTE: "Too far off" will depend on bin size here.
+                    # NOTE: "Too far off" will depend on bin size here.
                     mask = (
                         np.array(abs(pattern_peak[:, 0] - pattern_peak[:, 1]))
                         < 5000
@@ -355,7 +354,8 @@ def explore_patterns(
     if interchrom is not None:
         if len(matrices) != 1:
             print(
-                "Warning: When using --inter, you must provide a single contact map"
+                "Warning: When using --inter, you must "
+                "provide a single contact map"
             )
             inter = True
         detrended_matrices, matrix_indices = utils.interchrom_wrapper(
@@ -374,7 +374,7 @@ def explore_patterns(
         ]
 
     # Loop on the patterns to convolve the matrices
-    ## condition for ending the loop. Meh
+    # condition for ending the loop. Meh
     while old_pattern_count != current_pattern_count:
 
         if iteration_count >= MAX_ITERATIONS or (
@@ -420,8 +420,10 @@ def explore_patterns(
 
 
 def pattern_plot(patterns, matrix, output=None, name=None):
-    """
-    Plot the matrix with the positions of the found patterns (border or loop) on it.
+    """Plot patterns
+
+    Plot the matrix with the positions of the found patterns (border or loop)
+    on it.
     """
     if name is None:
         name = 0
@@ -436,7 +438,7 @@ def pattern_plot(patterns, matrix, output=None, name=None):
         plt.imshow(
             matscn.toarray() ** 0.15, interpolation="none", cmap="afmhot_r"
         )
-    except:
+    except AttributeError:
         plt.imshow(matscn ** 0.15, interpolation="none", cmap="afmhot_r")
     plt.title(name, fontsize=8)
     plt.colorbar()
@@ -586,9 +588,11 @@ def main():
         chroms = np.vstack([interchrom, chromend]).T
 
     for pattern in patterns_to_explore:
-        (all_patterns,
-        agglomerated_patterns,
-        list_current_pattern_count) = explore_patterns(
+        (
+            all_patterns,
+            agglomerated_patterns,
+            list_current_pattern_count,
+        ) = explore_patterns(
             loaded_maps,
             pattern,
             iterations=iterations,
@@ -621,7 +625,8 @@ def main():
             # agglomerated_iteration = [np.array() (kernel at iteration i)]
             for j, agglomerated_matrix in enumerate(agglomerated_iteration):
                 # agglomerated_matrix = np.array()
-                my_name = "Agglomerated {} of {} patterns iteration {} kernel {}".format(
+                my_name = ("Agglomerated {} of {} patterns iteration {} "
+                           "kernel {}").format(
                     pattern, list_current_pattern_count[i - 1], i, j
                 )
                 agglomerated_plot(
