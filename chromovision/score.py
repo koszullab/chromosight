@@ -14,7 +14,7 @@ benchmarking purposes.
     Arguments:
         predicted_patterns              A text file containing in two
                                         columns the predicted pattern
-                                        coordinates in the matrix.                       
+                                        coordinates in the matrix.
         real_patterns                   A file like predicted_patterns, except
                                         with the actual pattern coordinates.
 
@@ -26,7 +26,6 @@ benchmarking purposes.
 
 """
 
-import numpy as np
 import docopt
 
 
@@ -55,7 +54,7 @@ def score_loop(list_predicted, list_real, n1, area):
     if len(list_predicted) > 0:
         PREC = float(nb_loops_found) / len(
             list_predicted
-        )  # consider that each pixel predicted will correspond to a different loop
+        )  # each pixel predicted will correspond to a different loop
     else:
         PREC = "NA"
     if len(list_real) > 0:

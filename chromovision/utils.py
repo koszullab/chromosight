@@ -8,11 +8,12 @@ loop/border data.
 """
 import sys
 import numpy as np
-from scipy.sparse import find
+from scipy.sparse import issparse, lil_matrix
 from scipy.ndimage import measurements
 from scipy.signal import savgol_filter
 import itertools
-from copy import copy
+
+DEFAULT_PRECISION_CORR_THRESHOLD = 1e-4
 
 
 def normalize(B, good_bins=None, iterations=10):
@@ -77,7 +78,7 @@ def distance_law(matrix):
     ----------
     matrix: array_like
         The input matrix to compute distance law from.
-   
+
     Returns
     -------
     dist: np.ndarray
@@ -105,23 +106,22 @@ def distance_law(matrix):
 def despeckles(B, th2):
 
     n_speckles = 0
+    n1 = 0
     outlier = []
+    dist = dict()
+    A = np.copy(B)
     if isinstance(B, np.ndarray):
         A = np.copy(B)
         n1 = A.shape[0]
         dist = {u: np.diag(A, u) for u in range(n1)}
-    else:
-        try:
-            A = B.copy()
-            n1 = A.shape[0]
-            matrix_format = A.getformat()
-            if matrix_format not in {"csr", "csc"}:
-                A = A.tocsr()
-            dist = {u: A.diagonal(u) for u in range(n1)}
-        except AttributeError:
-            raise ValueError(
-                "Input matrix must be a numpy array or a scipy" "sparse array"
-            )
+    elif issparse(B):
+
+        A = B.copy()
+        n1 = A.shape[0]
+        matrix_format = A.getformat()
+        if matrix_format not in {"csr", "csc"}:
+            A = A.tocsr()
+        dist = {u: A.diagonal(u) for u in range(n1)}
 
     medians, stds = {}, {}
     for u in dist:
@@ -238,7 +238,7 @@ def detrend(matrix, mat_idx=None):
         Tuple containing a list of detectable rows and a list of columns on
         which to perform detrending. Poorly interacting indices have been
         excluded.
- 
+
     Returns
     -------
     numpy.ndarray :
@@ -276,7 +276,7 @@ def detrend(matrix, mat_idx=None):
 def ztransform(matrix):
     """
     Z transformation for Hi-C matrices.
-    
+
     Parameters
     ----------
     matrix : array_like
@@ -293,14 +293,33 @@ def ztransform(matrix):
         rows and cols, respectively.
     """
 
-    mu = np.mean(matrix)
-    sd = np.std(matrix)
-    N = np.copy(matrix)
-    N = (N - mu) / sd
+    if isinstance(matrix, np.ndarray):
+        mu = np.mean(matrix)
+        sd = np.std(matrix)
+        N = np.copy(matrix)
+        N = (N - mu) / sd
+
+    elif issparse(matrix):
+        data = matrix.data
+        mu = np.mean(data)
+        sd = np.std(data)
+        N = matrix.copy()
+        N.data -= mu
+        N.data /= sd
+
+    else:
+        raise ValueError("Matrix must be in sparse or dense format.")
+
     return N
 
 
-def xcorr2(signal, kernel, centered_p=True):
+def xcorr2(
+    signal,
+    kernel,
+    centered_p=True,
+    max_size=None,
+    threshold=DEFAULT_PRECISION_CORR_THRESHOLD,
+):
     """Signal-kernel 2D convolution
 
     Convolution of a 2-diemensional signal (the contact map) with a kernel
@@ -316,6 +335,13 @@ def xcorr2(signal, kernel, centered_p=True):
         If False, then return a matrix with shape (Ms-Mk+1) x (Ns-Nk+1),
         otherwise return a matrix with shape Ms x Ns, with values located at
         center of kernel. Default is True.
+    max_size : int or None, optional
+        Limits the range of computations beyond the diagonal. Default is None,
+        which means no such limit is taken into account.
+    threshold : float, optional
+        Sets all values in the final matrix below this threshold to zero to
+        reduce memory issues when handling sparse matrices. Default is set
+        by the library, 1e-8.
 
     Returns
     -------
@@ -330,10 +356,13 @@ def xcorr2(signal, kernel, centered_p=True):
     if (Mk > Ms) or (Nk > Ns):
         raise ValueError("cannot have kernel bigger than signal")
 
-    if not (centered_p):
+    if max_size is None:
+        max_size = max(Ms, Ns)
+
+    if not centered_p:
         out = np.zeros((Ms - Mk + 1, Ns - Nk + 1))
         for ki in range(Mk):
-            for kj in range(Nk):
+            for kj in range(ki, max(Nk, ki + max_size)):
                 out += (
                     kernel[ki, kj]
                     * signal[ki : Ms - Mk + 1 + ki, kj : Ns - Nk + 1 + kj]
@@ -341,24 +370,22 @@ def xcorr2(signal, kernel, centered_p=True):
     else:
         Ki = (Mk - 1) // 2
         Kj = (Nk - 1) // 2
-        out = np.zeros((Ms, Ns)) + np.nan
+        out = lil_matrix((Ms, Ns))
         out[Ki : Ms - (Mk - 1 - Ki), Kj : Ns - (Nk - 1 - Kj)] = 0.0
         for ki in range(Mk):
-            for kj in range(Nk):
+            for kj in range(ki, max(Nk, ki + max_size)):
                 out[Ki : Ms - (Mk - 1 - Ki), Kj : Ns - (Nk - 1 - Kj)] += (
                     kernel[ki, kj]
                     * signal[ki : Ms - Mk + 1 + ki, kj : Ns - Nk + 1 + kj]
                 )
 
-    return out
+    return out.tocsr()
 
 
 def corrcoef2d(signal, kernel, centered_p=True):
     """Signal-kernel 2D correlation
 
     Pearson correlation coefficient between signal and sliding kernel.
-
-
     """
     kernel1 = np.ones(kernel.shape) / kernel.size
     mean_signal = xcorr2(signal, kernel1, centered_p)
@@ -380,8 +407,8 @@ def get_inter_idx(pattern, chroms):
     ----------
     pattern : tuple
         A pattern as given by explore_pattern (chrom, pos1, pos2, score). When
-        using interchromosomal matrices, chrom represents the order in which sub
-        matrices where split.
+        using interchromosomal matrices, chrom represents the order in which
+        submatrices where split.
     label : int
         The index of the submatrix in the list of submatrices. Depends on the
         order in which interchrom_wrapper split them.
