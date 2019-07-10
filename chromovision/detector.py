@@ -137,7 +137,10 @@ def pattern_detector(
         n2c = res2.shape[1]
         res_rescaled = np.zeros(np.shape(matrix))
         res_rescaled[
-            np.ix_(range(int(area), n2r + int(area)), range(int(area), n2c + int(area)))
+            np.ix_(
+                range(int(area), n2r + int(area)),
+                range(int(area), n2c + int(area)),
+            )
         ] = res2
         VECT_VALUES = np.reshape(res_rescaled, (1, nr * nc))
         VECT_VALUES = VECT_VALUES[0]
@@ -152,14 +155,21 @@ def pattern_detector(
                 # Assume all loops are not found too far-off in the matrix
                 if not interchrom:
                     ## NOTE: "Too far off" will depend on bin size here.
-                    mask = np.array(abs(pattern_peak[:, 0] - pattern_peak[:, 1])) < 5000
+                    mask = (
+                        np.array(abs(pattern_peak[:, 0] - pattern_peak[:, 1]))
+                        < 5000
+                    )
                     pattern_peak = pattern_peak[mask, :]
 
-                mask = np.array(abs(pattern_peak[:, 0] - pattern_peak[:, 1])) > 2
+                mask = (
+                    np.array(abs(pattern_peak[:, 0] - pattern_peak[:, 1])) > 2
+                )
                 pattern_peak = pattern_peak[mask, :]
             elif pattern_type == "borders":
                 # Borders are always on the diagonal
-                mask = np.array(abs(pattern_peak[:, 0] - pattern_peak[:, 1])) == 0
+                mask = (
+                    np.array(abs(pattern_peak[:, 0] - pattern_peak[:, 1])) == 0
+                )
                 pattern_peak = pattern_peak[mask, :]
             for l in pattern_peak:
                 if l[0] in indices[0] and l[1] in indices[1]:
@@ -183,7 +193,9 @@ def pattern_detector(
                         ]
                         if (
                             len(window[window == 1.0])
-                            < ((area * 2 + 1) ** 2) * undetermined_percentage / 100.0
+                            < ((area * 2 + 1) ** 2)
+                            * undetermined_percentage
+                            / 100.0
                         ):  # there should not be many indetermined bins
                             n_patterns += 1
                             score = res_rescaled[l[0], l[1]]
@@ -342,7 +354,9 @@ def explore_patterns(
     # Get the matrices
     if interchrom is not None:
         if len(matrices) != 1:
-            print("Warning: When using --inter, you must provide a single contact map")
+            print(
+                "Warning: When using --inter, you must provide a single contact map"
+            )
             inter = True
         detrended_matrices, matrix_indices = utils.interchrom_wrapper(
             matrices[0], interchrom
@@ -355,7 +369,8 @@ def explore_patterns(
             for i, matrix in enumerate(matrices)
         ]
         detrended_matrices = [
-            utils.detrend(matrix, idx) for idx, matrix in zip(matrix_indices, scn_mat)
+            utils.detrend(matrix, idx)
+            for idx, matrix in zip(matrix_indices, scn_mat)
         ]
 
     # Loop on the patterns to convolve the matrices
@@ -372,7 +387,11 @@ def explore_patterns(
         iteration_count += 1
 
         for kernel in agglomerated_patterns[-2]:
-            (detected_coords, agglomerated_pattern, nb_patterns) = my_pattern_detector(
+            (
+                detected_coords,
+                agglomerated_pattern,
+                nb_patterns,
+            ) = my_pattern_detector(
                 detrended_matrices,
                 kernel,
                 precision=precision,
@@ -380,14 +399,19 @@ def explore_patterns(
                 interchrom=inter,
             )
             for new_coords in detected_coords:
-                if neigh_hash(new_coords, window=window) not in hashed_neighborhoods:
+                if (
+                    neigh_hash(new_coords, window=window)
+                    not in hashed_neighborhoods
+                ):
                     chromosome, pos1, pos2, score = new_coords
                     if pos1 != "NA":
                         pos1 = int(pos1)
                     if pos2 != "NA":
                         pos2 = int(pos2)
                     all_patterns.add((chromosome, pos1, pos2, score))
-                    hashed_neighborhoods.add(neigh_hash(new_coords, window=window))
+                    hashed_neighborhoods.add(
+                        neigh_hash(new_coords, window=window)
+                    )
             agglomerated_patterns[-1].append(agglomerated_pattern)
         current_pattern_count = nb_patterns
         list_current_pattern_count.append(current_pattern_count)
@@ -409,7 +433,9 @@ def pattern_plot(patterns, matrix, output=None, name=None):
     detectable = utils.get_mat_idx(matrix)
     matscn = utils.scn_func(matrix, detectable)
     try:
-        plt.imshow(matscn.toarray() ** 0.15, interpolation="none", cmap="afmhot_r")
+        plt.imshow(
+            matscn.toarray() ** 0.15, interpolation="none", cmap="afmhot_r"
+        )
     except:
         plt.imshow(matscn ** 0.15, interpolation="none", cmap="afmhot_r")
     plt.title(name, fontsize=8)
@@ -429,7 +455,9 @@ def pattern_plot(patterns, matrix, output=None, name=None):
                     continue
                 if loop[1] != "NA":
                     _, pos1, pos2, _ = loop
-                    plt.scatter(pos1, pos2, s=15, facecolors="none", edgecolors="blue")
+                    plt.scatter(
+                        pos1, pos2, s=15, facecolors="none", edgecolors="blue"
+                    )
 
     emplacement = output / pathlib.Path(str(name + 1) + ".pdf2")
     print(emplacement)
@@ -479,7 +507,9 @@ def write_results(patterns_to_plot, output):
                 outf.write(" ".join(map(str, tup)) + "\n")
 
 
-def agglomerated_plot(agglomerated_pattern, name="agglomerated patterns", output=None):
+def agglomerated_plot(
+    agglomerated_pattern, name="agglomerated patterns", output=None
+):
     """
     Plot the ???
     """
@@ -489,7 +519,11 @@ def agglomerated_plot(agglomerated_pattern, name="agglomerated patterns", output
         output = pathlib.Path(output)
 
     plt.imshow(
-        agglomerated_pattern, interpolation="none", vmin=0.0, vmax=2.0, cmap="seismic"
+        agglomerated_pattern,
+        interpolation="none",
+        vmin=0.0,
+        vmax=2.0,
+        cmap="seismic",
     )
     plt.title("Ag {}".format(name))
     plt.colorbar()
@@ -535,7 +569,9 @@ def main():
 
     patterns_to_plot = dict()
     agglomerated_to_plot = dict()
-    if str(contact_maps[0]).endswith(".2bg") or str(contact_maps[0]).endswith(".bg2"):
+    if str(contact_maps[0]).endswith(".2bg") or str(contact_maps[0]).endswith(
+        ".bg2"
+    ):
         loaded_maps = [
             io.load_bedgraph2d(contact_map)[0] for contact_map in contact_maps
         ]
@@ -550,7 +586,9 @@ def main():
         chroms = np.vstack([interchrom, chromend]).T
 
     for pattern in patterns_to_explore:
-        all_patterns, agglomerated_patterns, list_current_pattern_count = explore_patterns(
+        (all_patterns,
+        agglomerated_patterns,
+        list_current_pattern_count) = explore_patterns(
             loaded_maps,
             pattern,
             iterations=iterations,
@@ -561,14 +599,17 @@ def main():
         if interchrom is not None:
             # Get index of patterns in full genome matrix.
             all_patterns = (
-                utils.get_inter_idx(pattern, chroms) for pattern in all_patterns
+                utils.get_inter_idx(pattern, chroms)
+                for pattern in all_patterns
             )
             # all_patterns = map(utils.get_inter_idx, all_patterns)
         patterns_to_plot[pattern] = list(all_patterns)
         agglomerated_to_plot[pattern] = agglomerated_patterns
 
     write_results(patterns_to_plot, output)
-    base_names = (pathlib.Path(contact_map).name for contact_map in contact_maps)
+    base_names = (
+        pathlib.Path(contact_map).name for contact_map in contact_maps
+    )
 
     for k, matrix in enumerate(loaded_maps):
         if isinstance(matrix, np.ndarray):
@@ -583,7 +624,9 @@ def main():
                 my_name = "Agglomerated {} of {} patterns iteration {} kernel {}".format(
                     pattern, list_current_pattern_count[i - 1], i, j
                 )
-                agglomerated_plot(agglomerated_matrix, name=my_name, output=output)
+                agglomerated_plot(
+                    agglomerated_matrix, name=my_name, output=output
+                )
     write_results(patterns_to_plot, output)
 
     return 0

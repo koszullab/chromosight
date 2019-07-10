@@ -5,7 +5,7 @@ Load and save contact matrices in sparse format
 """
 import pandas as pd
 import numpy as np
-from scipy.sparse import coo_matrix
+from scipy.sparse import coo_matrix, lil_matrix, csc_matrix, csr_matrix
 
 
 def load_bedgraph2d(mat_path):
@@ -29,7 +29,15 @@ def load_bedgraph2d(mat_path):
     """
     bg2 = pd.read_csv(mat_path, delimiter="\t", header=None)
     bg2.head()
-    bg2.columns = ["chr1", "start1", "end1", "chr2", "start2", "end2", "contacts"]
+    bg2.columns = [
+        "chr1",
+        "start1",
+        "end1",
+        "chr2",
+        "start2",
+        "end2",
+        "contacts",
+    ]
 
     # estimate bin size from file
     bin_size = np.median(bg2.end1 - bg2.start1).astype(int)
@@ -41,8 +49,12 @@ def load_bedgraph2d(mat_path):
     bg2["end2"] = bg2["end2"] // bin_size
 
     # Get number of bins per chromosome
-    fragsA = bg2[["chr1", "end1"]].rename(columns={"chr1": "chr", "end1": "end"})
-    fragsB = bg2[["chr2", "end2"]].rename(columns={"chr2": "chr", "end2": "end"})
+    fragsA = bg2[["chr1", "end1"]].rename(
+        columns={"chr1": "chr", "end1": "end"}
+    )
+    fragsB = bg2[["chr2", "end2"]].rename(
+        columns={"chr2": "chr", "end2": "end"}
+    )
     frags = pd.concat([fragsA, fragsB])
     chroms = frags.groupby("chr", sort=False).apply(lambda x: max(x.end))
 
@@ -76,3 +88,18 @@ def load_bedgraph2d(mat_path):
 
     print("sparse matrix loaded. Sent to pattern_detector.")
     return mat, chrom_start
+
+
+def dense2sparse(M, format='coo'):
+    format_dict = {'coo': lambda x: x,
+                   'csr': csr_matrix,
+                   'csc': csc_matrix,
+                   'lil': lil_matrix}
+    N = np.triu(M)
+    shape = N.shape
+    nonzeros = N.nonzero()
+    rows, cols = nonzeros
+    data = M[nonzeros]
+    S = coo_matrix((data, (rows, cols)), shape=shape)
+    matrix_format = format_dict[format]
+    return matrix_format(S)

@@ -29,6 +29,7 @@ benchmarking purposes.
 import numpy as np
 import docopt
 
+
 def score_loop(list_predicted, list_real, n1, area):
     list_predicted = list(map(tuple, list_predicted))
     list_real = list(map(tuple, list_real))
@@ -36,26 +37,34 @@ def score_loop(list_predicted, list_real, n1, area):
     set_real = set(list_real)
     nb_loops_found = 0
     for pred in set_predicted:
-        is_real = False    
+        is_real = False
         for real in set_real:
-            if (int(pred[0]) in range(int(real[0])-area,int(real[0])+area+1)) and (int(pred[1]) in range(int(real[1])-area,int(real[1])+area+1)):
-                nb_loops_found +=1
+            if (
+                int(pred[0])
+                in range(int(real[0]) - area, int(real[0]) + area + 1)
+            ) and (
+                int(pred[1])
+                in range(int(real[1]) - area, int(real[1]) + area + 1)
+            ):
+                nb_loops_found += 1
                 is_real = True
                 set_real.remove(real)
             if is_real:
                 break
- 
-    if len(list_predicted) > 0 :      
-        PREC = float(nb_loops_found) / len(list_predicted)  # consider that each pixel predicted will correspond to a different loop 
-    else :
-        PREC = "NA"    
-    if  len(list_real) > 0 :
+
+    if len(list_predicted) > 0:
+        PREC = float(nb_loops_found) / len(
+            list_predicted
+        )  # consider that each pixel predicted will correspond to a different loop
+    else:
+        PREC = "NA"
+    if len(list_real) > 0:
         RECALL = float(nb_loops_found) / len(list_real)
-    else : 
+    else:
         RECALL = "NA"
-    if  PREC != "NA" and RECALL != "NA"  and PREC != 0 and RECALL != 0 :  
-        F1 =     2* (PREC * RECALL) / (PREC + RECALL)
-    else : 
+    if PREC != "NA" and RECALL != "NA" and PREC != 0 and RECALL != 0:
+        F1 = 2 * (PREC * RECALL) / (PREC + RECALL)
+    else:
         F1 = "NA"
 
     return PREC, RECALL, F1

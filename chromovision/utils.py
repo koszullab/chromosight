@@ -33,7 +33,9 @@ def scn_func(B, mat_idx=None):
         The SCN normalised Hi-C matrix
     """
     try:
-        m_format = B.getformat()  # raises an  AttributeError if matrix is dense
+        m_format = (
+            B.getformat()
+        )  # raises an  AttributeError if matrix is dense
         A = B.copy()
         A = A.tolil()
     except:
@@ -80,7 +82,7 @@ def distance_law(matrix):
     ----------
     matrix: array_like
         The input matrix to compute distance law from.
-        
+   
     Returns
     -------
     dist: np.ndarray
@@ -106,11 +108,24 @@ def distance_law(matrix):
 
 
 def despeckles(B, th2):
-    A = np.copy(B)
+
     n_speckles = 0
     outlier = []
-    n1 = A.shape[0]
-    dist = {u: np.diag(A, u) for u in range(n1)}
+    if isinstance(B, np.ndarray):
+        A = np.copy(B)
+        n1 = A.shape[0]
+        dist = {u: np.diag(A, u) for u in range(n1)}
+    else:
+        try:
+            A = B.copy()
+            n1 = A.shape[0]
+            matrix_format = A.getformat()
+            if matrix_format not in {'csr', 'csc'}:
+                A = A.tocsr()
+            dist = {u: A.diagonal(u) for u in range(n1)}
+        except AttributeError:
+            raise ValueError("Input matrix must be a numpy array or a scipy"
+                             "sparse array")
 
     medians, stds = {}, {}
     for u in dist:
@@ -193,7 +208,7 @@ def get_mat_idx(matrix):
     """
     Returns lists of detectable indices after excluding low interacting bin
     based on the distribution of pixel values in the matrix.
-    
+
     Parameters
     ----------
     matrix : array_like
@@ -207,9 +222,11 @@ def get_mat_idx(matrix):
     -------
     """
     try:
-        m_format = matrix.getformat()  # raises an  AttributeError if matrix is dense
+        m_format = (
+            matrix.getformat()
+        )  # raises an AttributeError if matrix is dense
         matrix = matrix.tolil()
-    except:
+    except AttributeError:
         if not isinstance(matrix, np.ndarray):
             sys.stderr.write(
                 "ERROR: the matrix to get idx from is neither dense or sparse."
@@ -235,7 +252,7 @@ def detrend(matrix, mat_idx=None):
     Detrending a Hi-C matrix by the distance law. The matrix should have been
     normalised using the SCN procedure beforehandand then detrended by the
     distance law.
-    
+
     Parameters
     ----------
     matrix : array_like
@@ -244,7 +261,7 @@ def detrend(matrix, mat_idx=None):
         Tuple containing a list of detectable rows and a list of columns on
         which to perform detrending. Poorly interacting indices have been
         excluded.
-        
+ 
     Returns
     -------
     numpy.ndarray :
@@ -252,7 +269,9 @@ def detrend(matrix, mat_idx=None):
     tuple :
         Tuple of thresholds to define low interacting rows/columns.
     """
-    if matrix.shape[0] != matrix.shape[1] or len(mat_idx[0]) != len(mat_idx[1]):
+    if matrix.shape[0] != matrix.shape[1] or len(mat_idx[0]) != len(
+        mat_idx[1]
+    ):
         raise ValueError("Detrending can only be done on square matrices.")
 
     n = matrix.shape[0]
@@ -368,11 +387,14 @@ def corrcoef2d(signal, kernel, centered_p=True):
     """
     kernel1 = np.ones(kernel.shape) / kernel.size
     mean_signal = xcorr2(signal, kernel1, centered_p)
-    std_signal = np.sqrt(xcorr2(signal ** 2, kernel1, centered_p) - mean_signal ** 2)
+    std_signal = np.sqrt(
+        xcorr2(signal ** 2, kernel1, centered_p) - mean_signal ** 2
+    )
     mean_kernel = np.mean(kernel)
     std_kernel = np.std(kernel)
     corrcoef = (
-        xcorr2(signal, kernel / kernel.size, centered_p) - mean_signal * mean_kernel
+        xcorr2(signal, kernel / kernel.size, centered_p)
+        - mean_signal * mean_kernel
     ) / (std_signal * std_kernel)
     return corrcoef
 
@@ -417,7 +439,7 @@ def interchrom_wrapper(matrix, chroms):
     """
     Given a matrix containing multiple chromosomes, processes each
     inter- or intra-chromosomal submatrix to be chromovision-ready.
-    
+
     Parameters
     ----------
     matrix : array_like
@@ -426,7 +448,7 @@ def interchrom_wrapper(matrix, chroms):
     chromstart : array_like
         A 2D numpy array containing with start and end bins of chromosomes,
         as columns and 1 chromosome per row.
-    
+
     Returns
     -------
     array_like :
