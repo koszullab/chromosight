@@ -246,31 +246,52 @@ def detrend(matrix, mat_idx=None):
     tuple :
         Tuple of thresholds to define low interacting rows/columns.
     """
-    if matrix.shape[0] != matrix.shape[1] or len(mat_idx[0]) != len(mat_idx[1]):
-        raise ValueError("Detrending can only be done on square matrices.")
+    summed_columns = np.array(
+        np.array(matrix.sum(axis=0)).flatten()
+        + np.array(matrix.sum(axis=1)).flatten()
+        - matrix.diagonal()
+    )
+    threshold = np.median(summed_columns) - 2.0 * np.std(summed_columns)
 
-    n = matrix.shape[0]
-    if mat_idx:
-        poor_idx = [i for i in range(n) if i not in mat_idx[0]]
-    else:
-        poor_idx = []
+    # Removal of poor interacting bins
+    poor_indices = np.where(summed_columns <= threshold)
+    matscn = scn_func(matrix, threshold)
+    _, matscn, _, _ = despeckles(matscn, 10.0)
 
-    y = distance_law(matrix)
+    y = distance_law(matscn)
     y[np.isnan(y)] = 0.0
     y_savgol = savgol_filter(y, window_length=17, polyorder=5)
 
+    n = matrix.shape[0]
+
     # Computation of genomic distance law matrice:
-    distance_law_matrix = np.zeros((n, n))
-    for i in range(n):
+    if issparse(matrix):
+        distance_law_matrix = sparse.csr_matrix((n, n))
+        distance_law_matrix = sparse.triu(distance_law_matrix)
+    else:
+        distance_law_matrix = np.zeros((n, n))
+        distance_law_matrix = np.triu(distance_law_matrix)
+    for i in range(0, n):
         for j in range(i, n):
             distance_law_matrix[i, j] = y_savgol[abs(j - i)]
-    detrended = matrix / distance_law_matrix
-    detrended[np.isnan(detrended)] = 1.0
-    detrended[detrended < 0] = 1.0
+    if issparse(matrix):
+        detrended = sparse.csr_matrix((n, n))
+        for i in range(0, 2):
+            for j in range(i, n):
+                val = matscn[i, j] / distance_law_matrix[i, j]
+                if val != np.nan:
+                    if val > 0:
+                        detrended[i, j] = matscn[i, j] / distance_law_matrix[i, j]
+                    else:
+                        detrended[i, j] = 1
+    else:
+        detrended = matscn / distance_law_matrix
+        detrended[np.isnan(detrended)] = 1.0
+        detrended[detrended < 0] = 1.0
     # refilling of empty bins with 1.0 (neutral):
-    detrended[poor_idx, :] = np.ones((len(poor_idx), n))
-    detrended[:, poor_idx] = np.ones((n, len(poor_idx)))
-    return detrended
+    detrended[poor_indices[0], :] = np.ones((len(poor_indices[0]), n))
+    detrended[:, poor_indices[0]] = np.ones((n, len(poor_indices[0])))
+    return detrended, threshold
 
 
 def ztransform(matrix):
