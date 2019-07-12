@@ -151,6 +151,71 @@ def despeckles(B, th2):
 
 def picker(probas, thres=0.8):
     """Pick pixels out of a probability map
+    Given a probability heat map, pick (i, j) of local maxima
+    Parameters
+    ----------
+    probas : array_like in any sparse formats: it is converted in coo 
+        A float array assigning a probability to each pixel (i,j)
+        of being a loop.
+    thres : float, optional
+        Pixels having a probability higher than thres are potentially
+        loops. Default is 0.8.
+    Returns
+    -------
+    ijs : array_like
+        Coordinates of identified loops.
+    """
+    # convertion from csr to coo:
+    probas = probas.tocoo()
+
+    # sanity check
+    if np.any(probas.data > 1):
+        raise ValueError("probas must be <= 1.0")
+    if np.any(probas.data < 0):
+        raise ValueError("probas must be >= 0.0")
+
+    rows_ijs = probas.row[probas.data > thres]
+    col_ijs = probas.col[probas.data > thres]
+    raw_ijs = np.array([rows_ijs, col_ijs]).T
+
+    if len(raw_ijs) > 0:
+        I = max(raw_ijs[:, 0])
+        J = max(raw_ijs[:, 1])
+        candidate_p = np.zeros((I + 1, J + 1), bool)
+        candidate_p[
+            raw_ijs[:, 0], raw_ijs[:, 1]
+        ] = True  #  heat map with foci of high proba
+        labelled_mat, num_features = measurements.label(candidate_p)
+        ijs = np.zeros([num_features, 2], int)
+        remove_p = np.zeros(num_features, bool)
+        for ff in range(0, num_features):
+            label_p = labelled_mat == ff + 1
+            # remove the label corresponding to non-candidates
+            if candidate_p[label_p].sum() == 0:
+                remove_p[ff] = True
+                continue
+            # remove single points
+            if label_p.sum() == 1:
+                remove_p[ff] = True
+                continue
+            label_ijs = np.array(np.where(label_p)).T
+
+            # conversion to lil format to have access to slicing
+            probas = probas.tolil()
+
+            ijmax = np.argmax(
+                (probas[label_ijs[:, 0], label_ijs[:, 1]]).toarray()
+            )
+            ijs[ff, 0] = label_ijs[ijmax, 0]
+            ijs[ff, 1] = label_ijs[ijmax, 1]
+        ijs = ijs[~remove_p, :]
+    else:
+        ijs = "NA"
+    return ijs
+
+
+def picker_dense(probas, thres=0.8):
+    """Pick pixels out of a probability map
 
     Given a probability heat map, pick (i, j) of local maxima
 
@@ -223,9 +288,7 @@ def get_mat_idx(matrix):
     -------
     """
     try:
-        _ = (
-            matrix.getformat()
-        )  # raises an AttributeError if matrix is dense
+        _ = matrix.getformat()  # raises an AttributeError if matrix is dense
         matrix = matrix.tolil()
     except AttributeError:
         if not isinstance(matrix, np.ndarray):
@@ -340,8 +403,11 @@ def ztransform(matrix):
 
 
 def xcorr2(
-    signal, kernel, centered_p=True, max_size=None,
-    threshold=DEFAULT_PRECISION_CORR_THRESHOLD
+    signal,
+    kernel,
+    centered_p=True,
+    max_size=None,
+    threshold=DEFAULT_PRECISION_CORR_THRESHOLD,
 ):
     """Signal-kernel 2D convolution
 
