@@ -16,61 +16,56 @@ import itertools
 DEFAULT_PRECISION_CORR_THRESHOLD = 1e-4
 
 
-def scn_func(B, mat_idx=None):
+def normalize(B, good_bins=None, iterations=10):
     """
-    Sequential Component Normalisation (SCN) of a Hi-C matrix.
+    Iterative normalisation of a Hi-C matrix.
 
     Parameters
     ----------
-    B : array_like
-        The Hi-C matrix to be normalised.
-    mat_idx : tuple
-        A tuple of 2 lists, containing the indices of detectable rows and
-        columns on which SCN should be applied.
-
+    B : scipy coo_matrix
+        The Hi-C matrix to be normalized.
+    good_bins : numpy array
+        1D array containing the indices of detectable bins on which
+        normalization should be applied.
+        
     Returns
     -------
     numpy.ndarray :
         The SCN normalised Hi-C matrix
     """
-    try:
-        m_format = (
-            B.getformat()
-        )  # raises an  AttributeError if matrix is dense
+    if not good_bins:
+        good_bins = np.arange(B.shape[0])
+    if issparse(B):
         A = B.copy()
         A = A.tolil()
-    except AttributeError:
-        if isinstance(B, np.ndarray):
-            m_format = "dense"
-            A = np.copy(B)
-        else:
-            sys.stderr.write(
-                "ERROR: the matrix to normalize is neither dense or sparse."
-            )
-            sys.exit(1)
-    finally:
-        nr = A.shape[0]
-        nc = A.shape[1]
+        # Making full symmetric matrix if not symmetric already (e.g. upper triangle)
+        r = r.tocoo()
+        for _ in range(1, iterations):
+            bin_sums = sum_mat_bins(r)
+            # Retrieve coordinates of nonzero pixels
+            pixel_rows, pixel_cols = r.nonzero()
+            # Keep only coords of nonzero pixels that are in good col and row
+            # Valid pixels will be nonzero values in good bins
+            pixel_mask = np.isin(pixel_rows, good_bins) * np.isin(pixel_cols, good_bins)
+            pixel_rows = pixel_rows[pixel_mask]
+            pixel_cols = pixel_cols[pixel_mask]
+            # ICE normalisation (Divide each valid pixel by the product of its row and column)
+            r.data /= bin_sums[pixel_rows] * bin_sums[pixel_cols]
+        row_sums = np.array(r.sum(axis=1)).flatten()
+        # Scale to 1
+        r.data = r.data * (1 / np.mean(row_sums))
+    else:
+        A = np.copy(B)
         # If no list of bins is specified, include all bins
-        if not mat_idx:
-            mat_idx = (np.arange(nr), np.arange(nc))
-        mask_r = np.zeros(nr, dtype=bool)
-        mask_c = np.zeros(nc, dtype=bool)
-        mask_r[mat_idx[0]] = 1
-        mask_c[mat_idx[1]] = 1
-        n_iterations = 10
-        for _ in range(n_iterations):
-            for i in range(nc):
-                A[mask_r, i] = A[mask_r, i] / np.sum(A[mask_r, i])
-                A[~mask_r, i] = 0
-                A.data = np.nan_to_num(A.data)
-            for i in range(nr):
-                A[i, mask_c] = A[i, mask_c] / np.sum(A[i, mask_c])
-                A[i, ~mask_c] = 0
-                A.data = np.nan_to_num(A.data)
-    if m_format != "dense":
-        A = A.tocoo()
-        A.eliminate_zeros()
+        bin_mask = np.zeros(A.shape[0], dtype=bool)
+        bin_mask[good_bins] = 1
+        for _ in range(0, iterations):
+            # Compute matrix with all products of rows / cols sums
+            mat_sum_prods = np.dot(A[:, None], A[:, None].T)
+            # Element wise distribution by pixel's respective row/col sum product
+            mat_sum_prods[~bin_mask, :] = 1
+            mat_sum_prods[:, ~bin_mask] = 1
+            A[bin_mask, bin_mask] /= mat_sum_prods[bin_mask, bin_mask]
     return A
 
 
@@ -270,7 +265,7 @@ def picker_dense(probas, thres=0.8):
     return ijs
 
 
-def get_mat_idx(matrix):
+def get_detectable_bins(matrix):
     """
     Returns lists of detectable indices after excluding low interacting bin
     based on the distribution of pixel values in the matrix.
@@ -282,32 +277,15 @@ def get_mat_idx(matrix):
 
     Returns
     -------
-    tuple :
-        A tuple of two 1D arrays containing indices of low interacting rows
-        and columns, respectively.
+    numpy array :
+        1D array containing indices of low interacting bins.
     -------
     """
-    try:
-        _ = matrix.getformat()  # raises an AttributeError if matrix is dense
-        matrix = matrix.tolil()
-    except AttributeError:
-        if not isinstance(matrix, np.ndarray):
-            sys.stderr.write(
-                "ERROR: the matrix to get idx from is neither dense or sparse."
-            )
-            sys.exit(1)
-    finally:
-        # Sum raws and columns
-        sum_axis0 = np.array(matrix.sum(axis=0))
-        to_reshape = sum_axis0.shape
-        sum_axis1 = np.array(matrix.sum(axis=1)).reshape(to_reshape)
-        # Find poor interacting raws and columns
-        threshold_rows = np.median(sum_axis0) - 2.0 * np.std(sum_axis0)
-        threshold_cols = np.median(sum_axis1) - 2.0 * np.std(sum_axis1)
-        # Removal of poor interacting rows and columns
-        ind_rows = np.where(sum_axis0 > threshold_rows)[0]
-        ind_cols = np.where(sum_axis1 > threshold_cols)[0]
-        good_bins = (ind_rows, ind_cols)
+    sum_bins = sum_mat_bins(matrix)
+    # Find poor interacting raws and columns
+    threshold_bins = np.median(sum_bins) - 2.0 * np.std(sum_bins)
+    # Removal of poor interacting rows and columns
+    good_bins = np.where(sum_bins > threshold_bins)[0]
     return good_bins
 
 
@@ -333,33 +311,52 @@ def detrend(matrix, mat_idx=None):
     tuple :
         Tuple of thresholds to define low interacting rows/columns.
     """
-    if matrix.shape[0] != matrix.shape[1] or len(mat_idx[0]) != len(
-        mat_idx[1]
-    ):
-        raise ValueError("Detrending can only be done on square matrices.")
+    summed_columns = np.array(
+        np.array(matrix.sum(axis=0)).flatten()
+        + np.array(matrix.sum(axis=1)).flatten()
+        - matrix.diagonal()
+    )
+    threshold = np.median(summed_columns) - 2.0 * np.std(summed_columns)
 
-    n = matrix.shape[0]
-    if mat_idx:
-        poor_idx = [i for i in range(n) if i not in mat_idx[0]]
-    else:
-        poor_idx = []
+    # Removal of poor interacting bins
+    poor_indices = np.where(summed_columns <= threshold)
+    matscn = scn_func(matrix, threshold)
+    _, matscn, _, _ = despeckles(matscn, 10.0)
 
-    y = distance_law(matrix)
+    y = distance_law(matscn)
     y[np.isnan(y)] = 0.0
     y_savgol = savgol_filter(y, window_length=17, polyorder=5)
 
+    n = matrix.shape[0]
+
     # Computation of genomic distance law matrice:
-    distance_law_matrix = np.zeros((n, n))
+    if issparse(matrix):
+        distance_law_matrix = sparse.csr_matrix((n, n))
+        distance_law_matrix = sparse.triu(distance_law_matrix)
+    else:
+        distance_law_matrix = np.zeros((n, n))
+        distance_law_matrix = np.triu(distance_law_matrix)
     for i in range(0, n):
-        for j in range(0, n):
+        for j in range(i, n):
             distance_law_matrix[i, j] = y_savgol[abs(j - i)]
-    detrended = matrix / distance_law_matrix
-    detrended[np.isnan(detrended)] = 1.0
-    detrended[detrended < 0] = 1.0
+    if issparse(matrix):
+        detrended = sparse.csr_matrix((n, n))
+        for i in range(0, 2):
+            for j in range(i, n):
+                val = matscn[i, j] / distance_law_matrix[i, j]
+                if val != np.nan:
+                    if val > 0:
+                        detrended[i, j] = matscn[i, j] / distance_law_matrix[i, j]
+                    else:
+                        detrended[i, j] = 1
+    else:
+        detrended = matscn / distance_law_matrix
+        detrended[np.isnan(detrended)] = 1.0
+        detrended[detrended < 0] = 1.0
     # refilling of empty bins with 1.0 (neutral):
-    detrended[poor_idx, :] = np.ones((len(poor_idx), n))
-    detrended[:, poor_idx] = np.ones((n, len(poor_idx)))
-    return detrended
+    detrended[poor_indices[0], :] = np.ones((len(poor_indices[0]), n))
+    detrended[:, poor_indices[0]] = np.ones((n, len(poor_indices[0])))
+    return detrended, threshold
 
 
 def ztransform(matrix):
@@ -478,14 +475,11 @@ def corrcoef2d(signal, kernel, centered_p=True):
     """
     kernel1 = np.ones(kernel.shape) / kernel.size
     mean_signal = xcorr2(signal, kernel1, centered_p)
-    std_signal = np.sqrt(
-        xcorr2(signal ** 2, kernel1, centered_p) - mean_signal ** 2
-    )
+    std_signal = np.sqrt(xcorr2(signal ** 2, kernel1, centered_p) - mean_signal ** 2)
     mean_kernel = np.mean(kernel)
     std_kernel = np.std(kernel)
     corrcoef = (
-        xcorr2(signal, kernel / kernel.size, centered_p)
-        - mean_signal * mean_kernel
+        xcorr2(signal, kernel / kernel.size, centered_p) - mean_signal * mean_kernel
     ) / (std_signal * std_kernel)
     return corrcoef
 
@@ -548,19 +542,18 @@ def interchrom_wrapper(matrix, chroms):
     """
     matrices = []
     vectors = []
-    mat_idx = get_mat_idx(matrix)
+    mat_idx = get_detectable_bins(matrix)
     matrix = scn_func(matrix, mat_idx)
     for s1, e1 in chroms:
         for s2, e2 in chroms:
             sub_mat = matrix[s1:e1, s2:e2]
             # Get new indices of low interacting bins within sub matrix
             sub_mat_idx = (
-                mat_idx[0][(mat_idx[0] >= s1) & (mat_idx[0] < e1)] - s1,
-                mat_idx[1][(mat_idx[1] >= s2) & (mat_idx[1] < e2)] - s2,
+                mat_idx[0][(mat_idx >= s1) & (mat_idx < e1)] - s1,
+                mat_idx[1][(mat_idx >= s2) & (mat_idx < e2)] - s2,
             )
             # intrachromosomal sub matrix
             if s1 == s2:
-
                 detrended = detrend(sub_mat, sub_mat_idx)
                 sub_mat = detrended
                 sub_mat = ztransform(detrended)
