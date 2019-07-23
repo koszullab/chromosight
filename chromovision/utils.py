@@ -128,19 +128,34 @@ def despeckles(B, th2):
         medians[u] = np.median(dist[u])
         stds[u] = np.std(dist[u])
 
-    for nw, j in itertools.product(range(n1), range(n1)):
-        lp = j + nw
-        kp = j - nw
-        if lp < n1:
-            if A[j, lp] > medians[nw] + th2 * stds[nw]:
-                A[j, lp] = medians[nw]
-                n_speckles += 1
-                outlier.append((j, lp))
-        if kp >= 0:
-            if A[j, kp] > medians[nw] + th2 * stds[nw]:
-                A[j, kp] = medians[nw]
-                n_speckles += 1
-                outlier.append((j, kp))
+    if isinstance(B, np.ndarray):
+        for nw, j in itertools.product(range(n1), range(n1)):
+            lp = j + nw
+            kp = j - nw
+            if lp < n1:
+                if A[j, lp] > medians[nw] + th2 * stds[nw]:
+                    A[j, lp] = medians[nw]
+                    n_speckles += 1
+                    outlier.append((j, lp))
+            if kp >= 0:
+                if A[j, kp] > medians[nw] + th2 * stds[nw]:
+                    A[j, kp] = medians[nw]
+                    n_speckles += 1
+                    outlier.append((j, kp))
+    elif issparse(B):
+        for x, y in zip(B.row, B.col):
+            lp = x + y
+            kp = x - y
+            if lp < n1:
+                if A[j, lp] > medians[x] + th2 * stds[y]:
+                    A[j, lp] = medians[x]
+                    n_speckles += 1
+                    outlier.append((y, lp))
+            if kp >= 0:
+                if A[y, kp] > medians[x] + th2 * stds[x]:
+                    A[y, kp] = medians[x]
+                    n_speckles += 1
+                    outlier.append((y, kp))           
     return dist, A, n_speckles, outlier
 
 
