@@ -8,14 +8,14 @@ maps with pattern matching.
 Usage:
     chromovision detect <contact_maps> [<output>] [--kernels=None] [--loops]
                         [--borders] [--precision=4] [--iterations=auto]
-                        [--inter FILE]
+                        [--inter FILE] [--input-format csv]
 
 Arguments:
     -h, --help                  Display this help message.
     --version                   Display the program's current version.
     contact_maps                The Hi-C contact maps to detect patterns on, in
-                                CSV format. File names must be separated by a
-                                colon.
+                                CSV, bedgraph2d or cool format. File names must 
+                                be separated by a colon.
     output                      name of the output directory
     -k None, kernels None       A custom kernel template to use, if not using
                                 one of the presets. If not supplied, the
@@ -34,6 +34,8 @@ Arguments:
     -i auto, --iterations auto  How many iterations to perform after the first
                                 template-based pass. Auto means iterations are
                                 performed until convergence. [default: auto]
+    -f csv, --input-format csv  Input format of the contact map. Can be csv, bg2
+                                or cool. [default: csv]
 """
 
 import numpy as np
@@ -538,6 +540,7 @@ def main():
     arguments = docopt.docopt(__doc__, version=__version__)
 
     contact_maps = arguments["<contact_maps>"].split(",")
+    input_format = arguments["--input-format"]
     kernels = arguments["--kernels"]
     loops = arguments["--loops"]
     borders = arguments["--borders"]
@@ -571,14 +574,12 @@ def main():
 
     patterns_to_plot = dict()
     agglomerated_to_plot = dict()
-    if str(contact_maps[0]).endswith(".2bg") or str(contact_maps[0]).endswith(
-        ".bg2"
-    ):
-        loaded_maps = [
-            io.load_bedgraph2d(contact_map)[0] for contact_map in contact_maps
-        ]
-    else:
-        loaded_maps = [np.loadtxt(contact_map) for contact_map in contact_maps]
+    format_map = {
+            "csv": np.loadtxt,
+            "bg2": io.load_bedgraph2d,
+            "cool": io.load_cool
+    }
+    loaded_maps = [format_map[input_format](contact_map) for contact_map in contact_maps]
 
     chroms = None
     if interchrom:

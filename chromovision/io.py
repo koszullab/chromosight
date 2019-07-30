@@ -25,8 +25,8 @@ def load_bedgraph2d(mat_path):
     -------
     mat: scipy.sparse.coo_matrix
         Output sparse matrix in coordinate format
-    chrom_start : list of numpy.array
-        List of chromosome start bins.
+    chrom_start : numpy.array
+        1D array of starting bins for each chromosome.
     """
     bg2 = pd.read_csv(mat_path, delimiter="\t", header=None)
     bg2.head()
@@ -91,6 +91,45 @@ def load_bedgraph2d(mat_path):
     print("sparse matrix loaded. Sent to pattern_detector.")
     return mat, chrom_start
 
+
+def load_cool(cool_path):
+    """
+    Reads a cool file into memory and parses it into a COO sparse matrix
+    and an array with the starting bin of each chromosome.
+    
+    Parameters
+    ----------
+    cool : str
+        Path to the input .cool file.
+
+    Returns
+    -------
+    mat : scipy coo_matrix
+        Hi-C contact map in COO format.
+    chrom_start : numpy.array
+        1D array of starting bins for each chromosome.
+    """
+    try:
+        import cooler
+    except ImportError:
+        print("The cooler package is required to use cool files. Please install it first.")
+        raise
+
+    c = cooler.Cooler(cool_path)  #pylint: disable=undefined-variable
+    frags = c.bins()[:]
+    chroms = c.chroms()[:]
+    mat = c.pixels()[:]
+    # Number of fragments  (bins) per chromosome
+    n_frags = c.bins()[:].groupby('chrom', sort=False).count().start
+    # Starting bin of each chromosome (first is 0)
+    chrom_start = np.insert(np.array(n_frags), 0, 0)
+    # Make a sparse (COO) matrix from the pixels table
+    n = int(max(np.amax(mat.bin1_id), np.amax(mat.bin2_id))) + 1
+    shape = (n, n)
+    mat = coo_matrix((mat['count'], (mat.bin1_id, mat.bin2_id)), shape=shape)
+
+    return mat, chrom_start
+    
 
 def dense2sparse(M, format="coo"):
     format_dict = {
