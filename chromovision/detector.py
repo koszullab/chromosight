@@ -364,8 +364,8 @@ def explore_patterns(
             matrices[0], interchrom
         )
     else:
-        # Get good indices ()
-        matrix_indices = [utils.get_mat_idx(matrix) for matrix in matrices]
+        # Get good bins (i.e. above detection threshold)
+        matrix_indices = [utils.get_detectable_bins(matrix) for matrix in matrices]
         scn_mat = [
             utils.scn_func(matrix, matrix_indices[i])
             for i, matrix in enumerate(matrices)
@@ -434,7 +434,7 @@ def pattern_plot(patterns, matrix, output=None, name=None):
     else:
         output = pathlib.Path(output)
 
-    detectable = utils.get_mat_idx(matrix)
+    detectable = utils.get_detectable_bins(matrix)
     matscn = utils.scn_func(matrix, detectable)
     try:
         plt.imshow(
@@ -574,20 +574,23 @@ def main():
 
     patterns_to_plot = dict()
     agglomerated_to_plot = dict()
-    format_map = {
-            "csv": np.loadtxt,
+    format_loader = {
+            "csv": lambda x: [np.loadtxt(x), 0],
             "bg2": io.load_bedgraph2d,
             "cool": io.load_cool
     }
-    loaded_maps = [format_map[input_format](contact_map) for contact_map in contact_maps]
-
-    chroms = None
-    if interchrom:
-        interchrom = np.loadtxt(interchrom, dtype=np.int64)
-        # Getting start and end coordinates of chromosomes
-        chromend = np.append(interchrom[1:], loaded_maps[0].shape[0])
-        chroms = np.vstack([interchrom, chromend]).T
-
+    loaded_maps, chroms = [], []
+    for contact_map in contact_maps:
+        curr_mat, curr_chr = format_loader[input_format](contact_map)
+        loaded_maps.append(curr_mat)
+        chroms.append(curr_chr)
+        
+    if input_format == 'csv' and interchrom:
+        chroms = np.loadtxt(interchrom, dtype=np.int64)
+    
+    # Getting start and end coordinates of chromosomes
+    chromend = np.append(chroms[1:], loaded_maps[0].shape[0])
+    chroms = np.vstack([chroms, chromend]).T
     for pattern in patterns_to_explore:
         (
             all_patterns,

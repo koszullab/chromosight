@@ -5,7 +5,13 @@ Load and save contact matrices in sparse format
 """
 import pandas as pd
 import numpy as np
-from scipy.sparse import coo_matrix, lil_matrix, csc_matrix, csr_matrix
+from scipy.sparse import (
+        coo_matrix, 
+        lil_matrix,
+        csc_matrix,
+        csr_matrix,
+        triu
+)
 
 
 def load_bedgraph2d(mat_path):
@@ -87,6 +93,8 @@ def load_bedgraph2d(mat_path):
 
     # Get chroms into a 1D array of bin starts
     chrom_start = np.array(chrom_start["cumsum"])
+    # Only keep upper triangle
+    mat = triu(mat)
 
     print("sparse matrix loaded. Sent to pattern_detector.")
     return mat, chrom_start
@@ -120,14 +128,15 @@ def load_cool(cool_path):
     chroms = c.chroms()[:]
     mat = c.pixels()[:]
     # Number of fragments  (bins) per chromosome
-    n_frags = c.bins()[:].groupby('chrom', sort=False).count().start
-    # Starting bin of each chromosome (first is 0)
+    n_frags = c.bins()[:].groupby('chrom', sort=False).count().start[:-1]
+    # Starting bin of each chromosome
     chrom_start = np.insert(np.array(n_frags), 0, 0)
     # Make a sparse (COO) matrix from the pixels table
     n = int(max(np.amax(mat.bin1_id), np.amax(mat.bin2_id))) + 1
     shape = (n, n)
-    mat = coo_matrix((mat['count'], (mat.bin1_id, mat.bin2_id)), shape=shape)
-
+    mat = coo_matrix((mat['count'], (mat.bin1_id, mat.bin2_id)), shape=shape, dtype=np.float64)
+    # Only keep upper triangle
+    mat = triu(mat)
     return mat, chrom_start
     
 
@@ -145,4 +154,5 @@ def dense2sparse(M, format="coo"):
     data = M[nonzeros]
     S = coo_matrix((data, (rows, cols)), shape=shape)
     matrix_format = format_dict[format]
-    return matrix_format(S)
+    sparse_mat = matrix_format(S)
+    return triu(sparse_mat)

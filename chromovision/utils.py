@@ -33,40 +33,24 @@ def normalize(B, good_bins=None, iterations=10):
     numpy.ndarray :
         The SCN normalised Hi-C matrix
     """
-    if not good_bins:
+    if good_bins is None:
         good_bins = np.arange(B.shape[0])
-    if issparse(B):
-        A = B.copy()
-        A = A.tolil()
-        # Making full symmetric matrix if not symmetric already (e.g. upper triangle)
-        r = r.tocoo()
-        for _ in range(1, iterations):
-            bin_sums = sum_mat_bins(r)
-            # Retrieve coordinates of nonzero pixels
-            pixel_rows, pixel_cols = r.nonzero()
-            # Keep only coords of nonzero pixels that are in good col and row
-            # Valid pixels will be nonzero values in good bins
-            pixel_mask = np.isin(pixel_rows, good_bins) * np.isin(pixel_cols, good_bins)
-            pixel_rows = pixel_rows[pixel_mask]
-            pixel_cols = pixel_cols[pixel_mask]
-            # ICE normalisation (Divide each valid pixel by the product of its row and column)
-            r.data /= bin_sums[pixel_rows] * bin_sums[pixel_cols]
-        row_sums = np.array(r.sum(axis=1)).flatten()
-        # Scale to 1
-        r.data = r.data * (1 / np.mean(row_sums))
-    else:
-        A = np.copy(B)
-        # If no list of bins is specified, include all bins
-        bin_mask = np.zeros(A.shape[0], dtype=bool)
-        bin_mask[good_bins] = 1
-        for _ in range(0, iterations):
-            # Compute matrix with all products of rows / cols sums
-            mat_sum_prods = np.dot(A[:, None], A[:, None].T)
-            # Element wise distribution by pixel's respective row/col sum product
-            mat_sum_prods[~bin_mask, :] = 1
-            mat_sum_prods[:, ~bin_mask] = 1
-            A[bin_mask, bin_mask] /= mat_sum_prods[bin_mask, bin_mask]
-    return A
+    r = B.copy()
+    for _ in range(1, iterations):
+        bin_sums = sum_mat_bins(r)
+        # Retrieve coordinates of nonzero pixels
+        pixel_rows, pixel_cols = r.nonzero()
+        # Keep only coords of nonzero pixels that are in good col and row
+        # Valid pixels will be nonzero values in good bins
+        pixel_mask = np.isin(pixel_rows, good_bins) * np.isin(pixel_cols, good_bins)
+        pixel_rows = pixel_rows[pixel_mask]
+        pixel_cols = pixel_cols[pixel_mask]
+        # ICE normalisation (Divide each valid pixel by the product of its row and column)
+        r.data /= np.float64(bin_sums[pixel_rows] * bin_sums[pixel_cols])
+    row_sums = np.array(r.sum(axis=1)).flatten()
+    # Scale to 1
+    r.data = r.data * (1 / np.mean(row_sums))
+    return r
 
 
 def distance_law(matrix):
@@ -109,53 +93,29 @@ def despeckles(B, th2):
     n1 = 0
     outlier = []
     dist = dict()
-    A = np.copy(B)
-    if isinstance(B, np.ndarray):
-        A = np.copy(B)
-        n1 = A.shape[0]
-        dist = {u: np.diag(A, u) for u in range(n1)}
-    elif issparse(B):
-
-        A = B.copy()
-        n1 = A.shape[0]
-        matrix_format = A.getformat()
-        if matrix_format not in {"csr", "csc"}:
-            A = A.tocsr()
-        dist = {u: A.diagonal(u) for u in range(n1)}
-
+    A = B.copy()
+    n1 = A.shape[0]
+    matrix_format = A.getformat()
+    if matrix_format not in {"csr", "csc"}:
+        A = A.tocsr()
+    dist = {u: A.diagonal(u) for u in range(n1)}
     medians, stds = {}, {}
     for u in dist:
         medians[u] = np.median(dist[u])
         stds[u] = np.std(dist[u])
-
-    if isinstance(B, np.ndarray):
-        for nw, j in itertools.product(range(n1), range(n1)):
-            lp = j + nw
-            kp = j - nw
-            if lp < n1:
-                if A[j, lp] > medians[nw] + th2 * stds[nw]:
-                    A[j, lp] = medians[nw]
-                    n_speckles += 1
-                    outlier.append((j, lp))
-            if kp >= 0:
-                if A[j, kp] > medians[nw] + th2 * stds[nw]:
-                    A[j, kp] = medians[nw]
-                    n_speckles += 1
-                    outlier.append((j, kp))
-    elif issparse(B):
-        for x, y in zip(B.row, B.col):
-            lp = x + y
-            kp = x - y
-            if lp < n1:
-                if A[j, lp] > medians[x] + th2 * stds[y]:
-                    A[j, lp] = medians[x]
-                    n_speckles += 1
-                    outlier.append((y, lp))
-            if kp >= 0:
-                if A[y, kp] > medians[x] + th2 * stds[x]:
-                    A[y, kp] = medians[x]
-                    n_speckles += 1
-                    outlier.append((y, kp))           
+    for x, y in zip(B.row, B.col):
+        lp = x + y
+        kp = x - y
+        if lp < n1:
+            if A[j, lp] > medians[x] + th2 * stds[y]:
+                A[j, lp] = medians[x]
+                n_speckles += 1
+                outlier.append((y, lp))
+        if kp >= 0:
+            if A[y, kp] > medians[x] + th2 * stds[x]:
+                A[y, kp] = medians[x]
+                n_speckles += 1
+                outlier.append((y, kp))           
     return dist, A, n_speckles, outlier
 
 
@@ -177,17 +137,19 @@ def picker(probas, thres=0.8):
     """
     # convertion from csr to coo:
     probas = probas.tocoo()
-
     # sanity check
     if np.any(probas.data > 1):
         raise ValueError("probas must be <= 1.0")
     if np.any(probas.data < 0):
         raise ValueError("probas must be >= 0.0")
 
-    rows_ijs = probas.row[probas.data > thres]
-    col_ijs = probas.col[probas.data > thres]
+    thres_mask = probas.data > thres
+    rows_ijs = probas.row[thres_mask]
+    col_ijs = probas.col[thres_mask]
+    del thres_mask
     raw_ijs = np.array([rows_ijs, col_ijs]).T
 
+    # sanity check
     if len(raw_ijs) > 0:
         I = max(raw_ijs[:, 0])
         J = max(raw_ijs[:, 1])
@@ -198,6 +160,7 @@ def picker(probas, thres=0.8):
         labelled_mat, num_features = measurements.label(candidate_p)
         ijs = np.zeros([num_features, 2], int)
         remove_p = np.zeros(num_features, bool)
+        # Iterate over candidate foci
         for ff in range(0, num_features):
             label_p = labelled_mat == ff + 1
             # remove the label corresponding to non-candidates
@@ -212,7 +175,6 @@ def picker(probas, thres=0.8):
 
             # conversion to lil format to have access to slicing
             probas = probas.tolil()
-
             ijmax = np.argmax(
                 (probas[label_ijs[:, 0], label_ijs[:, 1]]).toarray()
             )
@@ -335,7 +297,7 @@ def detrend(matrix, mat_idx=None):
 
     # Removal of poor interacting bins
     poor_indices = np.where(summed_columns <= threshold)
-    matscn = scn_func(matrix, threshold)
+    matscn = normalize(matrix, threshold)
     _, matscn, _, _ = despeckles(matscn, 10.0)
 
     y = distance_law(matscn)
@@ -345,29 +307,20 @@ def detrend(matrix, mat_idx=None):
     n = matrix.shape[0]
 
     # Computation of genomic distance law matrice:
-    if issparse(matrix):
-        distance_law_matrix = sparse.csr_matrix((n, n))
-        distance_law_matrix = sparse.triu(distance_law_matrix)
-    else:
-        distance_law_matrix = np.zeros((n, n))
-        distance_law_matrix = np.triu(distance_law_matrix)
+    distance_law_matrix = sparse.csr_matrix((n, n))
+    distance_law_matrix = sparse.triu(distance_law_matrix)
     for i in range(0, n):
         for j in range(i, n):
             distance_law_matrix[i, j] = y_savgol[abs(j - i)]
-    if issparse(matrix):
-        detrended = sparse.csr_matrix((n, n))
-        for i in range(0, 2):
-            for j in range(i, n):
-                val = matscn[i, j] / distance_law_matrix[i, j]
-                if val != np.nan:
-                    if val > 0:
-                        detrended[i, j] = matscn[i, j] / distance_law_matrix[i, j]
-                    else:
-                        detrended[i, j] = 1
-    else:
-        detrended = matscn / distance_law_matrix
-        detrended[np.isnan(detrended)] = 1.0
-        detrended[detrended < 0] = 1.0
+    detrended = sparse.csr_matrix((n, n))
+    for i in range(0, 2):
+        for j in range(i, n):
+            val = matscn[i, j] / distance_law_matrix[i, j]
+            if val != np.nan:
+                if val > 0:
+                    detrended[i, j] = matscn[i, j] / distance_law_matrix[i, j]
+                else:
+                    detrended[i, j] = 1
     # refilling of empty bins with 1.0 (neutral):
     detrended[poor_indices[0], :] = np.ones((len(poor_indices[0]), n))
     detrended[:, poor_indices[0]] = np.ones((n, len(poor_indices[0])))
@@ -394,22 +347,12 @@ def ztransform(matrix):
         rows and cols, respectively.
     """
 
-    if isinstance(matrix, np.ndarray):
-        mu = np.mean(matrix)
-        sd = np.std(matrix)
-        N = np.copy(matrix)
-        N = (N - mu) / sd
-
-    elif issparse(matrix):
-        data = matrix.data
-        mu = np.mean(data)
-        sd = np.std(data)
-        N = matrix.copy()
-        N.data -= mu
-        N.data /= sd
-
-    else:
-        raise ValueError("Matrix must be in sparse or dense format.")
+    data = matrix.data
+    mu = np.mean(data)
+    sd = np.std(data)
+    N = matrix.copy()
+    N.data -= mu
+    N.data /= sd
 
     return N
 
@@ -558,7 +501,8 @@ def interchrom_wrapper(matrix, chroms):
     matrices = []
     vectors = []
     mat_idx = get_detectable_bins(matrix)
-    matrix = scn_func(matrix, mat_idx)
+    matrix = normalize(matrix, mat_idx)
+    matrix = matrix.tocsr()
     for s1, e1 in chroms:
         for s2, e2 in chroms:
             sub_mat = matrix[s1:e1, s2:e2]
@@ -583,3 +527,24 @@ def interchrom_wrapper(matrix, chroms):
             vectors.append(sub_mat_idx)
 
     return matrices, vectors
+
+def sum_mat_bins(mat):
+    """
+    Compute the sum of matrices bins (i.e. rows or columns) using
+    only the upper triangle, assuming symmetrical matrices.
+
+    Parameters
+    ----------
+    mat : scipy.sparse.csr_matrix
+        Contact map in sparse format, either in upper triangle or
+        full matrix.
+    
+    Returns
+    -------
+    numpy.array :
+        1D array of bin sums.
+    """
+    # Equivalaent to row or col sum on a full matrix
+    # Note: mat.sum returns a 'matrix' object. A1 extracts the 1D flat array
+    # from the matrix
+    return mat.sum(axis=0).A1 + mat.sum(axis=1).A1 - mat.diagonal(0)
