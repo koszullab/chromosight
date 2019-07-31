@@ -6,16 +6,15 @@ Explore and detect patterns (loops, borders, centromeres, etc.) in Hi-C contact
 maps with pattern matching.
 
 Usage:
-    chromovision detect <contact_maps> [<output>] [--kernels=None] [--loops]
+    chromovision detect <contact_map> [<output>] [--kernels=None] [--loops]
                         [--borders] [--precision=4] [--iterations=auto]
-                        [--inter FILE] [--input-format csv]
+                        [--inter] [--input-format cool]
 
 Arguments:
     -h, --help                  Display this help message.
     --version                   Display the program's current version.
-    contact_maps                The Hi-C contact maps to detect patterns on, in
-                                CSV, bedgraph2d or cool format. File names must 
-                                be separated by a colon.
+    contact_map                The Hi-C contact map to detect patterns on, in
+                                bedgraph2d or cool format. 
     output                      name of the output directory
     -k None, kernels None       A custom kernel template to use, if not using
                                 one of the presets. If not supplied, the
@@ -27,15 +26,12 @@ Arguments:
                                 probability in the contact map. A lesser value
                                 leads to potentially more detections, but more
                                 false positives. [default: 4]
-    -I FILE, --inter FILE       Use if the matrix has multiple chromosomes.
-                                Each line of FILE contains the start bin of a
-                                chromosome. Only one matrix can be given when
-                                using this option.
+    -I, --inter                 Use to consider interchromosomal contacts.
     -i auto, --iterations auto  How many iterations to perform after the first
                                 template-based pass. Auto means iterations are
                                 performed until convergence. [default: auto]
-    -f csv, --input-format csv  Input format of the contact map. Can be csv, bg2
-                                or cool. [default: csv]
+    -f cool, --input-format cool Input format of the contact map. Can be csv, bg2
+                                or cool. [default: cool]
 """
 
 import numpy as np
@@ -46,6 +42,7 @@ import os
 import functools
 import docopt
 from chromovision.version import __version__
+from chromovision.contacts_map import ContactMap
 from chromovision import utils
 from chromovision import io
 
@@ -53,16 +50,13 @@ MAX_ITERATIONS = 3
 
 
 def pattern_detector(
-    matrices,
+    contact_map,
     kernel,
     pattern_type="loops",
     precision=4.0,
     area=8,
     undetermined_percentage=1.0,
-    labels=None,
-    matrix_indices=None,
     nb_patterns=[],
-    interchrom=False,
 ):
     """Pattern detector
 
@@ -71,8 +65,10 @@ def pattern_detector(
 
     Parameters
     ----------
-    matrices : array_like
-        The input matrices on which patterns are detected.
+    contact_map : ContactMap object
+        An object containing a Hi-C contact map with chromosome indices, 
+        chromosome names,  inter and intra chromosome sub-matrices and other
+        attributes.
     kernel : array_like
         The initial template for pattern matching in the first pass.
     pattern_type : str, optional
@@ -88,16 +84,6 @@ def pattern_detector(
         How much missing data is tolerated in the pattern windows. Patterns
         with a percentage area above this parameter with only missing data are
         discarded. Default is 1., i.e. one percent.
-    labels : str or list, optional
-        The names of the matrices (typically matching chromosome names). If a
-        string, it is assumed that only one matrix is supplied and that's its
-        name, otherwise there should be as many names as matrices. Default is
-        None, which assumes a simple numbering scheme.
-    matrix_indices : array_like, optional
-        A list containing a tuple of two arrays for each matrix. The two arrays
-        contain the indices of detectable rows and columns. Default is None.
-    interchrom : bool
-        Whether the matrices include interchromosomal matrices.
     Returns
     -------
     detected_pattern : list
@@ -106,16 +92,6 @@ def pattern_detector(
         The 'agglomerated' (element-wise median) matrix of all patterns
         detected this way.
     """
-
-    if isinstance(matrices, np.ndarray):
-        matrix_list = [matrices]
-    else:
-        matrix_list = matrices
-
-    if labels is None:
-        labels = range(len(matrix_list))
-    elif isinstance(labels, str):
-        labels = [labels]
 
     pattern_windows = []  # list containing all pannel of detected patterns
     pattern_sums = np.zeros(
@@ -127,7 +103,11 @@ def pattern_detector(
     detected_patterns = []
     n_patterns = 0
 
-    for matrix, name, indices in zip(matrix_list, labels, matrix_indices):
+    for matrix, name, indices in zip(
+            contact_map.sub_mats,
+            contact_map.sub_mats_labels,
+            contact_map.sub_mats_detectable_bins
+        ):
         nr = matrix.shape[0]
         nc = matrix.shape[1]
         res2 = utils.corrcoef2d(
@@ -263,13 +243,12 @@ def load_kernels(pattern):
 
 
 def explore_patterns(
-    matrices,
+    contact_map,
     pattern_type="loops",
     custom_kernels=None,
     precision=4,
     iterations="auto",
     window=4,
-    interchrom=None,
 ):
     """Explore patterns in a list of matrices
 
@@ -284,9 +263,9 @@ def explore_patterns(
 
     Parameters
     ----------
-    matrices : iterable
-        A list (or similarly iterable object) of matrices to detect patterns
-        on.
+    contact_map : ContactMap object
+        Object containing the Hi-C contact map and all intra- + inter- chromosomal
+        sub matrices as well as other attributes.
     pattern_type : file, str or pathlib.Path
         The type of pattern to detect. Must be one of 'borders', 'loops', or
         'centromeres', but partial matching is allowed. If it looks like a
@@ -302,9 +281,6 @@ def explore_patterns(
     window : int, optional
         The pattern window area. When a pattern is discovered in a previous
         pass, further detected patterns falling into that area are discarded.
-    interchrom : array_like
-        1D numpy array of ints containing the start position of each chromosome
-        if the matrix contains multiple chromosome.
 
     Returns
     -------
@@ -319,7 +295,7 @@ def explore_patterns(
     # Dispatch detectors: the border detector has specificities while the
     # loop detector is more generic, so we use the generic one by default if
     # a pattern specific detector isn't implemented.
-    my_pattern_detector = PATTERN_DISPATCHER.get(pattern_type, loop_detector)
+    custom_pattern_detector = PATTERN_DISPATCHER.get(pattern_type, loop_detector)
 
     if custom_kernels is None:
         chosen_kernels = load_kernels(pattern_type)
@@ -340,7 +316,6 @@ def explore_patterns(
     iteration_count = 0
     old_pattern_count, current_pattern_count = -1, 0
     list_current_pattern_count = []
-    inter = False
     # Depending on matrix resolution, a pattern may be smeared over several
     # pixels. This trimming function ensures that there won't be many patterns
     # clustering around one location.
@@ -352,28 +327,6 @@ def explore_patterns(
         else:
             return (chromosome, int(pos1) // window, int(pos2) // window)
 
-    # Get the matrices
-    if interchrom is not None:
-        if len(matrices) != 1:
-            print(
-                "Warning: When using --inter, you must "
-                "provide a single contact map"
-            )
-            inter = True
-        detrended_matrices, matrix_indices = utils.interchrom_wrapper(
-            matrices[0], interchrom
-        )
-    else:
-        # Get good bins (i.e. above detection threshold)
-        matrix_indices = [utils.get_detectable_bins(matrix) for matrix in matrices]
-        scn_mat = [
-            utils.scn_func(matrix, matrix_indices[i])
-            for i, matrix in enumerate(matrices)
-        ]
-        detrended_matrices = [
-            utils.detrend(matrix, idx)
-            for idx, matrix in zip(matrix_indices, scn_mat)
-        ]
 
     # Loop on the patterns to convolve the matrices
     # condition for ending the loop. Meh
@@ -393,12 +346,10 @@ def explore_patterns(
                 detected_coords,
                 agglomerated_pattern,
                 nb_patterns,
-            ) = my_pattern_detector(
-                detrended_matrices,
+            ) = custom_pattern_detector(
+                contact_map,
                 kernel,
                 precision=precision,
-                matrix_indices=matrix_indices,
-                interchrom=inter,
             )
             for new_coords in detected_coords:
                 if (
@@ -539,7 +490,8 @@ def agglomerated_plot(
 def main():
     arguments = docopt.docopt(__doc__, version=__version__)
 
-    contact_maps = arguments["<contact_maps>"].split(",")
+    # Parse command line arguments
+    map_path = arguments["<contact_map>"]
     input_format = arguments["--input-format"]
     kernels = arguments["--kernels"]
     loops = arguments["--loops"]
@@ -549,6 +501,7 @@ def main():
     iterations = arguments["--iterations"]
     output = arguments["<output>"]
     list_current_pattern_count = []
+    # If output is not specified, use current directory
     if not output:
         output = pathlib.Path()
     else:
@@ -563,6 +516,7 @@ def main():
             raise ValueError('Error! Iterations must be an integer or "auto"')
 
     patterns_to_explore = []
+    # Read which patterns should be analysed
     if loops:
         patterns_to_explore.append("loops")
     if borders:
@@ -574,40 +528,31 @@ def main():
 
     patterns_to_plot = dict()
     agglomerated_to_plot = dict()
+    # Load input file with appropriate function
     format_loader = {
-            "csv": lambda x: [np.loadtxt(x), 0],
             "bg2": io.load_bedgraph2d,
             "cool": io.load_cool
     }
-    loaded_maps, chroms = [], []
-    for contact_map in contact_maps:
-        curr_mat, curr_chr = format_loader[input_format](contact_map)
-        loaded_maps.append(curr_mat)
-        chroms.append(curr_chr)
-        
-    if input_format == 'csv' and interchrom:
-        chroms = np.loadtxt(interchrom, dtype=np.int64)
+    # Load contact map and chromosome start bins coords
+    loaded_map, chroms= format_loader[input_format](map_path)
+    contact_map = ContactMap(loaded_map, chroms)
     
-    # Getting start and end coordinates of chromosomes
-    chromend = np.append(chroms[1:], loaded_maps[0].shape[0])
-    chroms = np.vstack([chroms, chromend]).T
     for pattern in patterns_to_explore:
         (
             all_patterns,
             agglomerated_patterns,
             list_current_pattern_count,
         ) = explore_patterns(
-            loaded_maps,
+            contact_map,
             pattern,
             iterations=iterations,
             precision=precision,
             custom_kernels=kernel_list,
-            interchrom=chroms,
         )
-        if interchrom is not None:
+        if contact_map.interchrom is not None:
             # Get index of patterns in full genome matrix.
             all_patterns = (
-                utils.get_inter_idx(pattern, chroms)
+                contact_map.get_full_mat_pattern(pattern)
                 for pattern in all_patterns
             )
             # all_patterns = map(utils.get_inter_idx, all_patterns)
@@ -615,11 +560,10 @@ def main():
         agglomerated_to_plot[pattern] = agglomerated_patterns
 
     write_results(patterns_to_plot, output)
-    base_names = (
-        pathlib.Path(contact_map).name for contact_map in contact_maps
-    )
-
-    for k, matrix in enumerate(loaded_maps):
+    base_names = pathlib.Path(map_path).name
+    
+    # Iterate over each intra or inter sub-matrix
+    for k, matrix in enumerate(contact_map.sub_mats):
         if isinstance(matrix, np.ndarray):
             pattern_plot(patterns_to_plot, matrix, output=output, name=k)
     # agglomerated_to_plot = {pattern('loop' or 'border'): [[]], ...}

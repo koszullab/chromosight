@@ -63,7 +63,7 @@ def load_bedgraph2d(mat_path):
         columns={"chr2": "chr", "end2": "end"}
     )
     frags = pd.concat([fragsA, fragsB])
-    chroms = frags.groupby("chr", sort=False).apply(lambda x: max(x.end))
+    chroms = frags.groupby("chr", sort=False).apply(lambda x: np.int64(max(x.end)))
 
     # Shift by one to get starting bin, first one is zero
     chrom_start = chroms.shift(1)
@@ -129,6 +129,7 @@ def load_cool(cool_path):
     mat = c.pixels()[:]
     # Number of fragments  (bins) per chromosome
     n_frags = c.bins()[:].groupby('chrom', sort=False).count().start[:-1]
+    n_frags = n_frags.astype(np.int64)
     # Starting bin of each chromosome
     chrom_start = np.insert(np.array(n_frags), 0, 0)
     # Make a sparse (COO) matrix from the pixels table

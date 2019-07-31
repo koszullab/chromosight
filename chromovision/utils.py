@@ -8,7 +8,7 @@ loop/border data.
 """
 import sys
 import numpy as np
-from scipy.sparse import issparse, lil_matrix
+from scipy.sparse import issparse, lil_matrix, csr_matrix
 from scipy.ndimage import measurements
 from scipy.signal import savgol_filter
 import itertools
@@ -54,69 +54,80 @@ def normalize(B, good_bins=None, iterations=10):
 
 
 def distance_law(matrix):
-    """Genomic distance law
+    """
+    Computes genomic distance law by averaging over each diagonal in
+    the upper triangle matrix.
 
-    Compute genomic distance law by averaging over each diagonal.
-
-    Parameters
+    parameters
     ----------
-    matrix: array_like
-        The input matrix to compute distance law from.
+    matrix: scipy.sparse.csr_matrix
+        the input matrix to compute distance law from.
 
-    Returns
+    returns
     -------
     dist: np.ndarray
-        The output genomic distance law.
+        the output genomic distance law.
 
-    Example
+    example
     -------
-        >>> M = np.ones((3,3))
-        >>> M += np.array([1,2,3])
-        >>> M
+        >>> m = np.ones((3,3))
+        >>> m += np.array([1,2,3])
+        >>> m
         array([[2., 3., 4.],
                [2., 3., 4.],
                [2., 3., 4.]])
-        >>> distance_law(M)
-        array([3. , 2.5, 2. ])
+        >>> distance_law(csr_matrix(m))
+        array([3. , 3.5, 4. ])
 
     """
     n = matrix.shape[0]
     dist = np.zeros(n)
     for diag in range(n):
-        dist[diag] = np.mean(np.array(matrix.diagonal(-diag)))
+        dist[diag] = np.mean(np.array(matrix.diagonal(diag)))
     return dist
 
 
 def despeckles(B, th2):
+    """
+    Remove speckles (i.e. noisy outlier pixels) from a Hi-C 
+    contact map in sparse format. Speckles are set back to the
+    median value of their respective diagonals.
 
-    n_speckles = 0
-    n1 = 0
-    outlier = []
-    dist = dict()
+    Parameters
+    ----------
+
+    B : scipy.sparse.coo_matrix
+        Contact map in sparse upper triangle format.
+    th2 : np.float64
+        Threshold used for despeckling. This defines outlier pixel
+        P on diagonal D by if P > median(D) + std(D) * th2
+
+    Returns
+    -------
+
+    A : scipy.sparse.coo_matrix
+        The despeckled sparse matrix.
+    """
+    B = B.tocoo()
     A = B.copy()
     n1 = A.shape[0]
-    matrix_format = A.getformat()
-    if matrix_format not in {"csr", "csc"}:
-        A = A.tocsr()
+    # Extract all diagonals in the upper triangle
     dist = {u: A.diagonal(u) for u in range(n1)}
+    # Compute median and standard deviation for each diagonal
     medians, stds = {}, {}
     for u in dist:
         medians[u] = np.median(dist[u])
         stds[u] = np.std(dist[u])
-    for x, y in zip(B.row, B.col):
-        lp = x + y
-        kp = x - y
-        if lp < n1:
-            if A[j, lp] > medians[x] + th2 * stds[y]:
-                A[j, lp] = medians[x]
-                n_speckles += 1
-                outlier.append((y, lp))
-        if kp >= 0:
-            if A[y, kp] > medians[x] + th2 * stds[x]:
-                A[y, kp] = medians[x]
-                n_speckles += 1
-                outlier.append((y, kp))           
-    return dist, A, n_speckles, outlier
+
+    # Loop over all nonzero pixels in the COO matrix and their coordinates
+    for i, (row, col, val) in enumerate(zip(B.row, B.col, B.data)):
+        # Compute genomic distance of interactions in pixel
+        dist = abs(row - col)
+        # If pixel in input matrix is an outlier, set this pixel to median
+        # of its diagonal in output matrix
+        if val > medians[dist] + th2 * stds[dist]:
+            A.data[i] = medians[dist]
+    return A
 
 
 def picker(probas, thres=0.8):
@@ -266,17 +277,16 @@ def get_detectable_bins(matrix):
     return good_bins
 
 
-def detrend(matrix, mat_idx=None):
+def detrend(matrix, detectable_bins=None):
     """
-    Detrending a Hi-C matrix by the distance law. The matrix should have been
-    normalised using the SCN procedure beforehandand then detrended by the
-    distance law.
+    Detrends and removes speckles in a Hi-C matrix by the distance law.
+    The input matrix should have been normalised beforehandand.
 
     Parameters
     ----------
-    matrix : array_like
-        The intrachromosomal Hi-C matrix to detrend
-    mat_indices : tuple
+    matrix : scipy.sparse.csr_matrix
+        The normalised intrachromosomal Hi-C matrix to detrend.
+    detectable_bins : tuple
         Tuple containing a list of detectable rows and a list of columns on
         which to perform detrending. Poorly interacting indices have been
         excluded.
@@ -288,43 +298,26 @@ def detrend(matrix, mat_idx=None):
     tuple :
         Tuple of thresholds to define low interacting rows/columns.
     """
-    summed_columns = np.array(
-        np.array(matrix.sum(axis=0)).flatten()
-        + np.array(matrix.sum(axis=1)).flatten()
-        - matrix.diagonal()
-    )
-    threshold = np.median(summed_columns) - 2.0 * np.std(summed_columns)
+
+    bin_sums = sum_mat_bins(matrix)
+    threshold = np.median(bin_sums) - 2.0 * np.std(bin_sums)
 
     # Removal of poor interacting bins
-    poor_indices = np.where(summed_columns <= threshold)
-    matscn = normalize(matrix, threshold)
-    _, matscn, _, _ = despeckles(matscn, 10.0)
+    poor_indices = np.where(bin_sums <= threshold)
+    clean_mat = despeckles(matrix, 10.0)
+    clean_mat = clean_mat.tocsr()
 
-    y = distance_law(matscn)
+    y = distance_law(clean_mat)
     y[np.isnan(y)] = 0.0
     y_savgol = savgol_filter(y, window_length=17, polyorder=5)
 
     n = matrix.shape[0]
 
-    # Computation of genomic distance law matrice:
-    distance_law_matrix = sparse.csr_matrix((n, n))
-    distance_law_matrix = sparse.triu(distance_law_matrix)
-    for i in range(0, n):
-        for j in range(i, n):
-            distance_law_matrix[i, j] = y_savgol[abs(j - i)]
-    detrended = sparse.csr_matrix((n, n))
-    for i in range(0, 2):
-        for j in range(i, n):
-            val = matscn[i, j] / distance_law_matrix[i, j]
-            if val != np.nan:
-                if val > 0:
-                    detrended[i, j] = matscn[i, j] / distance_law_matrix[i, j]
-                else:
-                    detrended[i, j] = 1
-    # refilling of empty bins with 1.0 (neutral):
-    detrended[poor_indices[0], :] = np.ones((len(poor_indices[0]), n))
-    detrended[:, poor_indices[0]] = np.ones((n, len(poor_indices[0])))
-    return detrended, threshold
+    # Detrending by the distance law
+    clean_mat = clean_mat.tocoo()
+    clean_mat.data /= y_savgol[abs(clean_mat.row - clean_mat.col)]
+    clean_mat = clean_mat.tocsr()
+    return clean_mat
 
 
 def ztransform(matrix):
@@ -366,7 +359,7 @@ def xcorr2(
 ):
     """Signal-kernel 2D convolution
 
-    Convolution of a 2-diemensional signal (the contact map) with a kernel
+    Convolution of a 2-dimensional signal (the contact map) with a kernel
     (the pattern template).
 
     Parameters
@@ -403,25 +396,18 @@ def xcorr2(
     if max_size is None:
         max_size = max(Ms, Ns)
 
-    if not centered_p:
-        out = np.zeros((Ms - Mk + 1, Ns - Nk + 1))
-        for ki in range(Mk):
-            for kj in range(ki, max(Nk, ki + max_size)):
-                out += (
-                    kernel[ki, kj]
-                    * signal[ki : Ms - Mk + 1 + ki, kj : Ns - Nk + 1 + kj]
-                )
-    else:
-        Ki = (Mk - 1) // 2
-        Kj = (Nk - 1) // 2
-        out = lil_matrix((Ms, Ns))
-        out[Ki : Ms - (Mk - 1 - Ki), Kj : Ns - (Nk - 1 - Kj)] = 0.0
-        for ki in range(Mk):
-            for kj in range(ki, max(Nk, ki + max_size)):
-                out[Ki : Ms - (Mk - 1 - Ki), Kj : Ns - (Nk - 1 - Kj)] += (
-                    kernel[ki, kj]
-                    * signal[ki : Ms - Mk + 1 + ki, kj : Ns - Nk + 1 + kj]
-                )
+    Ki = (Mk - 1) // 2
+    Kj = (Nk - 1) // 2
+    out = lil_matrix((Ms, Ns))
+    out[Ki : Ms - (Mk - 1 - Ki), Kj : Ns - (Nk - 1 - Kj)] = 0.0
+    out = out.tocsr()
+    for ki in range(Mk):
+        for kj in range(ki, min(Nk, ki + max_size)):
+            print(ki, kj)
+            out[Ki : Ms - (Mk - 1 - Ki), Kj : Ns - (Nk - 1 - Kj)] += (
+                kernel[ki, kj]
+                * signal[ki : Ms - Mk + 1 + ki, kj : Ns - Nk + 1 + kj]
+            )
 
     return out.tocsr()
 
@@ -442,46 +428,15 @@ def corrcoef2d(signal, kernel, centered_p=True):
     return corrcoef
 
 
-def get_inter_idx(pattern, chroms):
-    """
-    Converts bin indices of a pattern from an submatrix into their value in the
-    original full-genome matrix.
-
-    Parameters
-    ----------
-    pattern : tuple
-        A pattern as given by explore_pattern (chrom, pos1, pos2, score). When
-        using interchromosomal matrices, chrom represents the order in which
-        submatrices where split.
-    label : int
-        The index of the submatrix in the list of submatrices. Depends on the
-        order in which interchrom_wrapper split them.
-    chroms : array_like
-        2D numpy array containing start and end bins of chromosomes as columns,
-        and one chromosome per row.
-    """
-
-    if pattern[1] == "NA":
-        return pattern
-
-    # Fancy trick to get chromosomes from matrix index in lower triangle of
-    # whole genome matrix
-    submat_idx = pattern[0]
-    chrA = int(np.floor(-0.5 + np.sqrt(0.25 + 2 * submat_idx)))
-    triangular_number = chrA * (chrA + 1) / 2
-    chrB = int(submat_idx - triangular_number)
-    # Get start bin for chromosomes of interest
-    startA = chroms[chrA, 0]
-    startB = chroms[chrB, 0]
-    # Shift index by start bin of chromosomes
-    inter_pattern = (0, pattern[1] + startA, pattern[2] + startB, pattern[3])
-    return inter_pattern
 
 
-def interchrom_wrapper(matrix, chroms):
+def interchrom_wrapper(matrix, chroms, interchrom=False):
     """
     Given a matrix containing multiple chromosomes, processes each
     inter- or intra-chromosomal submatrix to be chromovision-ready.
+    Given 1 matrix and N chromosomes, N matrices will be returned if
+    interchrom is False, or ((N^2)+N)/2 matrices otherwise (i.e. inter-
+    matrices in the upper triangle + intra- matrices).
 
     Parameters
     ----------
@@ -491,12 +446,18 @@ def interchrom_wrapper(matrix, chroms):
     chromstart : array_like
         A 2D numpy array containing with start and end bins of chromosomes,
         as columns and 1 chromosome per row.
+    interchrom : bool
+        Wether interchromosomal contacts should be conserved. Defaults to
+        False, discarding interchromosomal matrices.
 
     Returns
     -------
-    array_like :
-        A 2D numpy array containing the whole processed matrix. Each
-        intra- or inter-chromosomal sub-matrix is detrended or z-transformed.
+    matrices : list of numpy array
+        list of 2D numpy arrays containing intra or interchromosomal
+        matrices. Each intra- or inter-chromosomal sub-matrix is detrended
+        or z-transformed.
+    vectors : list of numpy array
+        For each matrix, a corresponding array of detectable bins indices.
     """
     matrices = []
     vectors = []
@@ -508,18 +469,16 @@ def interchrom_wrapper(matrix, chroms):
             sub_mat = matrix[s1:e1, s2:e2]
             # Get new indices of low interacting bins within sub matrix
             sub_mat_idx = (
-                mat_idx[0][(mat_idx >= s1) & (mat_idx < e1)] - s1,
-                mat_idx[1][(mat_idx >= s2) & (mat_idx < e2)] - s2,
+                mat_idx[(mat_idx >= s1) & (mat_idx < e1)] - s1,
+                mat_idx[(mat_idx >= s2) & (mat_idx < e2)] - s2,
             )
             # intrachromosomal sub matrix
             if s1 == s2:
-                detrended = detrend(sub_mat, sub_mat_idx)
-                sub_mat = detrended
-                sub_mat = ztransform(detrended)
-            # Only use lower triangle matrices
-            elif s1 > s2:
-                # sub_mat = ztransform(sub_mat)
-                pass
+                sub_mat = detrend(sub_mat, sub_mat_idx)
+                sub_mat = ztransform(sub_mat)
+            # Only use lower triangle interchromosomal matrices
+            elif s1 > s2 and interchrom:
+                sub_mat = ztransform(sub_mat)
             else:
                 continue
             # all submatrices are ztransformed to get same scale
