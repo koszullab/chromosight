@@ -321,6 +321,7 @@ def detrend(matrix, detectable_bins=None):
     miss_row_mask[detectable_bins[0]] = 0
     miss_col_mask[detectable_bins[1]] = 0
     clean_mat[np.ix_(miss_row_mask, miss_col_mask)] = 0.0
+    clean_mat.eliminate_zeros()
     return clean_mat
 
 
@@ -339,9 +340,6 @@ def ztransform(matrix):
     numpy.ndarray :
         A 2-dimensional numpy array of the z-transformed interchromosomal
         Hi-C map.
-    tuple of floats :
-        A tuple of two floats containing the threshold for low interacting
-        rows and cols, respectively.
     """
 
     data = matrix.data
@@ -432,6 +430,7 @@ def corrcoef2d(signal, kernel):
     # Compute correlation coefficient using the difference of logs
     # instead of the log of ratios since ratios of sparse matrices are
     # not possible
+    # NOT GOOD: Find another way to do sparse matrix elementwise division
     numerator = (corrcoef - mean_signal * mean_kernel).log1p()
     denominator = (std_signal * std_kernel).log1p()
     corrcoef = numerator - denominator

@@ -110,27 +110,26 @@ def pattern_detector(
         contact_map.sub_mats_labels,
         contact_map.sub_mats_detectable_bins,
     ):
-        plt.imshow(matrix.todense(), vmax = np.percentile(matrix.tocoo().data, 99)); plt.show()
         nr = matrix.shape[0]
         nc = matrix.shape[1]
         res2 = utils.corrcoef2d(matrix, kernel)  # !!  Here the pattern match  !!
         res2 = res2.tocoo()
-        plt.imshow(res2.todense(), cmap="Reds"); plt.show()
         res2.data[np.isnan(res2.data)] = 0.0
         res2.eliminate_zeros()
         n2r = res2.shape[0]
         n2c = res2.shape[1]
-        res_rescaled = sparse.csr_matrix(np.shape(matrix))
-        res_rescaled[
-            np.ix_(range(int(area), n2r + int(area)), range(int(area), n2c + int(area)))
-        ] = res2
-        VECT_VALUES = np.reshape(res_rescaled, (1, nr * nc))
-        VECT_VALUES = VECT_VALUES[0]
+        #res_rescaled = sparse.csr_matrix(np.shape(matrix))
+        res_rescaled = res2
+        #res_rescaled[
+        #    np.ix_(range(int(area), n2r + int(area)), range(int(area), n2c + int(area)))
+        #] = res2
+        #VECT_VALUES = np.reshape(res_rescaled, (1, nr * nc))
+        #VECT_VALUES = VECT_VALUES[0]
+        VECT_VALUES = res_rescaled.data
         thr = np.median(VECT_VALUES) + precision * np.std(VECT_VALUES)
-        indices_max = np.where(res_rescaled > thr)
-        indices_max = np.array(indices_max)
-        res_rescaled = np.triu(res_rescaled)
-        res_rescaled[(res_rescaled) < 0] = 0
+        a = plt.imshow(res_rescaled.todense(), cmap="Reds"); plt.show()
+        plt.colorbar(a)
+        res_rescaled.data[res_rescaled.data < 0] = 0
         pattern_peak = utils.picker(res_rescaled, thr)
         if pattern_peak != "NA":
             if pattern_type == "loops":
