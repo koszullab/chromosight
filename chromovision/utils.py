@@ -53,7 +53,7 @@ def normalize(B, good_bins=None, iterations=10):
     return r
 
 
-def distance_law(matrix):
+def distance_law(matrix, detectable_bins):
     """
     Computes genomic distance law by averaging over each diagonal in
     the upper triangle matrix.
@@ -62,8 +62,10 @@ def distance_law(matrix):
     ----------
     matrix: scipy.sparse.csr_matrix
         the input matrix to compute distance law from.
+    detectable_bins : numpy.array of ints
+        An array of detectable bins indices to consider when computing distance law.
 
-    returns
+    Returns
     -------
     dist: np.ndarray
         the output genomic distance law.
@@ -80,10 +82,10 @@ def distance_law(matrix):
         array([3. , 3.5, 4. ])
 
     """
-    n = matrix.shape[0]
+    n = min(matrix.shape)
     dist = np.zeros(n)
     for diag in range(n):
-        dist[diag] = np.mean(np.array(matrix.diagonal(diag)))
+        dist[diag] = np.mean(matrix.diagonal(diag)[detectable_bins[: n - diag]])
     return dist
 
 
@@ -295,19 +297,15 @@ def detrend(matrix, detectable_bins=None):
     -------
     numpy.ndarray :
         The detrended Hi-C matrix.
-    tuple :
-        Tuple of thresholds to define low interacting rows/columns.
     """
 
     bin_sums = sum_mat_bins(matrix)
-    threshold = np.median(bin_sums) - 2.0 * np.std(bin_sums)
 
-    # Removal of poor interacting bins
-    poor_indices = np.where(bin_sums <= threshold)
-    clean_mat = despeckles(matrix, 10.0)
+    # Removal of speckles (noisy pixels
+    clean_mat = despeckles(matrix, 4.0)
     clean_mat = clean_mat.tocsr()
 
-    y = distance_law(clean_mat)
+    y = distance_law(clean_mat, detectable_bins[0])
     y[np.isnan(y)] = 0.0
     y_savgol = savgol_filter(y, window_length=17, polyorder=5)
 
@@ -317,6 +315,12 @@ def detrend(matrix, detectable_bins=None):
     clean_mat = clean_mat.tocoo()
     clean_mat.data /= y_savgol[abs(clean_mat.row - clean_mat.col)]
     clean_mat = clean_mat.tocsr()
+    # Set values in bad bins to 0
+    miss_row_mask = np.ones(detectable_bins[0].shape, dtype=bool)
+    miss_col_mask = np.ones(detectable_bins[1].shape, dtype=bool)
+    miss_row_mask[detectable_bins[0]] = 0
+    miss_col_mask[detectable_bins[1]] = 0
+    clean_mat[np.ix_(miss_row_mask, miss_col_mask)] = 0.0
     return clean_mat
 
 
@@ -353,8 +357,7 @@ def ztransform(matrix):
 def xcorr2(
     signal,
     kernel,
-    centered_p=True,
-    max_size=None,
+    max_scan_distance=None,
     threshold=DEFAULT_PRECISION_CORR_THRESHOLD,
 ):
     """Signal-kernel 2D convolution
@@ -364,15 +367,11 @@ def xcorr2(
 
     Parameters
     ----------
-    signal: array_like
+    signal: scipy.sparse.csr_matrix
         A 2-dimensional numpy array Ms x Ns acting as the detrended Hi-C map.
     kernel: array_like
         A 2-dimensional numpy array Mk x Nk acting as the pattern template.
-    centered_p: bool, optional
-        If False, then return a matrix with shape (Ms-Mk+1) x (Ns-Nk+1),
-        otherwise return a matrix with shape Ms x Ns, with values located at
-        center of kernel. Default is True.
-    max_size : int or None, optional
+    max_scan_distance : int or None, optional
         Limits the range of computations beyond the diagonal. Default is None,
         which means no such limit is taken into account.
     threshold : float, optional
@@ -382,7 +381,7 @@ def xcorr2(
 
     Returns
     -------
-    out: numpy.ndarray
+    out: scipy.sparse.csr_matrix
         2-dimensional numpy array that's the convolution product of signal
         by kernel. The shape of out depends on cenetred_p.
     """
@@ -393,39 +392,50 @@ def xcorr2(
     if (Mk > Ms) or (Nk > Ns):
         raise ValueError("cannot have kernel bigger than signal")
 
-    if max_size is None:
-        max_size = max(Ms, Ns)
+    if max_scan_distance is None:
+        max_scan_distance = max(Ms, Ns)
 
     Ki = (Mk - 1) // 2
     Kj = (Nk - 1) // 2
     out = lil_matrix((Ms, Ns))
     out[Ki : Ms - (Mk - 1 - Ki), Kj : Ns - (Nk - 1 - Kj)] = 0.0
+    # Set a margin of kernel size below the diagonal to NA so
+    # that id does not affect correlation
+    for i in range(Mk):
+        out.setdiag(0, -i)
     out = out.tocsr()
+
     for ki in range(Mk):
-        for kj in range(ki, min(Nk, ki + max_size)):
-            print(ki, kj)
+        # Note convolution is only computed up to a distance from the diagonal
+        for kj in range(ki, min(Nk, ki + max_scan_distance)):
             out[Ki : Ms - (Mk - 1 - Ki), Kj : Ns - (Nk - 1 - Kj)] += (
                 kernel[ki, kj]
                 * signal[ki : Ms - Mk + 1 + ki, kj : Ns - Nk + 1 + kj]
             )
+    out.eliminate_zeros()
+    return out
 
-    return out.tocsr()
 
-
-def corrcoef2d(signal, kernel, centered_p=True):
+def corrcoef2d(signal, kernel):
     """Signal-kernel 2D correlation
 
     Pearson correlation coefficient between signal and sliding kernel.
     """
+    # Kernel1 allows to compute the mean
     kernel1 = np.ones(kernel.shape) / kernel.size
-    mean_signal = xcorr2(signal, kernel1, centered_p)
-    std_signal = np.sqrt(xcorr2(signal ** 2, kernel1, centered_p) - mean_signal ** 2)
+    # Returns a matrix of means
+    mean_signal = xcorr2(signal, kernel1)
+    std_signal = np.sqrt(xcorr2(signal ** 2, kernel1) - mean_signal ** 2)
     mean_kernel = np.mean(kernel)
     std_kernel = np.std(kernel)
-    corrcoef = (
-        xcorr2(signal, kernel / kernel.size, centered_p) - mean_signal * mean_kernel
-    ) / (std_signal * std_kernel)
-    return corrcoef
+    corrcoef = xcorr2(signal, kernel / kernel.size)
+    # Compute correlation coefficient using the difference of logs
+    # instead of the log of ratios since ratios of sparse matrices are
+    # not possible
+    numerator = (corrcoef - mean_signal * mean_kernel).log1p()
+    denominator = (std_signal * std_kernel).log1p()
+    corrcoef = numerator - denominator
+    return corrcoef.expm1()
 
 
 
@@ -475,7 +485,7 @@ def interchrom_wrapper(matrix, chroms, interchrom=False):
             # intrachromosomal sub matrix
             if s1 == s2:
                 sub_mat = detrend(sub_mat, sub_mat_idx)
-                sub_mat = ztransform(sub_mat)
+                #sub_mat = ztransform(sub_mat)
             # Only use lower triangle interchromosomal matrices
             elif s1 > s2 and interchrom:
                 sub_mat = ztransform(sub_mat)

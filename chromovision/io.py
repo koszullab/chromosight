@@ -95,7 +95,6 @@ def load_bedgraph2d(mat_path):
     chrom_start = np.array(chrom_start["cumsum"])
     # Only keep upper triangle
     mat = triu(mat)
-
     print("sparse matrix loaded. Sent to pattern_detector.")
     return mat, chrom_start
 
