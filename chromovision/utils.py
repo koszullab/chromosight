@@ -434,7 +434,7 @@ def corrcoef2d(signal, kernel):
     numerator = (corrcoef - mean_signal * mean_kernel).log1p()
     denominator = (std_signal * std_kernel).log1p()
     corrcoef = numerator - denominator
-    return corrcoef.expm1()
+    return corrcoef
 
 
 

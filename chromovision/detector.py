@@ -33,7 +33,7 @@ Arguments:
     -f cool, --input-format cool Input format of the contact map. Can be csv, bg2
                                 or cool. [default: cool]
 """
-
+import pdb
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
@@ -279,8 +279,12 @@ def explore_patterns(
         A dictionary in the form 'chromosome': list_of_coordinates_and_scores,
         and it is assumed that each matrix corresponds to a different
         chromosome. The chromosome string is determined by the matrix filename.
-    agglomerated_patterns : list
-        A list of agglomerated patterns after each pass.
+    kernels : dictionary of lists of arrays
+        A dictionary with one key per iteration where the values are lists of
+        agglomerated patterns after each pass used as kernels in the next one.
+        Takes the form: {1: [kernel1,...], 2: [kernel1,...], ...}
+    list_current_pattern_count : list
+        List of the number of patterns detected at each iteration.
     """
 
     # Dispatch detectors: the border detector has specificities while the
@@ -292,7 +296,6 @@ def explore_patterns(
         chosen_kernels = load_kernels(pattern_type)
     else:
         chosen_kernels = load_kernels(custom_kernels)
-
     # Init parameters for the while loop:
     #   - There's always at least one iteration (with the kernel)
     #   - Loop stops when the same number of patterns are detected after an
@@ -303,7 +306,6 @@ def explore_patterns(
 
     all_patterns = set()
     hashed_neighborhoods = set()
-    agglomerated_patterns = [list(chosen_kernels)]
     iteration_count = 0
     old_pattern_count, current_pattern_count = -1, 0
     list_current_pattern_count = []
@@ -318,39 +320,43 @@ def explore_patterns(
         else:
             return (chromosome, int(pos1) // window, int(pos2) // window)
 
-    # Loop on the patterns to convolve the matrices
-    # condition for ending the loop. Meh
-    while old_pattern_count != current_pattern_count:
-
-        if iteration_count >= MAX_ITERATIONS or (
-            iterations != "auto" and iteration_count >= iterations
-        ):
-            break
-
-        agglomerated_patterns.append([])
-        old_pattern_count = current_pattern_count
-        iteration_count += 1
-
-        for kernel in agglomerated_patterns[-2]:
-            (
-                detected_coords,
-                agglomerated_pattern,
-                nb_patterns,
-            ) = custom_pattern_detector(contact_map, kernel, precision=precision)
-            for new_coords in detected_coords:
-                if neigh_hash(new_coords, window=window) not in hashed_neighborhoods:
-                    chromosome, pos1, pos2, score = new_coords
-                    if pos1 != "NA":
-                        pos1 = int(pos1)
-                    if pos2 != "NA":
-                        pos2 = int(pos2)
-                    all_patterns.add((chromosome, pos1, pos2, score))
-                    hashed_neighborhoods.add(neigh_hash(new_coords, window=window))
-            agglomerated_patterns[-1].append(agglomerated_pattern)
-        current_pattern_count = nb_patterns
-        list_current_pattern_count.append(current_pattern_count)
-
-    return all_patterns, agglomerated_patterns, list_current_pattern_count
+    max_iter = MAX_ITERATIONS if iterations == 'auto' else iterations
+    # Original kernels are loaded from a file, but next kernel will be "learnt"
+    # from agglomerations at each iteration
+    kernels = {i: [] for i in range(1, max_iter + 1)}
+    kernels['ori'] = list(chosen_kernels)
+    # Detect patterns at each iteration:
+    # For iterations beyond the first, use agglomerated patterns 
+    # from previous iteration as kernel.
+    for i in range(1, max_iter + 1):
+        # Stop trying if fewer patterns are detected than in previous iteration
+        if old_pattern_count != current_pattern_count:
+            old_pattern_count = current_pattern_count
+            # Use 'original' kernels from files for the first iteration
+            current_kernels = kernels['ori'] if i == 1 else kernels[i-1]
+            for kernel in current_kernels:
+                (
+                    detected_coords,
+                    agglomerated_pattern,
+                    nb_patterns,
+                ) = custom_pattern_detector(contact_map, kernel, precision=precision)
+                for new_coords in detected_coords:
+                    if neigh_hash(new_coords, window=window) not in hashed_neighborhoods:
+                        chromosome, pos1, pos2, score = new_coords
+                        if pos1 != "NA":
+                            pos1 = int(pos1)
+                        if pos2 != "NA":
+                            pos2 = int(pos2)
+                        all_patterns.add((chromosome, pos1, pos2, score))
+                        hashed_neighborhoods.add(neigh_hash(new_coords, window=window))
+                # The agglomerated patterns of this iteration make up the kernel for the next one :)
+                kernels[i].append(agglomerated_pattern)
+            current_pattern_count = nb_patterns
+            list_current_pattern_count.append(current_pattern_count)
+    
+    # Remove original kernels, as we are only interested by agglomerated ones
+    del kernels['ori']
+    return all_patterns, kernels, list_current_pattern_count
 
 
 def pattern_plot(patterns, matrix, output=None, name=None):
@@ -486,12 +492,12 @@ def main():
         if iterations != "auto":
             raise ValueError('Error! Iterations must be an integer or "auto"')
 
-    patterns_to_explore = []
+    patterns_types = []
     # Read which patterns should be analysed
     if loops:
-        patterns_to_explore.append("loops")
+        patterns_types.append("loops")
     if borders:
-        patterns_to_explore.append("borders")
+        patterns_types.append("borders")
     if kernels:
         kernel_list = [k for k in kernels.split(",") if k]
     else:
@@ -504,27 +510,27 @@ def main():
     # Load contact map and chromosome start bins coords
     loaded_map, chroms = format_loader[input_format](map_path)
     contact_map = ContactMap(loaded_map, chroms)
-
-    for pattern in patterns_to_explore:
+    # Loop over types of patterns (loops, TADs, ...)
+    for pattern_type in patterns_types:
         (
             all_patterns,
             agglomerated_patterns,
             list_current_pattern_count,
         ) = explore_patterns(
             contact_map,
-            pattern,
+            pattern_type,
             iterations=iterations,
             precision=precision,
             custom_kernels=kernel_list,
         )
         if contact_map.interchrom is not None:
-            # Get index of patterns in full genome matrix.
+            # Get bin indices of patterns in full genome matrix.
             all_patterns = (
                 contact_map.get_full_mat_pattern(pattern) for pattern in all_patterns
             )
             # all_patterns = map(utils.get_inter_idx, all_patterns)
-        patterns_to_plot[pattern] = list(all_patterns)
-        agglomerated_to_plot[pattern] = agglomerated_patterns
+        patterns_to_plot[pattern_type] = list(all_patterns)
+        agglomerated_to_plot[pattern_type] = agglomerated_patterns
 
     write_results(patterns_to_plot, output)
     base_names = pathlib.Path(map_path).name
@@ -532,17 +538,22 @@ def main():
     # Iterate over each intra or inter sub-matrix
     for k, matrix in enumerate(contact_map.sub_mats):
         if isinstance(matrix, np.ndarray):
-            pattern_plot(patterns_to_plot, matrix, output=output, name=k)
-    # agglomerated_to_plot = {pattern('loop' or 'border'): [[]], ...}
-    for (pattern, agglomerated_iter_list) in agglomerated_to_plot.items():
-        # agglomerated_iter_list = [[np.array() (kernel at iteration i)]]
-        for i, agglomerated_iteration in enumerate(agglomerated_iter_list):
+            pattern_plot(
+                    patterns_to_plot,
+                    matrix,
+                    output=output,
+                    name=contact_map.sub_mat_labels[k]
+            )
+    # agglomerated_to_plot = {pattern('loop' or 'border'): {iteration: [kernel, ...], ...}}
+    for pattern_type, agglomerated_kernels in agglomerated_to_plot.items():
+        # agglomerated_kernels_iter = [kernel1 at iteration i, kernel2 at iteration i, ...]
+        for iteration, agglomerated_kernels_iter in agglomerated_kernels.items():
             # agglomerated_iteration = [np.array() (kernel at iteration i)]
-            for j, agglomerated_matrix in enumerate(agglomerated_iteration):
+            for kernel_id, agglomerated_matrix in enumerate(agglomerated_kernels_iter):
                 # agglomerated_matrix = np.array()
                 my_name = (
                     "Agglomerated {} of {} patterns iteration {} " "kernel {}"
-                ).format(pattern, list_current_pattern_count[i - 1], i, j)
+                ).format(pattern_type, list_current_pattern_count[iteration - 1], iteration, kernel_id)
                 agglomerated_plot(agglomerated_matrix, name=my_name, output=output)
     write_results(patterns_to_plot, output)
 
