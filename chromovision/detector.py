@@ -117,14 +117,8 @@ def pattern_detector(
         mat_conv = mat_conv.tocoo()
         mat_conv.data[np.isnan(mat_conv.data)] = 0
         mat_conv.eliminate_zeros()
-
-        mat_conv.data[np.isnan(mat_conv.data)] = 0
-        mat_conv.eliminate_zeros()
-        plt.imshow(mat_conv.todense())
-        plt.colorbar()
-        plt.show()
         pattern_peak = utils.picker(mat_conv, precision)
-        if pattern_peak != "NA":
+        if pattern_peak.max() == 0:
             if pattern_type == "loops":
                 # Assume all loops are not found too far-off in the matrix
                 if not contact_map.interchrom:

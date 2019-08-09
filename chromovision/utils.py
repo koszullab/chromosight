@@ -7,11 +7,7 @@ General purpose utilities related to handling Hi-C contact maps and
 loop/border data.
 """
 import numpy as np
-from scipy.sparse import (
-        issparse,
-        lil_matrix,
-        csr_matrix,
-)
+from scipy.sparse import issparse, lil_matrix, csr_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.signal import savgol_filter
 import itertools
@@ -135,7 +131,7 @@ def despeckles(B, th2):
     return A
 
 
-def picker(matrix, threshold):
+def picker(matrix, precision=2):
     """
     Given a sparse matrix and a numeric threshold, find
     all foci of continuously neighbouring pixels above
@@ -148,9 +144,10 @@ def picker(matrix, threshold):
     ----------
     matrix : scipy.sparse.coo_matrix
         The input matrix where to label foci.
-    threshold : float
-        The minimum value for pixels to be considered part
-        of a patch.
+    precision : float, optional
+        Increasing this value reduces the amount of false positive patterns. This
+        is the minimum number of standard deviations above the median of correlation
+        coefficients required to consider a pixel as candidate (i.e. in a focus).
     
     Returns
     -------
@@ -171,6 +168,7 @@ def picker(matrix, threshold):
      [1 0 2 2]
      [0 0 0 0]]
     """
+    threshold = np.median(matrix.data) + precision * np.std(matrix.data)
     candidates = matrix.copy()
     # Get matrix into binary data: candidate above threshold ?
     candidates.data[matrix.data < threshold] = 0
@@ -200,6 +198,7 @@ def picker(matrix, threshold):
         # Append False since there is no pixel after the last
         stay_foci = np.append(stay_foci, False)
         return stay_foci
+
     # Since we are using neighborhood with next nonzero pixel,
     # and nonzero pixels are sorted by rows, we need to do
     # the whole operation on the matrix and the transpose
@@ -238,12 +237,13 @@ def picker(matrix, threshold):
                     adj_to = candidate_id + 1
                 adj[adj_from, adj_to] = 1
         return adj
+
     # Add horizontal-adjacency info
     adj_mat = fill_adjacency_1d(adj_mat, stay_foci_hori)
     # Add vertical-adjacency info.
     adj_mat = fill_adjacency_1d(adj_mat, stay_foci_verti, verti=True)
     # Now label foci by finding connected components
-    n_foci, foci = connected_components(adj_mat)
+    _, foci = connected_components(adj_mat)
     # Replace nonzero values of the original matrix by their foci
     # to spare memory and update sparsity
     candidates.data = foci + 1  # We add 1 so that first spot is not 0
