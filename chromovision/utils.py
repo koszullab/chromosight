@@ -7,8 +7,12 @@ General purpose utilities related to handling Hi-C contact maps and
 loop/border data.
 """
 import numpy as np
-from scipy.sparse import issparse, lil_matrix, csr_matrix
-from scipy.ndimage import measurements
+from scipy.sparse import (
+        issparse,
+        lil_matrix,
+        csr_matrix,
+)
+from scipy.sparse.csgraph import connected_components
 from scipy.signal import savgol_filter
 import itertools
 
@@ -131,129 +135,120 @@ def despeckles(B, th2):
     return A
 
 
-def picker(mat_conv, precision=None):
-    """Pick pixels out of a convolution map
-    Given a correlation heat map, pick (i, j) of local maxima
-    Parameters
-    ----------
-    mat_conv : scipy.sparse.coo_matrix
-        In any sparse formats: it is converted in coo 
-        A float array assigning a correlation to each pixel (i,j)
-        with the input kernel (e.g. loops).
-    precision : float, optional
-        Increasing this value reduces the amount of false positive patterns. This
-        is the minimum number of standard deviations above the median of correlation
-        coefficients required to consider a pixel as candidate.
-    Returns
-    -------
-    ijs : numpy.array of ints
-        2D array of coordinates for identified patterns.
+def picker(matrix, threshold):
     """
-
-    thres = np.median(mat_conv.data) + precision * np.std(mat_conv.data)
-
-    # This mask stores candidate pixels (better than threshold)
-    thres_mask = mat_conv.data > thres
-    rows_ijs = mat_conv.row[thres_mask]
-    col_ijs = mat_conv.col[thres_mask]
-    del thres_mask
-    candidate_coords = np.array([rows_ijs, col_ijs]).T
-
-    # Check if at least one candidate pixel was found
-    if candidate_coords.shape[0] > 0:
-        I = max(candidate_coords[:, 0])
-        J = max(candidate_coords[:, 1])
-        # Generate matrix with
-        candidate_p = np.zeros((I + 1, J + 1), bool)
-        candidate_p[
-            candidate_coords[:, 0], candidate_coords[:, 1]
-        ] = True  #  heat map with foci of high proba
-        labelled_mat, num_foci = measurements.label(candidate_p)
-        from matplotlib import pyplot as plt
-
-        plt.imshow(labelled_mat)
-        plt.colorbar()
-        plt.show()
-        foci_coords = np.zeros([num_foci, 2], int)
-        remove_p = np.zeros(num_foci, bool)
-        # Iterate over candidate foci
-        for ff in range(0, num_foci):
-            label_p = labelled_mat == ff + 1
-            # remove the label corresponding to non-candidates
-            if candidate_p[label_p].sum() == 0:
-                remove_p[ff] = True
-                continue
-            # remove single points
-            if label_p.sum() == 1:
-                remove_p[ff] = True
-                continue
-            label_ijs = np.array(np.where(label_p)).T
-
-            # conversion to lil format to have access to slicing
-            mat_conv = mat_conv.tolil()
-            ijmax = np.argmax((mat_conv[label_ijs[:, 0], label_ijs[:, 1]]).toarray())
-            foci_coords[ff, 0] = label_ijs[ijmax, 0]
-            foci_coords[ff, 1] = label_ijs[ijmax, 1]
-        foci_coords = foci_coords[~remove_p, :]
-    else:
-        foci_coords = "NA"
-    return foci_coords
-
-
-def picker_dense(mat_conv, thres=0.8):
-    """Pick pixels out of a probability map
-
-    Given a probability heat map, pick (i, j) of local maxima
+    Given a sparse matrix and a numeric threshold, find
+    all foci of continuously neighbouring pixels above
+    this threshold and assign them a label according to
+    their focus. Only horizontal and vertical neighbourhood
+    is considered and foci made up of a single pixel are
+    discarded.
 
     Parameters
     ----------
-    mat_conv : array_like
-        A float array assigning a probability to each pixel (i,j)
-        of being a loop.
-    thres : float, optional
-        Pixels having a probability higher than thres are potentially
-        loops. Default is 0.8.
-
+    matrix : scipy.sparse.coo_matrix
+        The input matrix where to label foci.
+    threshold : float
+        The minimum value for pixels to be considered part
+        of a patch.
+    
     Returns
     -------
-    ijs : array_like
-        Coordinates of identified loops.
+    scipy.sparse.coo_matrix:
+        The matrix of foci, where pixels are given a
+        numeric value denoting their respective foci.
+    
+    Example
+    -------
+    >>>M.todense()
+    [[3 0 1 4]
+     [5 1 5 0]
+     [4 0 5 3]
+     [0 0 1 0]]
+    >>>label_foci(M, 2).todense()
+    [[1 0 0 0]
+     [1 0 2 0]
+     [1 0 2 2]
+     [0 0 0 0]]
     """
-    # sanity check
-    if np.any(mat_conv > 1):
-        raise ValueError("mat_conv must be <= 1.0")
-    if np.any(mat_conv < 0):
-        raise ValueError("mat_conv must be >= 0.0")
+    candidates = matrix.copy()
+    # Get matrix into binary data: candidate above threshold ?
+    candidates.data[matrix.data < threshold] = 0
+    candidates.eliminate_zeros()
+    n_candidates = candidates.data.shape[0]
 
-    raw_ijs = np.array(np.where(mat_conv > thres)).T
-    if len(raw_ijs) > 0:
-        I = max(raw_ijs[:, 0])
-        J = max(raw_ijs[:, 1])
-        candidate_p = np.zeros((I + 1, J + 1), bool)
-        candidate_p[
-            raw_ijs[:, 0], raw_ijs[:, 1]
-        ] = True  # heat map with foci of high proba
-        labelled_mat, num_features = measurements.label(candidate_p)
-        ijs = np.zeros([num_features, 2], int)
-        remove_p = np.zeros(num_features, bool)
-        for ff in range(0, num_features):
-            label_p = labelled_mat == ff + 1
-            # remove the label corresponding to non-candidates
-            if candidate_p[label_p].sum() == 0:
-                remove_p[ff] = True
-                continue
-            # remove single points
-            if label_p.sum() == 1:
-                remove_p[ff] = True
-                continue
-            label_ijs = np.array(np.where(label_p)).T
-            ijmax = np.argmax(mat_conv[label_ijs[:, 0], label_ijs[:, 1]])
-            ijs[ff, 0] = label_ijs[ijmax, 0]
-            ijs[ff, 1] = label_ijs[ijmax, 1]
-        ijs = ijs[~remove_p, :]
-    else:
-        ijs = "NA"
-    return ijs
+    def get_1d_foci_transition(m):
+        """
+        Get a boolean array indicating if the next neighbour of
+        each nonzero pixel will be in the same focus.
+        """
+        # Compute row and col index shifts between candidate pixels.
+        # absolute value is used; left/right or up/down does not matter
+        row_shift = np.abs(np.diff(m.row))
+        col_shift = np.abs(np.diff(m.col))
+        # Transform shifts to binary data: shifted by more than 1
+        # from previous nonzero pixel ? Invert so that True means we
+        # stay in the same focus.
+        row_shift[row_shift < 2] = 0
+        stay_foci_row = np.invert(row_shift.astype(bool))
+        col_shift[col_shift < 2] = 0
+        stay_foci_col = np.invert(col_shift.astype(bool))
+        # Bitwise AND between row and col "stay arrays" to get
+        # indices where neither the rows nor cols shift by more than 1
+        # True at index i means: pixel i+1 in same focus as pixel i.
+        stay_foci = np.bitwise_and(stay_foci_row, stay_foci_col)
+        # Append False since there is no pixel after the last
+        stay_foci = np.append(stay_foci, False)
+        return stay_foci
+    # Since we are using neighborhood with next nonzero pixel,
+    # and nonzero pixels are sorted by rows, we need to do
+    # the whole operation on the matrix and the transpose
+    # (nonzero pixels sorted by columns). This will give both
+    # the horizontal and vertical neighbourhood informations.
+    stay_foci_hori = get_1d_foci_transition(candidates)
+    stay_foci_verti = get_1d_foci_transition(candidates.T.tocsr().tocoo())
+    # Candidates are sorted by rows in stay_foci_hori, but by col in
+    # stay_foci_verti. We need to reorder stay_foci_verti to have them
+    # in same order.
+    ori_ids = candidates.copy()
+    # store candidate ids in data
+    ori_ids.data = np.array(range(len(ori_ids.row)), dtype=np.int)
+    trans_ids = ori_ids.T  # Transposed matrix: candidates now sorted by column
+    # Order is only updated if we convert types
+    trans_ids = trans_ids.tocsr().tocoo()
+    # Data can now be used as a transposed to original candidate id converter
+    # e.g. if trans_idx.data[2] = 1, that  means the third (2) nonzero
+    # value in transpose was the second (1) in original matrix
+    # stay_foci_verti = stay_foci_verti[trans_ids.data]
+    # Initialize adjacency matrix between candidate pixels
+    adj_mat = csr_matrix((n_candidates, n_candidates))
+    # Fill adjacency matrix using a stay_foci array
+
+    def fill_adjacency_1d(adj, stay_foci, verti=False):
+        """Fills adjacency matrix for all neighborhoods on 1 dimension"""
+        for candidate_id, next_candidate_in_focus in enumerate(stay_foci):
+            # If the next candidate will also be in focus, add fill connection
+            # between current and next candidate in adjacency matrix
+            if next_candidate_in_focus:
+                if verti:
+                    adj_from = trans_ids.data[candidate_id]
+                    adj_to = trans_ids.data[candidate_id + 1]
+                else:
+                    adj_from = candidate_id
+                    adj_to = candidate_id + 1
+                adj[adj_from, adj_to] = 1
+        return adj
+    # Add horizontal-adjacency info
+    adj_mat = fill_adjacency_1d(adj_mat, stay_foci_hori)
+    # Add vertical-adjacency info.
+    adj_mat = fill_adjacency_1d(adj_mat, stay_foci_verti, verti=True)
+    # Now label foci by finding connected components
+    n_foci, foci = connected_components(adj_mat)
+    # Replace nonzero values of the original matrix by their foci
+    # to spare memory and update sparsity
+    candidates.data = foci + 1  # We add 1 so that first spot is not 0
+    candidates.eliminate_zeros()
+    return candidates
 
 
 def get_detectable_bins(matrix):
