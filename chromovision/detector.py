@@ -112,29 +112,22 @@ def pattern_detector(
     ):
         nr = matrix.shape[0]
         nc = matrix.shape[1]
-        res2 = utils.corrcoef2d(matrix, kernel)  # !!  Here the pattern match  !!
-        res2 = res2.tocoo()
-        res2.data[np.isnan(res2.data)] = 0.0
-        res2.eliminate_zeros()
-        n2r = res2.shape[0]
-        n2c = res2.shape[1]
-        #res_rescaled = sparse.csr_matrix(np.shape(matrix))
-        res_rescaled = res2
-        #res_rescaled[
-        #    np.ix_(range(int(area), n2r + int(area)), range(int(area), n2c + int(area)))
-        #] = res2
-        #VECT_VALUES = np.reshape(res_rescaled, (1, nr * nc))
-        #VECT_VALUES = VECT_VALUES[0]
-        VECT_VALUES = res_rescaled.data
-        thr = np.median(VECT_VALUES) + precision * np.std(VECT_VALUES)
-        a = plt.imshow(res_rescaled.todense(), cmap="Reds"); plt.show()
-        plt.colorbar(a)
-        res_rescaled.data[res_rescaled.data < 0] = 0
-        pattern_peak = utils.picker(res_rescaled, thr)
+        # Pattern matching operated here
+        mat_conv = utils.corrcoef2d(matrix, kernel)
+        mat_conv = mat_conv.tocoo()
+        mat_conv.data[np.isnan(mat_conv.data)] = 0
+        mat_conv.eliminate_zeros()
+
+        mat_conv.data[np.isnan(mat_conv.data)] = 0
+        mat_conv.eliminate_zeros()
+        plt.imshow(mat_conv.todense())
+        plt.colorbar()
+        plt.show()
+        pattern_peak = utils.picker(mat_conv, precision)
         if pattern_peak != "NA":
             if pattern_type == "loops":
                 # Assume all loops are not found too far-off in the matrix
-                if not interchrom:
+                if not contact_map.interchrom:
                     # NOTE: "Too far off" will depend on bin size here.
                     mask = np.array(abs(pattern_peak[:, 0] - pattern_peak[:, 1])) < 5000
                     pattern_peak = pattern_peak[mask, :]
@@ -159,21 +152,22 @@ def pattern_detector(
                         and p2 - area >= 0
                         and p2 + area + 1 < nc
                     ):
-                        window = matrix[
+                        pattern_window = matrix[
                             np.ix_(
                                 range(p1 - area, p1 + area + 1),
                                 range(p2 - area, p2 + area + 1),
                             )
                         ]
+                        # The pattern should not be too close to an undetectable bin
                         if (
-                            len(window[window == 1.0])
+                            len(pattern_window[pattern_window == 1.0])
                             < ((area * 2 + 1) ** 2) * undetermined_percentage / 100.0
-                        ):  # there should not be many indetermined bins
+                        ):
                             n_patterns += 1
                             score = res_rescaled[l[0], l[1]]
                             detected_patterns.append((name, l[0], l[1], score))
-                            pattern_sums += window
-                            pattern_windows.append(window)
+                            pattern_sums += pattern_window
+                            pattern_windows.append(pattern_window)
                         else:
                             detected_patterns.append((name, "NA", "NA", "NA"))
         else:
@@ -306,7 +300,6 @@ def explore_patterns(
 
     all_patterns = set()
     hashed_neighborhoods = set()
-    iteration_count = 0
     old_pattern_count, current_pattern_count = -1, 0
     list_current_pattern_count = []
     # Depending on matrix resolution, a pattern may be smeared over several
@@ -320,20 +313,20 @@ def explore_patterns(
         else:
             return (chromosome, int(pos1) // window, int(pos2) // window)
 
-    max_iter = MAX_ITERATIONS if iterations == 'auto' else iterations
+    max_iter = MAX_ITERATIONS if iterations == "auto" else iterations
     # Original kernels are loaded from a file, but next kernel will be "learnt"
     # from agglomerations at each iteration
     kernels = {i: [] for i in range(1, max_iter + 1)}
-    kernels['ori'] = list(chosen_kernels)
+    kernels["ori"] = list(chosen_kernels)
     # Detect patterns at each iteration:
-    # For iterations beyond the first, use agglomerated patterns 
+    # For iterations beyond the first, use agglomerated patterns
     # from previous iteration as kernel.
     for i in range(1, max_iter + 1):
         # Stop trying if fewer patterns are detected than in previous iteration
         if old_pattern_count != current_pattern_count:
             old_pattern_count = current_pattern_count
             # Use 'original' kernels from files for the first iteration
-            current_kernels = kernels['ori'] if i == 1 else kernels[i-1]
+            current_kernels = kernels["ori"] if i == 1 else kernels[i - 1]
             for kernel in current_kernels:
                 (
                     detected_coords,
@@ -341,7 +334,10 @@ def explore_patterns(
                     nb_patterns,
                 ) = custom_pattern_detector(contact_map, kernel, precision=precision)
                 for new_coords in detected_coords:
-                    if neigh_hash(new_coords, window=window) not in hashed_neighborhoods:
+                    if (
+                        neigh_hash(new_coords, window=window)
+                        not in hashed_neighborhoods
+                    ):
                         chromosome, pos1, pos2, score = new_coords
                         if pos1 != "NA":
                             pos1 = int(pos1)
@@ -353,9 +349,9 @@ def explore_patterns(
                 kernels[i].append(agglomerated_pattern)
             current_pattern_count = nb_patterns
             list_current_pattern_count.append(current_pattern_count)
-    
+
     # Remove original kernels, as we are only interested by agglomerated ones
-    del kernels['ori']
+    del kernels["ori"]
     return all_patterns, kernels, list_current_pattern_count
 
 
@@ -373,7 +369,7 @@ def pattern_plot(patterns, matrix, output=None, name=None):
         output = pathlib.Path(output)
 
     detectable = utils.get_detectable_bins(matrix)
-    matscn = utils.scn_func(matrix, detectable)
+    matscn = utils.normalize(matrix, detectable_bins=detectable)
     try:
         plt.imshow(matscn.toarray() ** 0.15, interpolation="none", cmap="afmhot_r")
     except AttributeError:
@@ -510,6 +506,7 @@ def main():
     # Load contact map and chromosome start bins coords
     loaded_map, chroms = format_loader[input_format](map_path)
     contact_map = ContactMap(loaded_map, chroms)
+
     # Loop over types of patterns (loops, TADs, ...)
     for pattern_type in patterns_types:
         (
@@ -533,16 +530,16 @@ def main():
         agglomerated_to_plot[pattern_type] = agglomerated_patterns
 
     write_results(patterns_to_plot, output)
-    base_names = pathlib.Path(map_path).name
+    # base_names = pathlib.Path(map_path).name
 
     # Iterate over each intra or inter sub-matrix
     for k, matrix in enumerate(contact_map.sub_mats):
         if isinstance(matrix, np.ndarray):
             pattern_plot(
-                    patterns_to_plot,
-                    matrix,
-                    output=output,
-                    name=contact_map.sub_mat_labels[k]
+                patterns_to_plot,
+                matrix,
+                output=output,
+                name=contact_map.sub_mat_labels[k],
             )
     # agglomerated_to_plot = {pattern('loop' or 'border'): {iteration: [kernel, ...], ...}}
     for pattern_type, agglomerated_kernels in agglomerated_to_plot.items():
@@ -553,7 +550,12 @@ def main():
                 # agglomerated_matrix = np.array()
                 my_name = (
                     "Agglomerated {} of {} patterns iteration {} " "kernel {}"
-                ).format(pattern_type, list_current_pattern_count[iteration - 1], iteration, kernel_id)
+                ).format(
+                    pattern_type,
+                    list_current_pattern_count[iteration - 1],
+                    iteration,
+                    kernel_id,
+                )
                 agglomerated_plot(agglomerated_matrix, name=my_name, output=output)
     write_results(patterns_to_plot, output)
 

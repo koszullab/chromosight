@@ -6,7 +6,6 @@
 General purpose utilities related to handling Hi-C contact maps and
 loop/border data.
 """
-import sys
 import numpy as np
 from scipy.sparse import issparse, lil_matrix, csr_matrix
 from scipy.ndimage import measurements
@@ -132,49 +131,53 @@ def despeckles(B, th2):
     return A
 
 
-def picker(probas, thres=0.8):
-    """Pick pixels out of a probability map
-    Given a probability heat map, pick (i, j) of local maxima
+def picker(mat_conv, precision=None):
+    """Pick pixels out of a convolution map
+    Given a correlation heat map, pick (i, j) of local maxima
     Parameters
     ----------
-    probas : array_like in any sparse formats: it is converted in coo 
-        A float array assigning a probability to each pixel (i,j)
-        of being a loop.
-    thres : float, optional
-        Pixels having a probability higher than thres are potentially
-        loops. Default is 0.8.
+    mat_conv : scipy.sparse.coo_matrix
+        In any sparse formats: it is converted in coo 
+        A float array assigning a correlation to each pixel (i,j)
+        with the input kernel (e.g. loops).
+    precision : float, optional
+        Increasing this value reduces the amount of false positive patterns. This
+        is the minimum number of standard deviations above the median of correlation
+        coefficients required to consider a pixel as candidate.
     Returns
     -------
-    ijs : array_like
-        Coordinates of identified loops.
+    ijs : numpy.array of ints
+        2D array of coordinates for identified patterns.
     """
-    # convertion from csr to coo:
-    probas = probas.tocoo()
-    # sanity check
-    if np.any(probas.data > 1):
-        raise ValueError("probas must be <= 1.0")
-    if np.any(probas.data < 0):
-        raise ValueError("probas must be >= 0.0")
 
-    thres_mask = probas.data > thres
-    rows_ijs = probas.row[thres_mask]
-    col_ijs = probas.col[thres_mask]
+    thres = np.median(mat_conv.data) + precision * np.std(mat_conv.data)
+
+    # This mask stores candidate pixels (better than threshold)
+    thres_mask = mat_conv.data > thres
+    rows_ijs = mat_conv.row[thres_mask]
+    col_ijs = mat_conv.col[thres_mask]
     del thres_mask
-    raw_ijs = np.array([rows_ijs, col_ijs]).T
+    candidate_coords = np.array([rows_ijs, col_ijs]).T
 
-    # sanity check
-    if len(raw_ijs) > 0:
-        I = max(raw_ijs[:, 0])
-        J = max(raw_ijs[:, 1])
+    # Check if at least one candidate pixel was found
+    if candidate_coords.shape[0] > 0:
+        I = max(candidate_coords[:, 0])
+        J = max(candidate_coords[:, 1])
+        # Generate matrix with
         candidate_p = np.zeros((I + 1, J + 1), bool)
         candidate_p[
-            raw_ijs[:, 0], raw_ijs[:, 1]
+            candidate_coords[:, 0], candidate_coords[:, 1]
         ] = True  #  heat map with foci of high proba
-        labelled_mat, num_features = measurements.label(candidate_p)
-        ijs = np.zeros([num_features, 2], int)
-        remove_p = np.zeros(num_features, bool)
+        labelled_mat, num_foci = measurements.label(candidate_p)
+        from matplotlib import pyplot as plt
+
+        plt.imshow(labelled_mat)
+        plt.colorbar()
+        plt.show()
+        foci_coords = np.zeros([num_foci, 2], int)
+        remove_p = np.zeros(num_foci, bool)
         # Iterate over candidate foci
-        for ff in range(0, num_features):
+        for ff in range(0, num_foci):
             label_p = labelled_mat == ff + 1
             # remove the label corresponding to non-candidates
             if candidate_p[label_p].sum() == 0:
@@ -187,26 +190,24 @@ def picker(probas, thres=0.8):
             label_ijs = np.array(np.where(label_p)).T
 
             # conversion to lil format to have access to slicing
-            probas = probas.tolil()
-            ijmax = np.argmax(
-                (probas[label_ijs[:, 0], label_ijs[:, 1]]).toarray()
-            )
-            ijs[ff, 0] = label_ijs[ijmax, 0]
-            ijs[ff, 1] = label_ijs[ijmax, 1]
-        ijs = ijs[~remove_p, :]
+            mat_conv = mat_conv.tolil()
+            ijmax = np.argmax((mat_conv[label_ijs[:, 0], label_ijs[:, 1]]).toarray())
+            foci_coords[ff, 0] = label_ijs[ijmax, 0]
+            foci_coords[ff, 1] = label_ijs[ijmax, 1]
+        foci_coords = foci_coords[~remove_p, :]
     else:
-        ijs = "NA"
-    return ijs
+        foci_coords = "NA"
+    return foci_coords
 
 
-def picker_dense(probas, thres=0.8):
+def picker_dense(mat_conv, thres=0.8):
     """Pick pixels out of a probability map
 
     Given a probability heat map, pick (i, j) of local maxima
 
     Parameters
     ----------
-    probas : array_like
+    mat_conv : array_like
         A float array assigning a probability to each pixel (i,j)
         of being a loop.
     thres : float, optional
@@ -219,12 +220,12 @@ def picker_dense(probas, thres=0.8):
         Coordinates of identified loops.
     """
     # sanity check
-    if np.any(probas > 1):
-        raise ValueError("probas must be <= 1.0")
-    if np.any(probas < 0):
-        raise ValueError("probas must be >= 0.0")
+    if np.any(mat_conv > 1):
+        raise ValueError("mat_conv must be <= 1.0")
+    if np.any(mat_conv < 0):
+        raise ValueError("mat_conv must be >= 0.0")
 
-    raw_ijs = np.array(np.where(probas > thres)).T
+    raw_ijs = np.array(np.where(mat_conv > thres)).T
     if len(raw_ijs) > 0:
         I = max(raw_ijs[:, 0])
         J = max(raw_ijs[:, 1])
@@ -246,7 +247,7 @@ def picker_dense(probas, thres=0.8):
                 remove_p[ff] = True
                 continue
             label_ijs = np.array(np.where(label_p)).T
-            ijmax = np.argmax(probas[label_ijs[:, 0], label_ijs[:, 1]])
+            ijmax = np.argmax(mat_conv[label_ijs[:, 0], label_ijs[:, 1]])
             ijs[ff, 0] = label_ijs[ijmax, 0]
             ijs[ff, 1] = label_ijs[ijmax, 1]
         ijs = ijs[~remove_p, :]
@@ -299,8 +300,6 @@ def detrend(matrix, detectable_bins=None):
         The detrended Hi-C matrix.
     """
 
-    bin_sums = sum_mat_bins(matrix)
-
     # Removal of speckles (noisy pixels
     clean_mat = despeckles(matrix, 4.0)
     clean_mat = clean_mat.tocsr()
@@ -308,8 +307,6 @@ def detrend(matrix, detectable_bins=None):
     y = distance_law(clean_mat, detectable_bins[0])
     y[np.isnan(y)] = 0.0
     y_savgol = savgol_filter(y, window_length=17, polyorder=5)
-
-    n = matrix.shape[0]
 
     # Detrending by the distance law
     clean_mat = clean_mat.tocoo()
@@ -353,10 +350,7 @@ def ztransform(matrix):
 
 
 def xcorr2(
-    signal,
-    kernel,
-    max_scan_distance=None,
-    threshold=DEFAULT_PRECISION_CORR_THRESHOLD,
+    signal, kernel, max_scan_distance=None, threshold=DEFAULT_PRECISION_CORR_THRESHOLD
 ):
     """Signal-kernel 2D convolution
 
@@ -407,8 +401,7 @@ def xcorr2(
         # Note convolution is only computed up to a distance from the diagonal
         for kj in range(ki, min(Nk, ki + max_scan_distance)):
             out[Ki : Ms - (Mk - 1 - Ki), Kj : Ns - (Nk - 1 - Kj)] += (
-                kernel[ki, kj]
-                * signal[ki : Ms - Mk + 1 + ki, kj : Ns - Nk + 1 + kj]
+                kernel[ki, kj] * signal[ki : Ms - Mk + 1 + ki, kj : Ns - Nk + 1 + kj]
             )
     out.eliminate_zeros()
     return out
@@ -427,16 +420,18 @@ def corrcoef2d(signal, kernel):
     mean_kernel = np.mean(kernel)
     std_kernel = np.std(kernel)
     corrcoef = xcorr2(signal, kernel / kernel.size)
-    # Compute correlation coefficient using the difference of logs
-    # instead of the log of ratios since ratios of sparse matrices are
-    # not possible
-    # NOT GOOD: Find another way to do sparse matrix elementwise division
-    numerator = (corrcoef - mean_signal * mean_kernel).log1p()
-    denominator = (std_signal * std_kernel).log1p()
-    corrcoef = numerator - denominator
+    # Since elementwise sparse matrices division is not implemented, compute
+    # numerator and denominator and perform division on the 1D array of nonzero
+    # values.
+    numerator = corrcoef - mean_signal * mean_kernel
+    denominator = std_signal * std_kernel
+    corrcoef = numerator.copy()
+    # Get coords of non-zero (nz) values in the numerator
+    nz_vals = corrcoef.nonzero()
+    # Divide them by corresponding entries in the numerator
+    denominator = denominator.tocsr()
+    corrcoef.data /= denominator[nz_vals].A1
     return corrcoef
-
-
 
 
 def interchrom_wrapper(matrix, chroms, interchrom=False):
@@ -484,7 +479,7 @@ def interchrom_wrapper(matrix, chroms, interchrom=False):
             # intrachromosomal sub matrix
             if s1 == s2:
                 sub_mat = detrend(sub_mat, sub_mat_idx)
-                #sub_mat = ztransform(sub_mat)
+                # sub_mat = ztransform(sub_mat)
             # Only use lower triangle interchromosomal matrices
             elif s1 > s2 and interchrom:
                 sub_mat = ztransform(sub_mat)
@@ -495,6 +490,7 @@ def interchrom_wrapper(matrix, chroms, interchrom=False):
             vectors.append(sub_mat_idx)
 
     return matrices, vectors
+
 
 def sum_mat_bins(mat):
     """

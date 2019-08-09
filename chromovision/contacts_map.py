@@ -2,6 +2,7 @@
 import chromovision.utils as utils
 import numpy as np
 
+
 class ContactMap(object):
 
     """
@@ -50,16 +51,16 @@ class ContactMap(object):
         self.mat = mat
         self.interchrom = interchrom
         # Getting start and end coordinates of chromosomes
+        # into a 2D array
         chromend = np.append(chroms[1:], mat.shape[0])
-        # 
         self.chroms = np.vstack([chroms, chromend]).T
+        # Splitting whole genome matrix into chromosome sub matrices
         self.sub_mats, self.sub_mats_detectable_bins = utils.interchrom_wrapper(
-                mat,
-                self.chroms,
-                interchrom
+            mat, self.chroms, interchrom
         )
+        # TODO: Allow to read labels from file, for now we just use numbers
         self.sub_mats_labels = list(range(len(self.sub_mats)))
-    
+
     def get_intra_sub_mats(self):
         """
         Retrieves indices for intrachromosomal contact maps. This is done by
@@ -70,7 +71,7 @@ class ContactMap(object):
         n_chr = self.chroms.shape[0]
         if self.interchrom:
             return self.sub_mats
-        return [self.sub_mats[n_chr * i - (i**2 - i) / 2] for i in range(n_chr)]
+        return [self.sub_mats[n_chr * i - (i ** 2 - i) / 2] for i in range(n_chr)]
 
     def get_inter_sub_mats(self):
         """Retrieves interchromosomal sub matrices"""
@@ -78,7 +79,7 @@ class ContactMap(object):
             n_chr = len(self.chroms.shape[0])
             # Retrieve all matrices except those on the diagonal of the
             # full upper triangle matrix.
-            intra_mat_idx = [n_chr * i - (i**2 - i) / 2 for i in range(n_chr)]
+            intra_mat_idx = [n_chr * i - (i ** 2 - i) / 2 for i in range(n_chr)]
             return [self.sub_mats[i] for i in range(n_chr) if i not in intra_mat_idx]
         return None
 
