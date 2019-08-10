@@ -123,8 +123,6 @@ def load_cool(cool_path):
         raise
 
     c = cooler.Cooler(cool_path)  #pylint: disable=undefined-variable
-    frags = c.bins()[:]
-    chroms = c.chroms()[:]
     mat = c.pixels()[:]
     # Number of fragments  (bins) per chromosome
     n_frags = c.bins()[:].groupby('chrom', sort=False).count().start[:-1]

@@ -7,10 +7,9 @@ General purpose utilities related to handling Hi-C contact maps and
 loop/border data.
 """
 import numpy as np
-from scipy.sparse import issparse, lil_matrix, csr_matrix
+from scipy.sparse import lil_matrix, csr_matrix, coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.signal import savgol_filter
-import itertools
 
 DEFAULT_PRECISION_CORR_THRESHOLD = 1e-4
 
@@ -131,49 +130,95 @@ def despeckles(B, th2):
     return A
 
 
-def picker(matrix, precision=2):
+def picker(mat_conv, precision=None):
+    """Pick pixels out of a convolution map
+    Given a correlation heat map, pick (i, j) of local maxima
+    Parameters
+    ----------
+    mat_conv : scipy.sparse.coo_matrix
+        A float array assigning a correlation to each pixel (i,j)
+        with the input kernel (e.g. loops).
+    precision : float, optional
+        Increasing this value reduces the amount of false positive patterns.
+        This is the minimum number of standard deviations above the median of
+        correlation coefficients required to consider a pixel as candidate.
+    Returns
+    -------
+    ijs : numpy.array of ints
+        2D array of coordinates for identified patterns.
     """
-    Given a sparse matrix and a numeric threshold, find
-    all foci of continuously neighbouring pixels above
-    this threshold and assign them a label according to
-    their focus. Only horizontal and vertical neighbourhood
-    is considered and foci made up of a single pixel are
-    discarded.
+    candidate_mat = mat_conv.copy()
+    candidate_mat = candidate_mat.tocoo()
+    # Compute a threshold from precision arg and set all pixels below to 0
+    thres = np.median(mat_conv.data) + precision * np.std(mat_conv.data)
+    candidate_mat.data[candidate_mat.data < thres] = 0
+    candidate_mat.data[candidate_mat.data != 0] = 1
+    candidate_mat.eliminate_zeros()
+    # Check if at least one candidate pixel was found
+    if len(candidate_mat.data) > 0:
+        num_foci, labelled_mat = label_connected_pixels_sparse(candidate_mat)
+        # Will hold the coordinates of the best pixel for each focus
+        foci_coords = np.zeros([num_foci, 2], int)
+        # Iterate over candidate foci
+        # NOTE: There can be jumps between foci id due to post labelling
+        # removal of single pixel foci in label_connnected_pixels_sparse.
+        # This is why we use focus_rank
+        for focus_rank, focus_id in enumerate(np.unique(labelled_mat.data)):
+            # Remember 1D indices of datapoint in focus
+            focus_idx = np.where(labelled_mat.data == focus_id)[0]
+            # Find index of max value within those indices
+            focus_pixel_idx = np.argmax(mat_conv.data[focus_idx]).toarray()
+            # Retrieve row of original index
+            original_pixel_idx = focus_idx[focus_pixel_idx]
+            focus_pixel_row = labelled_mat.row[original_pixel_idx]
+            focus_pixel_col = labelled_mat.col[original_pixel_idx]
+            # Save coords of best pixels for this focus in a table
+            foci_coords[focus_rank, 0] = focus_pixel_row
+            foci_coords[focus_rank, 1] = focus_pixel_col
+    else:
+        foci_coords = "NA"
+    return foci_coords
+
+
+def label_connected_pixels_sparse(matrix, min_focus_size=2):
+    """
+    Given a sparse matrix of 1 and 0 values, find
+    all foci of continuously neighbouring positive pixels
+    and assign them a label according to their focus. Diagonal,
+    horizontal and vertical (8-way) adjacency is considered.
 
     Parameters
     ----------
     matrix : scipy.sparse.coo_matrix
-        The input matrix where to label foci.
-    precision : float, optional
-        Increasing this value reduces the amount of false positive patterns. This
-        is the minimum number of standard deviations above the median of correlation
-        coefficients required to consider a pixel as candidate (i.e. in a focus).
+        The input matrix where to label foci. Should be filled with 1
+        and 0s.
+    min_focus_size: int
+        Minimum number of members required to keep a focus.
     
     Returns
     -------
-    scipy.sparse.coo_matrix:
-        The matrix of foci, where pixels are given a
-        numeric value denoting their respective foci.
+    num_foci : int
+        Number of individual foci identified.
+    candidates : scipy.sparse.coo_matrix:
+        The matrix with values replaced by their respective foci
+        labels.
     
     Example
     -------
     >>>M.todense()
-    [[3 0 1 4]
-     [5 1 5 0]
-     [4 0 5 3]
-     [0 0 1 0]]
-    >>>label_foci(M, 2).todense()
+    [[1 0 0 0]
+     [1 0 1 0]
+     [1 0 1 1]
+     [0 0 0 0]]
+    >>>label_foci(M).todense()
     [[1 0 0 0]
      [1 0 2 0]
      [1 0 2 2]
      [0 0 0 0]]
     """
-    threshold = np.median(matrix.data) + precision * np.std(matrix.data)
     candidates = matrix.copy()
-    # Get matrix into binary data: candidate above threshold ?
-    candidates.data[matrix.data < threshold] = 0
-    candidates.eliminate_zeros()
-    n_candidates = candidates.data.shape[0]
+    n_candidates = len(candidates.data)
+    candidates.data = candidates.data.astype(bool)
 
     def get_1d_foci_transition(m):
         """
@@ -220,7 +265,7 @@ def picker(matrix, precision=2):
     # value in transpose was the second (1) in original matrix
     # stay_foci_verti = stay_foci_verti[trans_ids.data]
     # Initialize adjacency matrix between candidate pixels
-    adj_mat = csr_matrix((n_candidates, n_candidates))
+    adj_mat = lil_matrix((n_candidates, n_candidates))
     # Fill adjacency matrix using a stay_foci array
 
     def fill_adjacency_1d(adj, stay_foci, verti=False):
@@ -243,12 +288,19 @@ def picker(matrix, precision=2):
     # Add vertical-adjacency info.
     adj_mat = fill_adjacency_1d(adj_mat, stay_foci_verti, verti=True)
     # Now label foci by finding connected components
-    _, foci = connected_components(adj_mat)
-    # Replace nonzero values of the original matrix by their foci
-    # to spare memory and update sparsity
-    candidates.data = foci + 1  # We add 1 so that first spot is not 0
-    candidates.eliminate_zeros()
-    return candidates
+    num_foci, foci = connected_components(adj_mat)
+    foci += 1  # We add 1 so that first spot is not 0
+    foci = foci.astype(np.int64)
+    # Remove foci with a single pixel
+    for focus_num in range(1, num_foci + 1):
+        if len(foci[foci == focus_num]) < min_focus_size:
+            foci[foci == focus_num] = 0
+    # generate a new matrix, similar to the input, but where pixel values
+    # are the foci ID of the pixel.
+    foci_mat = coo_matrix(
+        (foci, (candidates.row, candidates.col)), shape=candidates.shape, dtype=np.int64
+    )
+    return foci_mat
 
 
 def get_detectable_bins(matrix):
