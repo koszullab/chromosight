@@ -167,7 +167,7 @@ def picker(mat_conv, precision=None):
             # Remember 1D indices of datapoint in focus
             focus_idx = np.where(labelled_mat.data == focus_id)[0]
             # Find index of max value within those indices
-            focus_pixel_idx = np.argmax(mat_conv.data[focus_idx]).toarray()
+            focus_pixel_idx = np.argmax(mat_conv.data[focus_idx])
             # Retrieve row of original index
             original_pixel_idx = focus_idx[focus_pixel_idx]
             focus_pixel_row = labelled_mat.row[original_pixel_idx]
@@ -300,7 +300,7 @@ def label_connected_pixels_sparse(matrix, min_focus_size=2):
     foci_mat = coo_matrix(
         (foci, (candidates.row, candidates.col)), shape=candidates.shape, dtype=np.int64
     )
-    return foci_mat
+    return num_foci, foci_mat
 
 
 def get_detectable_bins(matrix):
