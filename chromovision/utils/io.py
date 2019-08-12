@@ -6,6 +6,7 @@ Load and save contact matrices in sparse format
 import pandas as pd
 import numpy as np
 import pathlib
+import json
 from scipy.sparse import coo_matrix, lil_matrix, csc_matrix, csr_matrix, triu
 
 
@@ -137,7 +138,7 @@ def load_cool(cool_path):
     return mat, chrom_start, bins, c.binsize
 
 
-def load_kernels(pattern):
+def load_kernel_config(kernel, custom=False):
     """Load pattern kernels
 
     Look for one or several kernel file (in CSV format).
@@ -153,10 +154,20 @@ def load_kernels(pattern):
     pattern_kernels : list
         A list of array_likes corresponding to the loaded patterns.
     """
+    # Custom kernel: use litteral path as config path
+    if custom:
+        config_path = kernel
+    # Preset kernel: Find preset config file matching pattern name
+    else:
+        chromo_dir = dirname(dirname(abspath(__file__)))
+        preset_kernel_dir = pathlib.Path(join(chromo_dir, "kernels"))
+        config_path = preset_kernel_dir.glob("*{}*".format(pattern))[0]
 
+    with open(config_path, "r") as config:
+        kernel_config = json.load(config)
     pattern_path = pathlib.Path(pattern)
     if pattern in PATTERN_DISPATCHER.keys():
-        pattern_globbing = PRESET_KERNEL_PATH.glob("*{}*".format(pattern))
+        pattern_globbing = 
     elif pattern_path.is_dir():
         pattern_globbing = pattern_path.glob("*")
     else:
@@ -164,6 +175,7 @@ def load_kernels(pattern):
         pattern_globbing = (pattern_path,)
     for kernel_file in pattern_globbing:
         yield np.loadtxt(kernel_file, dtype=np.float)
+    return kernel_config
 
 
 def load_dense_matrix():

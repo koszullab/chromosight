@@ -145,19 +145,6 @@ def pattern_detector(
     return detected_patterns, agglomerated_pattern, nb_patterns
 
 
-border_detector = functools.partial(
-    pattern_detector, pattern_type="borders", undetectable_bins_percentage=20.0
-)
-
-loop_detector = functools.partial(
-    pattern_detector, pattern_type="loops", undetectable_bins_percentage=1.0
-)
-
-PATTERN_DISPATCHER = {"loops": loop_detector, "borders": border_detector}
-chromo_dir = dirname(dirname(abspath(__file__)))
-PRESET_KERNEL_PATH = pathlib.Path(join(chromo_dir, "kernels"))
-
-
 def explore_patterns(
     contact_map,
     pattern_type="loops",
