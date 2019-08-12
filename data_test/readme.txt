@@ -1,13 +1,9 @@
-This repository contains data for tests and calibration. 
+This repo contains data to test the sparse version of ChromoVision. 
 
-01/02/2019
+Matrice MAT_RAW_chr5_AT147_Pds5-AID-noTir1-G1-cdc20-TS_2kb.txt.pdf
 
-Set de data simulées (issu du dossier /media/axel/RSG41/Hackathon-ENGiE-PASTEUR-master/TRAINING_SET55) contient 10 cartes de contact.
+*in full format 
 
-Le dossier Natural contient les 16 cartes de contact de levure (data Beckouet). 
+*in sparse format 
 
-Les solutions des positions de boucles sont dans le dossier positions_of_loops
-
-Les points bleus sont des prédictions de ChromoVision. 
-
-
+We also provide an example in pdf of detections with the version of Chromovision non sparce. 

@@ -1,0 +1,547 @@
+import pathlib
+import functools
+from os.path import join, dirname, abspath
+
+
+border_detector = functools.partial(
+    pattern_detector, pattern_type="borders", undetectable_bins_percentage=20.0
+)
+
+loop_detector = functools.partial(
+    pattern_detector, pattern_type="loops", undetectable_bins_percentage=1.0
+)
+
+PATTERN_DISPATCHER = {"loops": loop_detector, "borders": border_detector}
+chromo_dir = dirname(dirname(abspath(__file__)))
+PRESET_KERNEL_PATH = pathlib.Path(join(chromo_dir, "kernels"))
+
+
+def pattern_detector(
+    contact_map,
+    kernel,
+    pattern_type="loops",
+    precision=4.0,
+    area=8,
+    undetectable_bins_percentage=1.0,
+    nb_patterns=[],
+):
+    """Pattern detector
+
+    Detect patterns by iterated kernel matching, and compute the resulting
+    'agglomerated pattern' as matched on the matrices.
+
+    Parameters
+    ----------
+    contact_map : ContactMap object
+        An object containing a Hi-C contact map with chromosome indices, 
+        chromosome names,  inter and intra chromosome sub-matrices and other
+        attributes.
+    kernel : array_like
+        The initial template for pattern matching in the first pass.
+    pattern_type : str, optional
+        If set to "borders" or "loops", filtering is performed in order to
+        remove spurious false positives (such as far-off loops or off-diagonal
+        borders). Default is "loops".
+    precision : float, optional
+        Controls the amount of false positives. A higher precision means fewer
+        detected patterns overall and fewer false positives. Default is 4.0.
+    area : int, optional
+        The window size of the agglomerated pattern. The final windows will have
+        a width of 2 * area + 1. Default is 8.
+    undetectable_bins_percentage : float, optional
+        How much missing data is tolerated in the pattern windows. Patterns
+        with a percentage area above this parameter with only missing data are
+        discarded. Default is 1., i.e. one percent.
+    Returns
+    -------
+    detected_pattern : list
+        A list of detected patterns in tuple form: (name, x, y, score).
+    agglomerated_pattern : np.ndarray
+        The 'agglomerated' (element-wise median) matrix of all patterns
+        detected this way.
+    """
+
+    pattern_windows = []  # list containing all pannel of detected patterns
+    pattern_sums = np.zeros(
+        (area * 2 + 1, area * 2 + 1)
+    )  # sum of all detected patterns
+    agglomerated_pattern = np.zeros(
+        (area * 2 + 1, area * 2 + 1)
+    )  # median of all detected patterns
+    detected_patterns = []
+    n_patterns = 0
+
+    for matrix, name, indices in zip(
+        contact_map.sub_mats,
+        contact_map.sub_mats_labels,
+        contact_map.sub_mats_detectable_bins,
+    ):
+        nr = matrix.shape[0]
+        nc = matrix.shape[1]
+        # Pattern matching operated here
+        mat_conv = utils.corrcoef2d(matrix, kernel)
+        mat_conv = mat_conv.tocoo()
+        mat_conv.data[np.isnan(mat_conv.data)] = 0
+        mat_conv.eliminate_zeros()
+        pattern_peak = utils.picker(mat_conv, precision)
+        if pattern_peak.max() != 0:
+            if pattern_type == "loops":
+                # Assume all loops are not found too far-off in the matrix
+                if not contact_map.interchrom:
+                    # NOTE: "Too far off" will depend on bin size here.
+                    mask = np.array(abs(pattern_peak[:, 0] - pattern_peak[:, 1])) < 5000
+                    pattern_peak = pattern_peak[mask, :]
+
+                mask = np.array(abs(pattern_peak[:, 0] - pattern_peak[:, 1])) > 2
+                pattern_peak = pattern_peak[mask, :]
+            elif pattern_type == "borders":
+                # Borders are always on the diagonal
+                mask = np.array(abs(pattern_peak[:, 0] - pattern_peak[:, 1])) == 0
+                pattern_peak = pattern_peak[mask, :]
+            # Convert to csr for slicing
+            mat_conv = mat_conv.tocsr()
+            for l in pattern_peak:
+                if l[0] in indices[0] and l[1] in indices[1]:
+                    p1 = int(l[0])
+                    p2 = int(l[1])
+                    if p1 > p2:
+                        p22 = p2
+                        p2 = p1
+                        p1 = p22
+                    if (
+                        p1 - area >= 0
+                        and p1 + area + 1 < nr
+                        and p2 - area >= 0
+                        and p2 + area + 1 < nc
+                    ):
+                        pattern_window = matrix[
+                            np.ix_(
+                                range(p1 - area, p1 + area + 1),
+                                range(p2 - area, p2 + area + 1),
+                            )
+                        ].todense()
+                        # The pattern should not be too close to an undetectable bin
+                        if (
+                            len(pattern_window[pattern_window == 1.0])
+                            < ((area * 2 + 1) ** 2)
+                            * undetectable_bins_percentage
+                            / 100.0
+                        ):
+                            n_patterns += 1
+                            score = mat_conv[l[0], l[1]]
+                            detected_patterns.append((name, l[0], l[1], score))
+                            pattern_sums += pattern_window
+                            pattern_windows.append(pattern_window)
+                        else:
+                            detected_patterns.append((name, "NA", "NA", "NA"))
+            # if len(pattern_windows) > 0:
+            # from matplotlib import pyplot as plt
+            # fig, ax = plt.subplots(len(pattern_windows), 1)
+            # for i, axi in enumerate(ax.flatten()):
+            #         axi.imshow(pattern_windows[i])
+            # plt.show()
+        else:
+            detected_patterns.append((name, "NA", "NA", "NA"))
+
+    # Computation of stats on the whole set - Agglomerated procedure :
+    for i in range(0, area * 2 + 1):
+        for j in range(0, area * 2 + 1):
+            list_temp = []
+            for el in range(1, len(pattern_windows)):
+                list_temp.append(pattern_windows[el][i, j])
+            agglomerated_pattern[i, j] = np.median(list_temp)
+
+    nb_patterns = len(pattern_windows)
+    return detected_patterns, agglomerated_pattern, nb_patterns
+
+
+def explore_patterns(
+    contact_map,
+    pattern_type="loops",
+    custom_kernels=None,
+    precision=4,
+    iterations="auto",
+    window=4,
+):
+    """Explore patterns in a list of matrices
+
+    Given a pattern type, attempt to detect that pattern in each matrix with
+    confidence determined by the precision parameter. The detection is done
+    in a multi-pass process:
+    - First, pattern matching is done with the initial supplied kernels.
+    - Then, an 'agglomerated' median pattern from all previously detected
+    patterns is generated, and detection is done using this pattern for
+    matching instead.
+    - Repeat as needed or until convergence.
+
+    Parameters
+    ----------
+    contact_map : ContactMap object
+        Object containing the Hi-C contact map and all intra- + inter- chromosomal
+        sub matrices as well as other attributes.
+    pattern_type : file, str or pathlib.Path
+        The type of pattern to detect. Must be one of 'borders', 'loops', or
+        'centromeres', but partial matching is allowed. If it looks like a
+        path, instead the file is loaded and used as a tempalte itself.
+    precision : float, optional
+        The confidence with which pattern attribution is performed. The lower,
+        the more detected patterns, the more false positives. Default is 4.
+    iterations : str or int, optional
+        How many iterations after the first kernel-based pass to perform in
+        order to detect more patterns. If set to 'auto', iterations are
+        performed until no more patterns are detected from one pass to the
+        next.
+    window : int, optional
+        The pattern window area. When a pattern is discovered in a previous
+        pass, further detected patterns falling into that area are discarded.
+
+    Returns
+    -------
+    all_patterns : dict
+        A dictionary in the form 'chromosome': list_of_coordinates_and_scores,
+        and it is assumed that each matrix corresponds to a different
+        chromosome. The chromosome string is determined by the matrix filename.
+    kernels : dictionary of lists of arrays
+        A dictionary with one key per iteration where the values are lists of
+        agglomerated patterns after each pass used as kernels in the next one.
+        Takes the form: {1: [kernel1,...], 2: [kernel1,...], ...}
+    list_current_pattern_count : list
+        List of the number of patterns detected at each iteration.
+    """
+
+    # Dispatch detectors: the border detector has specificities while the
+    # loop detector is more generic, so we use the generic one by default if
+    # a pattern specific detector isn't implemented.
+    custom_pattern_detector = PATTERN_DISPATCHER.get(pattern_type, loop_detector)
+
+    if custom_kernels is None:
+        chosen_kernels = load_kernels(pattern_type)
+    else:
+        chosen_kernels = load_kernels(custom_kernels)
+    # Init parameters for the while loop:
+    #   - There's always at least one iteration (with the kernel)
+    #   - Loop stops when the same number of patterns are detected after an
+    #     iterations, or the max number of iterations has been specified and
+    #     reached.
+    #   - After the first pass, instead of the starting kernel the
+    #     'agglomerated pattern' is used for pattern matching.
+
+    all_patterns = set()
+    hashed_neighborhoods = set()
+    old_pattern_count, current_pattern_count = -1, 0
+    list_current_pattern_count = []
+    # Depending on matrix resolution, a pattern may be smeared over several
+    # pixels. This trimming function ensures that there won't be many patterns
+    # clustering around one location.
+
+    def neigh_hash(coords, window):
+        chromosome, pos1, pos2, _ = coords
+        if pos1 == "NA" or pos2 == "NA":
+            return "NA"
+        else:
+            return (chromosome, int(pos1) // window, int(pos2) // window)
+
+    max_iter = MAX_ITERATIONS if iterations == "auto" else iterations
+    # Original kernels are loaded from a file, but next kernel will be "learnt"
+    # from agglomerations at each iteration
+    kernels = {i: [] for i in range(1, max_iter + 1)}
+    kernels["ori"] = list(chosen_kernels)
+    # Detect patterns at each iteration:
+    # For iterations beyond the first, use agglomerated patterns
+    # from previous iteration as kernel.
+    for i in range(1, max_iter + 1):
+        # Stop trying if fewer patterns are detected than in previous iteration
+        if old_pattern_count != current_pattern_count:
+            old_pattern_count = current_pattern_count
+            # Use 'original' kernels from files for the first iteration
+            current_kernels = kernels["ori"] if i == 1 else kernels[i - 1]
+            for kernel in current_kernels:
+                (
+                    detected_coords,
+                    agglomerated_pattern,
+                    nb_patterns,
+                ) = custom_pattern_detector(contact_map, kernel, precision=precision)
+                for new_coords in detected_coords:
+                    if (
+                        neigh_hash(new_coords, window=window)
+                        not in hashed_neighborhoods
+                    ):
+                        chromosome, pos1, pos2, score = new_coords
+                        if pos1 != "NA":
+                            pos1 = int(pos1)
+                        if pos2 != "NA":
+                            pos2 = int(pos2)
+                        all_patterns.add((chromosome, pos1, pos2, score))
+                        hashed_neighborhoods.add(neigh_hash(new_coords, window=window))
+                # The agglomerated patterns of this iteration make up the kernel for the next one :)
+                kernels[i].append(agglomerated_pattern)
+            current_pattern_count = nb_patterns
+            list_current_pattern_count.append(current_pattern_count)
+
+    # Remove original kernels, as we are only interested by agglomerated ones
+    del kernels["ori"]
+    return all_patterns, kernels, list_current_pattern_count
+
+
+def picker(mat_conv, precision=None):
+    """Pick pixels out of a convolution map
+    Given a correlation heat map, pick (i, j) of local maxima
+    Parameters
+    ----------
+    mat_conv : scipy.sparse.coo_matrix
+        A float array assigning a correlation to each pixel (i,j)
+        with the input kernel (e.g. loops).
+    precision : float, optional
+        Increasing this value reduces the amount of false positive patterns.
+        This is the minimum number of standard deviations above the median of
+        correlation coefficients required to consider a pixel as candidate.
+    Returns
+    -------
+    foci_coords : numpy.array of ints
+        2D array of coordinates for identified patterns.
+    """
+    candidate_mat = mat_conv.copy()
+    candidate_mat = candidate_mat.tocoo()
+    # Compute a threshold from precision arg and set all pixels below to 0
+    thres = np.median(mat_conv.data) + precision * np.std(mat_conv.data)
+    candidate_mat.data[candidate_mat.data < thres] = 0
+    candidate_mat.data[candidate_mat.data != 0] = 1
+    candidate_mat.eliminate_zeros()
+    # Check if at least one candidate pixel was found
+    if len(candidate_mat.data) > 0:
+        num_foci, labelled_mat = label_connected_pixels_sparse(candidate_mat)
+        # Will hold the coordinates of the best pixel for each focus
+        foci_coords = np.zeros([num_foci, 2], int)
+        # Iterate over candidate foci
+        # NOTE: There can be jumps between foci id due to post labelling
+        # removal of single pixel foci in label_connnected_pixels_sparse.
+        # This is why we use focus_rank
+        for focus_rank, focus_id in enumerate(np.unique(labelled_mat.data)):
+            # Remember 1D indices of datapoint in focus
+            focus_idx = np.where(labelled_mat.data == focus_id)[0]
+            # Find index of max value within those indices
+            focus_pixel_idx = np.argmax(mat_conv.data[focus_idx])
+            # Retrieve row of original index
+            original_pixel_idx = focus_idx[focus_pixel_idx]
+            focus_pixel_row = labelled_mat.row[original_pixel_idx]
+            focus_pixel_col = labelled_mat.col[original_pixel_idx]
+            # Save coords of best pixels for this focus in a table
+            foci_coords[focus_rank, 0] = focus_pixel_row
+            foci_coords[focus_rank, 1] = focus_pixel_col
+    else:
+        foci_coords = "NA"
+    return foci_coords
+
+
+def label_connected_pixels_sparse(matrix, min_focus_size=2):
+    """
+    Given a sparse matrix of 1 and 0 values, find
+    all foci of continuously neighbouring positive pixels
+    and assign them a label according to their focus. Diagonal,
+    horizontal and vertical (8-way) adjacency is considered.
+
+    Parameters
+    ----------
+    matrix : scipy.sparse.coo_matrix
+        The input matrix where to label foci. Should be filled with 1
+        and 0s.
+    min_focus_size: int
+        Minimum number of members required to keep a focus.
+    
+    Returns
+    -------
+    num_foci : int
+        Number of individual foci identified.
+    foci_mat : scipy.sparse.coo_matrix:
+        The matrix with values replaced by their respective foci
+        labels.
+    
+    Example
+    -------
+    >>>M.todense()
+    [[1 0 0 0]
+     [1 0 1 0]
+     [1 0 1 1]
+     [0 0 0 0]]
+    >>>num_foci, foci_mat = label_foci(M)
+    >>>num_foci
+    2
+    >>>foci_mat.todense()
+    [[1 0 0 0]
+     [1 0 2 0]
+     [1 0 2 2]
+     [0 0 0 0]]
+    """
+    candidates = matrix.copy()
+    n_candidates = len(candidates.data)
+    candidates.data = candidates.data.astype(bool)
+
+    def get_1d_foci_transition(m):
+        """
+        Get a boolean array indicating if the next neighbour of
+        each nonzero pixel will be in the same focus.
+        """
+        # Compute row and col index shifts between candidate pixels.
+        # absolute value is used; left/right or up/down does not matter
+        row_shift = np.abs(np.diff(m.row))
+        col_shift = np.abs(np.diff(m.col))
+        # Transform shifts to binary data: shifted by more than 1
+        # from previous nonzero pixel ? Invert so that True means we
+        # stay in the same focus.
+        row_shift[row_shift < 2] = 0
+        stay_foci_row = np.invert(row_shift.astype(bool))
+        col_shift[col_shift < 2] = 0
+        stay_foci_col = np.invert(col_shift.astype(bool))
+        # Bitwise AND between row and col "stay arrays" to get
+        # indices where neither the rows nor cols shift by more than 1
+        # True at index i means: pixel i+1 in same focus as pixel i.
+        stay_foci = np.bitwise_and(stay_foci_row, stay_foci_col)
+        # Append False since there is no pixel after the last
+        stay_foci = np.append(stay_foci, False)
+        return stay_foci
+
+    # Since we are using neighborhood with next nonzero pixel,
+    # and nonzero pixels are sorted by rows, we need to do
+    # the whole operation on the matrix and the transpose
+    # (nonzero pixels sorted by columns). This will give both
+    # the horizontal and vertical neighbourhood informations.
+    stay_foci_hori = get_1d_foci_transition(candidates)
+    stay_foci_verti = get_1d_foci_transition(candidates.T.tocsr().tocoo())
+    # Candidates are sorted by rows in stay_foci_hori, but by col in
+    # stay_foci_verti. We need to reorder stay_foci_verti to have them
+    # in same order.
+    ori_ids = candidates.copy()
+    # store candidate ids in data
+    ori_ids.data = np.array(range(len(ori_ids.row)), dtype=np.int)
+    trans_ids = ori_ids.T  # Transposed matrix: candidates now sorted by column
+    # Order is only updated if we convert types
+    trans_ids = trans_ids.tocsr().tocoo()
+    # Data can now be used as a transposed to original candidate id converter
+    # e.g. if trans_idx.data[2] = 1, that  means the third (2) nonzero
+    # value in transpose was the second (1) in original matrix
+    # stay_foci_verti = stay_foci_verti[trans_ids.data]
+    # Initialize adjacency matrix between candidate pixels
+    adj_mat = lil_matrix((n_candidates, n_candidates))
+    # Fill adjacency matrix using a stay_foci array
+
+    def fill_adjacency_1d(adj, stay_foci, verti=False):
+        """Fills adjacency matrix for all neighborhoods on 1 dimension"""
+        for candidate_id, next_candidate_in_focus in enumerate(stay_foci):
+            # If the next candidate will also be in focus, add fill connection
+            # between current and next candidate in adjacency matrix
+            if next_candidate_in_focus:
+                if verti:
+                    adj_from = trans_ids.data[candidate_id]
+                    adj_to = trans_ids.data[candidate_id + 1]
+                else:
+                    adj_from = candidate_id
+                    adj_to = candidate_id + 1
+                adj[adj_from, adj_to] = 1
+        return adj
+
+    # Add horizontal-adjacency info
+    adj_mat = fill_adjacency_1d(adj_mat, stay_foci_hori)
+    # Add vertical-adjacency info.
+    adj_mat = fill_adjacency_1d(adj_mat, stay_foci_verti, verti=True)
+    # Now label foci by finding connected components
+    num_foci, foci = connected_components(adj_mat)
+    foci += 1  # We add 1 so that first spot is not 0
+    foci = foci.astype(np.int64)
+    # Remove foci with a single pixel
+    for focus_num in range(1, num_foci + 1):
+        if len(foci[foci == focus_num]) < min_focus_size:
+            foci[foci == focus_num] = 0
+    # mask small foci for removal
+    good_foci = foci > 0
+    # generate a new matrix, similar to the input, but where pixel values
+    # are the foci ID of the pixel.
+    foci_mat = coo_matrix(
+        (foci[good_foci], (candidates.row[good_foci], candidates.col[good_foci])),
+        shape=candidates.shape,
+        dtype=np.int64,
+    )
+    return num_foci, foci_mat
+
+
+def xcorr2(signal, kernel, max_scan_distance=None, threshold=1e-4):
+    """Signal-kernel 2D convolution
+
+    Convolution of a 2-dimensional signal (the contact map) with a kernel
+    (the pattern template).
+
+    Parameters
+    ----------
+    signal: scipy.sparse.csr_matrix
+        A 2-dimensional numpy array Ms x Ns acting as the detrended Hi-C map.
+    kernel: array_like
+        A 2-dimensional numpy array Mk x Nk acting as the pattern template.
+    max_scan_distance : int or None, optional
+        Limits the range of computations beyond the diagonal. Default is None,
+        which means no such limit is taken into account.
+    threshold : float, optional
+        Sets all values in the final matrix below this threshold to zero to
+        reduce memory issues when handling sparse matrices. Default is set
+        to 1e-4
+
+    Returns
+    -------
+    out: scipy.sparse.csr_matrix
+        2-dimensional numpy array that's the convolution product of signal
+        by kernel. The shape of out depends on cenetred_p.
+    """
+
+    Ms, Ns = signal.shape
+    Mk, Nk = kernel.shape
+
+    if (Mk > Ms) or (Nk > Ns):
+        raise ValueError("cannot have kernel bigger than signal")
+
+    if max_scan_distance is None:
+        max_scan_distance = max(Ms, Ns)
+
+    Ki = (Mk - 1) // 2
+    Kj = (Nk - 1) // 2
+    out = lil_matrix((Ms, Ns))
+    out[Ki : Ms - (Mk - 1 - Ki), Kj : Ns - (Nk - 1 - Kj)] = 0.0
+    # Set a margin of kernel size below the diagonal to NA so
+    # that id does not affect correlation
+    for i in range(Mk):
+        out.setdiag(0, -i)
+    out = out.tocsr()
+
+    for ki in range(Mk):
+        # Note convolution is only computed up to a distance from the diagonal
+        for kj in range(ki, min(Nk, ki + max_scan_distance)):
+            out[Ki : Ms - (Mk - 1 - Ki), Kj : Ns - (Nk - 1 - Kj)] += (
+                kernel[ki, kj] * signal[ki : Ms - Mk + 1 + ki, kj : Ns - Nk + 1 + kj]
+            )
+    out.eliminate_zeros()
+    return out
+
+
+def corrcoef2d(signal, kernel):
+    """Signal-kernel 2D correlation
+
+    Pearson correlation coefficient between signal and sliding kernel.
+    """
+    # Kernel1 allows to compute the mean
+    kernel1 = np.ones(kernel.shape) / kernel.size
+    # Returns a matrix of means
+    mean_signal = xcorr2(signal, kernel1)
+    std_signal = np.sqrt(xcorr2(signal ** 2, kernel1) - mean_signal ** 2)
+    mean_kernel = np.mean(kernel)
+    std_kernel = np.std(kernel)
+    corrcoef = xcorr2(signal, kernel / kernel.size)
+    # Since elementwise sparse matrices division is not implemented, compute
+    # numerator and denominator and perform division on the 1D array of nonzero
+    # values.
+    numerator = corrcoef - mean_signal * mean_kernel
+    denominator = std_signal * std_kernel
+    corrcoef = numerator.copy()
+    # Get coords of non-zero (nz) values in the numerator
+    nz_vals = corrcoef.nonzero()
+    # Divide them by corresponding entries in the numerator
+    denominator = denominator.tocsr()
+    corrcoef.data /= denominator[nz_vals].A1
+    return corrcoef
+
