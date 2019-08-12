@@ -395,7 +395,6 @@ def pattern_plot(patterns, matrix, output=None, name=None):
                     plt.scatter(pos1, pos2, s=15, facecolors="none", edgecolors="blue")
 
     emplacement = output / pathlib.Path(str(name + 1) + ".pdf2")
-    print(emplacement)
     plt.savefig(emplacement, dpi=100, format="pdf")
     plt.close("all")
 
@@ -505,7 +504,7 @@ def main():
     # Load input file with appropriate function
     format_loader = {"bg2": io.load_bedgraph2d, "cool": io.load_cool}
     # Load contact map and chromosome start bins coords
-    loaded_map, chroms = format_loader[input_format](map_path)
+    loaded_map, chroms, bins, bin_size = format_loader[input_format](map_path)
     contact_map = ContactMap(loaded_map, chroms)
     contact_map.interchrom = interchrom
 
@@ -545,7 +544,6 @@ def main():
             )
     # agglomerated_to_plot = {pattern('loop' or 'border'): {iteration: [kernel, ...], ...}}
     for pattern_type, agglomerated_kernels in agglomerated_to_plot.items():
-        print(agglomerated_to_plot)
         # agglomerated_kernels_iter = [kernel1 at iteration i, kernel2 at iteration i, ...]
         for iteration, agglomerated_kernels_iter in agglomerated_kernels.items():
             # agglomerated_iteration = [np.array() (kernel at iteration i)]

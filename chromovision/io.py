@@ -5,13 +5,7 @@ Load and save contact matrices in sparse format
 """
 import pandas as pd
 import numpy as np
-from scipy.sparse import (
-        coo_matrix, 
-        lil_matrix,
-        csc_matrix,
-        csr_matrix,
-        triu
-)
+from scipy.sparse import coo_matrix, lil_matrix, csc_matrix, csr_matrix, triu
 
 
 def load_bedgraph2d(mat_path):
@@ -36,67 +30,57 @@ def load_bedgraph2d(mat_path):
     """
     bg2 = pd.read_csv(mat_path, delimiter="\t", header=None)
     bg2.head()
-    bg2.columns = [
-        "chr1",
-        "start1",
-        "end1",
-        "chr2",
-        "start2",
-        "end2",
-        "contacts",
-    ]
+    bg2.columns = ["chr1", "start1", "end1", "chr2", "start2", "end2", "contacts"]
 
     # estimate bin size from file
     bin_size = np.median(bg2.end1 - bg2.start1).astype(int)
 
-    # Convert from BP to #bin
-    bg2["start1"] = bg2["start1"] // bin_size
-    bg2["end1"] = bg2["end1"] // bin_size
-    bg2["start2"] = bg2["start2"] // bin_size
-    bg2["end2"] = bg2["end2"] // bin_size
-
+    # Get binID (within chromosome) from base pairs
+    bg2["bin1"] = bg2["start1"] // bin_size
+    bg2["bin2"] = bg2["start2"] // bin_size
     # Get number of bins per chromosome
-    fragsA = bg2[["chr1", "end1"]].rename(
-        columns={"chr1": "chr", "end1": "end"}
+    binsA = bg2[["chr1", "start1", "end1"]].rename(
+        columns={"chr1": "chrom", "start1": "start", "end1": "end"}
     )
-    fragsB = bg2[["chr2", "end2"]].rename(
-        columns={"chr2": "chr", "end2": "end"}
+    binsB = bg2[["chr2", "start2", "end2"]].rename(
+        columns={"chr2": "chrom", "start2": "start", "end2": "end"}
     )
-    frags = pd.concat([fragsA, fragsB])
-    chroms = frags.groupby("chr", sort=False).apply(lambda x: np.int64(max(x.end)))
+    bins = pd.concat([binsA, binsB])
+    # Get size of each chromosome in bins
+    chromsizes = bins.groupby("chrom").apply(lambda x: np.int64(max(x.start // bin_size + 1)))
 
-    # Shift by one to get starting bin, first one is zero
-    chrom_start = chroms.shift(1)
+    # Rebuild bin table based on chromosome size and binsize info
+    # so that potentially missing bins are included
+    bins = pd.DataFrame({"start": [start for chromsize in chromsizes.values for start in range(chromsize)]})
+    bins['start'] *= bin_size
+    bins['end'] = bins['start'] + bin_size
+    bins["chrom"] = np.repeat(np.array(chromsizes.index), np.array(chromsizes.values))
+
+    # Shift chromsizes by one to get starting bin, first one is zero
+    chrom_start = chromsizes.shift(1)
     chrom_start[0] = 0
-    chrom_start = pd.DataFrame(chrom_start.cumsum(), columns=["cumsum"])
+    # Make chromsize cumulative to get start bin of each chrom
+    chrom_start = pd.DataFrame(chrom_start.cumsum(), columns=["cumsum"], dtype=np.int)
 
     # Get frags indices
     bg2 = bg2.merge(chrom_start, left_on="chr1", right_index=True)
-    bg2["frag1"] = bg2["start1"] + bg2["cumsum"]
+    # Make bin IDs absolute (not per chromosome)
+    bg2["bin1"] += bg2["cumsum"]
     bg2 = bg2.merge(chrom_start, left_on="chr2", right_index=True)
-    bg2["frag2"] = bg2["start1"] + bg2["cumsum_y"]
+    bg2["bin2"] += bg2["cumsum_y"]
 
     # Build sparse matrix from fragment indices
-    n = int(max(max(bg2["frag1"]), max(bg2["frag2"]))) + 1
+    n = int(max(max(bg2["bin1"]), max(bg2["bin2"]))) + 1
     mat = coo_matrix(
-        (bg2.contacts, (bg2.frag1, bg2.frag2)), shape=(n, n), dtype=np.float64
+        (bg2.contacts, (bg2.bin1, bg2.bin2)), shape=(n, n), dtype=np.float64
     )
-
-    # Making full symmetric matrix if not symmetric already (e.g. upper
-    # triangle)
-    r = mat.tolil()
-    if (abs(r - r.T) > 1e-10).nnz != 0:
-        r += r.T
-        r.setdiag(r.diagonal() / 2)
-    r = r.tocoo()
-    r.eliminate_zeros()
 
     # Get chroms into a 1D array of bin starts
     chrom_start = np.array(chrom_start["cumsum"])
     # Only keep upper triangle
     mat = triu(mat)
-    print("sparse matrix loaded. Sent to pattern_detector.")
-    return mat, chrom_start
+    bins = bins[["chrom", "start", "end"]]
+    return mat, chrom_start, bins, bin_size
 
 
 def load_cool(cool_path):
@@ -119,24 +103,30 @@ def load_cool(cool_path):
     try:
         import cooler
     except ImportError:
-        print("The cooler package is required to use cool files. Please install it first.")
+        print(
+            "The cooler package is required to use cool files. Please install it first."
+        )
         raise
 
-    c = cooler.Cooler(cool_path)  #pylint: disable=undefined-variable
+    c = cooler.Cooler(cool_path)  # pylint: disable=undefined-variable
     mat = c.pixels()[:]
     # Number of fragments  (bins) per chromosome
-    n_frags = c.bins()[:].groupby('chrom', sort=False).count().start[:-1]
-    n_frags = n_frags.astype(np.int64)
+    bins = c.bins()[:]
+    n_bins = bins.groupby("chrom", sort=False).count().start[:-1]
+    n_bins = n_bins.astype(np.int64)
     # Starting bin of each chromosome
-    chrom_start = np.insert(np.array(n_frags), 0, 0)
+    chrom_start = np.insert(np.array(n_bins), 0, 0)
     # Make a sparse (COO) matrix from the pixels table
     n = int(max(np.amax(mat.bin1_id), np.amax(mat.bin2_id))) + 1
     shape = (n, n)
-    mat = coo_matrix((mat['count'], (mat.bin1_id, mat.bin2_id)), shape=shape, dtype=np.float64)
+    mat = coo_matrix(
+        (mat["count"], (mat.bin1_id, mat.bin2_id)), shape=shape, dtype=np.float64
+    )
     # Only keep upper triangle
     mat = triu(mat)
-    return mat, chrom_start
-    
+    bins = bins[["chrom", "start", "end"]]
+    return mat, chrom_start, bins, c.binsize
+
 
 def dense2sparse(M, format="coo"):
     format_dict = {
