@@ -33,7 +33,6 @@ Arguments:
     -f cool, --input-format cool Input format of the contact map. Can be csv, bg2
                                 or cool. [default: cool]
 """
-import pdb
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
@@ -56,7 +55,7 @@ def pattern_detector(
     pattern_type="loops",
     precision=4.0,
     area=8,
-    undetermined_percentage=1.0,
+    undetectable_bins_percentage=1.0,
     nb_patterns=[],
 ):
     """Pattern detector
@@ -82,7 +81,7 @@ def pattern_detector(
     area : int, optional
         The window size of the agglomerated pattern. The final windows will have
         a width of 2 * area + 1. Default is 8.
-    undetermined_percentage : float, optional
+    undetectable_bins_percentage : float, optional
         How much missing data is tolerated in the pattern windows. Patterns
         with a percentage area above this parameter with only missing data are
         discarded. Default is 1., i.e. one percent.
@@ -118,7 +117,7 @@ def pattern_detector(
         mat_conv.data[np.isnan(mat_conv.data)] = 0
         mat_conv.eliminate_zeros()
         pattern_peak = utils.picker(mat_conv, precision)
-        if pattern_peak.max() == 0:
+        if pattern_peak.max() != 0:
             if pattern_type == "loops":
                 # Assume all loops are not found too far-off in the matrix
                 if not contact_map.interchrom:
@@ -132,6 +131,8 @@ def pattern_detector(
                 # Borders are always on the diagonal
                 mask = np.array(abs(pattern_peak[:, 0] - pattern_peak[:, 1])) == 0
                 pattern_peak = pattern_peak[mask, :]
+            # Convert to csr for slicing
+            mat_conv = mat_conv.tocsr()
             for l in pattern_peak:
                 if l[0] in indices[0] and l[1] in indices[1]:
                     p1 = int(l[0])
@@ -151,19 +152,25 @@ def pattern_detector(
                                 range(p1 - area, p1 + area + 1),
                                 range(p2 - area, p2 + area + 1),
                             )
-                        ]
+                        ].todense()
                         # The pattern should not be too close to an undetectable bin
                         if (
                             len(pattern_window[pattern_window == 1.0])
-                            < ((area * 2 + 1) ** 2) * undetermined_percentage / 100.0
+                            < ((area * 2 + 1) ** 2) * undetectable_bins_percentage / 100.0
                         ):
                             n_patterns += 1
-                            score = res_rescaled[l[0], l[1]]
+                            score = mat_conv[l[0], l[1]]
                             detected_patterns.append((name, l[0], l[1], score))
                             pattern_sums += pattern_window
                             pattern_windows.append(pattern_window)
                         else:
                             detected_patterns.append((name, "NA", "NA", "NA"))
+            # if len(pattern_windows) > 0:
+                # from matplotlib import pyplot as plt
+                # fig, ax = plt.subplots(len(pattern_windows), 1)
+                # for i, axi in enumerate(ax.flatten()):
+                #         axi.imshow(pattern_windows[i])
+                # plt.show()
         else:
             detected_patterns.append((name, "NA", "NA", "NA"))
 
@@ -180,11 +187,11 @@ def pattern_detector(
 
 
 border_detector = functools.partial(
-    pattern_detector, pattern_type="borders", undetermined_percentage=20.0
+    pattern_detector, pattern_type="borders", undetectable_bins_percentage=20.0
 )
 
 loop_detector = functools.partial(
-    pattern_detector, pattern_type="loops", undetermined_percentage=1.0
+    pattern_detector, pattern_type="loops", undetectable_bins_percentage=1.0
 )
 
 PATTERN_DISPATCHER = {"loops": loop_detector, "borders": border_detector}
@@ -500,6 +507,7 @@ def main():
     # Load contact map and chromosome start bins coords
     loaded_map, chroms = format_loader[input_format](map_path)
     contact_map = ContactMap(loaded_map, chroms)
+    contact_map.interchrom = interchrom
 
     # Loop over types of patterns (loops, TADs, ...)
     for pattern_type in patterns_types:
@@ -537,13 +545,14 @@ def main():
             )
     # agglomerated_to_plot = {pattern('loop' or 'border'): {iteration: [kernel, ...], ...}}
     for pattern_type, agglomerated_kernels in agglomerated_to_plot.items():
+        print(agglomerated_to_plot)
         # agglomerated_kernels_iter = [kernel1 at iteration i, kernel2 at iteration i, ...]
         for iteration, agglomerated_kernels_iter in agglomerated_kernels.items():
             # agglomerated_iteration = [np.array() (kernel at iteration i)]
             for kernel_id, agglomerated_matrix in enumerate(agglomerated_kernels_iter):
                 # agglomerated_matrix = np.array()
                 my_name = (
-                    "Agglomerated {} of {} patterns iteration {} " "kernel {}"
+                    "pileup_{}_{}_patterns_iteration_{}_kernel_{}"
                 ).format(
                     pattern_type,
                     list_current_pattern_count[iteration - 1],

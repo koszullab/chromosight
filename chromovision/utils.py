@@ -295,10 +295,14 @@ def label_connected_pixels_sparse(matrix, min_focus_size=2):
     for focus_num in range(1, num_foci + 1):
         if len(foci[foci == focus_num]) < min_focus_size:
             foci[foci == focus_num] = 0
+    # mask small foci for removal
+    good_foci = foci > 0
     # generate a new matrix, similar to the input, but where pixel values
     # are the foci ID of the pixel.
     foci_mat = coo_matrix(
-        (foci, (candidates.row, candidates.col)), shape=candidates.shape, dtype=np.int64
+        (foci[good_foci], (candidates.row[good_foci], candidates.col[good_foci])),
+        shape=candidates.shape,
+        dtype=np.int64
     )
     return num_foci, foci_mat
 
