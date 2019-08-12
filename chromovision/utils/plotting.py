@@ -1,13 +1,20 @@
 import pathlib
 from matplotlib import pyplot as plt
-from . import
 
 
-def pattern_plot(patterns, matrix, output=None, name=None):
+def pattern_plot(contact_map, patterns, output=None, name=None):
     """Plot patterns
 
     Plot the matrix with the positions of the found patterns (border or loop)
     on it.
+
+    Parameters
+    ----------
+    contact_map : chromovision.utils.contact_map.ContactMap
+        Object containing all information related to a Hi-C contact map.
+    patterns : dict
+        Dictionary object storing all patterns to be plotted. Structured as :
+        {pattern_type: []}
     """
     if name is None:
         name = 0
@@ -16,12 +23,7 @@ def pattern_plot(patterns, matrix, output=None, name=None):
     else:
         output = pathlib.Path(output)
 
-    detectable = preprocessing.get_detectable_bins(matrix)
-    matscn = preprocessing.normalize(matrix, detectable_bins=detectable)
-    try:
-        plt.imshow(matscn.toarray() ** 0.15, interpolation="none", cmap="afmhot_r")
-    except AttributeError:
-        plt.imshow(matscn ** 0.15, interpolation="none", cmap="afmhot_r")
+    plt.imshow(contact_map.mat.todense() ** 0.15, interpolation="none", cmap="afmhot_r")
     plt.title(name, fontsize=8)
     plt.colorbar()
 

@@ -6,7 +6,6 @@ Operations to perform on Hi-C matrices before analyses
 """
 import numpy as np
 from scipy.signal import savgol_filter
-from scipy.sparse import lil_matrix, csr_matrix, coo_matrix
 
 
 def normalize(B, good_bins=None, iterations=10):
@@ -82,7 +81,7 @@ def distance_law(matrix, detectable_bins):
     return dist
 
 
-def despeckles(B, th2):
+def despeckle(matrix, th2=3):
     """
     Remove speckles (i.e. noisy outlier pixels) from a Hi-C 
     contact map in sparse format. Speckles are set back to the
@@ -103,8 +102,8 @@ def despeckles(B, th2):
     A : scipy.sparse.coo_matrix
         The despeckled sparse matrix.
     """
-    B = B.tocoo()
-    A = B.copy()
+    matrix = matrix.tocoo()
+    A = matrix.copy()
     n1 = A.shape[0]
     # Extract all diagonals in the upper triangle
     dist = {u: A.diagonal(u) for u in range(n1)}
@@ -115,7 +114,7 @@ def despeckles(B, th2):
         stds[u] = np.std(dist[u])
 
     # Loop over all nonzero pixels in the COO matrix and their coordinates
-    for i, (row, col, val) in enumerate(zip(B.row, B.col, B.data)):
+    for i, (row, col, val) in enumerate(zip(matrix.row, matrix.col, matrix.data)):
         # Compute genomic distance of interactions in pixel
         dist = abs(row - col)
         # If pixel in input matrix is an outlier, set this pixel to median
@@ -151,7 +150,7 @@ def get_detectable_bins(matrix):
 
 def detrend(matrix, detectable_bins=None):
     """
-    Detrends and removes speckles in a Hi-C matrix by the distance law.
+    Detrends a Hi-C matrix by the distance law.
     The input matrix should have been normalised beforehandand.
 
     Parameters
@@ -168,17 +167,13 @@ def detrend(matrix, detectable_bins=None):
     numpy.ndarray :
         The detrended Hi-C matrix.
     """
-
-    # Removal of speckles (noisy pixels
-    clean_mat = despeckles(matrix, 4.0)
-    clean_mat = clean_mat.tocsr()
-
-    y = distance_law(clean_mat, detectable_bins[0])
+    matrix = matrix.tocsr()
+    y = distance_law(matrix, detectable_bins[0])
     y[np.isnan(y)] = 0.0
     y_savgol = savgol_filter(y, window_length=17, polyorder=5)
 
     # Detrending by the distance law
-    clean_mat = clean_mat.tocoo()
+    clean_mat = matrix.tocoo()
     clean_mat.data /= y_savgol[abs(clean_mat.row - clean_mat.col)]
     clean_mat = clean_mat.tocsr()
     # Set values in bad bins to 0

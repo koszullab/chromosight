@@ -32,33 +32,20 @@ Arguments:
                                 performed until convergence. [default: auto]
 """
 import numpy as np
-import matplotlib.pyplot as plt
-from scipy.signal import savgol_filter
 import pathlib
-import os
-import functools
 import docopt
 from chromovision.version import __version__
 from chromovision.utils.contacts_map import ContactMap
-from scipy import sparse
-
-
-def write_results(patterns_to_plot, output):
-    for pattern in patterns_to_plot:
-        file_name = pattern + ".txt"
-        file_path = output / file_name
-        with file_path.open("w") as outf:
-            for tup in sorted(
-                [tup for tup in patterns_to_plot[pattern] if "NA" not in tup]
-            ):
-                outf.write(" ".join(map(str, tup)) + "\n")
+from chromovision.utils.io import write_results
+from chromovision.utils.plotting import pattern_plot, pileup_plot
+from chromovision.utils.detection import explore_patterns
 
 
 def main():
     arguments = docopt.docopt(__doc__, version=__version__)
 
     # Parse command line arguments
-    map_path = arguments["<contact_map>"]
+    mat_path = arguments["<contact_map>"]
     kernels = arguments["--kernels"]
     loops = arguments["--loops"]
     borders = arguments["--borders"]
@@ -93,17 +80,12 @@ def main():
         kernel_list = None
 
     patterns_to_plot = dict()
-    agglomerated_to_plot = dict()
-
-    contact_map = ContactMap(map_path, interchrom)
+    pileup_to_plot = dict()
+    contact_map = ContactMap(mat_path, interchrom)
 
     # Loop over types of patterns (loops, TADs, ...)
     for pattern_type in patterns_types:
-        (
-            all_patterns,
-            agglomerated_patterns,
-            list_current_pattern_count,
-        ) = explore_patterns(
+        (all_patterns, pileup_patterns, list_current_pattern_count) = explore_patterns(
             contact_map,
             pattern_type,
             iterations=iterations,
@@ -117,7 +99,7 @@ def main():
             )
             # all_patterns = map(utils.get_inter_idx, all_patterns)
         patterns_to_plot[pattern_type] = list(all_patterns)
-        agglomerated_to_plot[pattern_type] = agglomerated_patterns
+        pileup_to_plot[pattern_type] = pileup_patterns
 
     write_results(patterns_to_plot, output)
     # base_names = pathlib.Path(map_path).name
@@ -129,22 +111,22 @@ def main():
                 patterns_to_plot,
                 matrix,
                 output=output,
-                name=contact_map.sub_mat_labels[k],
+                name=contact_map.sub_mats_labels[k],
             )
-    # agglomerated_to_plot = {pattern('loop' or 'border'): {iteration: [kernel, ...], ...}}
-    for pattern_type, agglomerated_kernels in agglomerated_to_plot.items():
-        # agglomerated_kernels_iter = [kernel1 at iteration i, kernel2 at iteration i, ...]
-        for iteration, agglomerated_kernels_iter in agglomerated_kernels.items():
-            # agglomerated_iteration = [np.array() (kernel at iteration i)]
-            for kernel_id, agglomerated_matrix in enumerate(agglomerated_kernels_iter):
-                # agglomerated_matrix = np.array()
+    # pileup_to_plot = {pattern('loop' or 'border'): {iteration: [kernel, ...], ...}}
+    for pattern_type, pileup_kernels in pileup_to_plot.items():
+        # pileup_kernels_iter = [kernel1 at iteration i, kernel2 at iteration i, ...]
+        for iteration, pileup_kernels_iter in pileup_kernels.items():
+            # pileup_iteration = [np.array() (kernel at iteration i)]
+            for kernel_id, pileup_matrix in enumerate(pileup_kernels_iter):
+                # pileup_matrix = np.array()
                 my_name = ("pileup_{}_{}_patterns_iteration_{}_kernel_{}").format(
                     pattern_type,
                     list_current_pattern_count[iteration - 1],
                     iteration,
                     kernel_id,
                 )
-                agglomerated_plot(agglomerated_matrix, name=my_name, output=output)
+                pileup_plot(pileup_matrix, name=my_name, output=output)
     write_results(patterns_to_plot, output)
 
     return 0

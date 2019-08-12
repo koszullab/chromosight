@@ -5,6 +5,7 @@ Load and save contact matrices in sparse format
 """
 import pandas as pd
 import numpy as np
+import pathlib
 from scipy.sparse import coo_matrix, lil_matrix, csc_matrix, csr_matrix, triu
 
 
@@ -165,6 +166,12 @@ def load_kernels(pattern):
         yield np.loadtxt(kernel_file, dtype=np.float)
 
 
+def load_dense_matrix():
+    # TODO: add support for loading dense tsv matrices assuming single chrom
+    ...
+    # return mat, chrom_start, bins, binsize
+
+
 def dense2sparse(M, format="coo"):
     format_dict = {
         "coo": lambda x: x,
@@ -181,3 +188,14 @@ def dense2sparse(M, format="coo"):
     matrix_format = format_dict[format]
     sparse_mat = matrix_format(S)
     return triu(sparse_mat)
+
+
+def write_results(patterns_to_plot, output):
+    for pattern in patterns_to_plot:
+        file_name = pattern + ".txt"
+        file_path = output / file_name
+        with file_path.open("w") as outf:
+            for tup in sorted(
+                [tup for tup in patterns_to_plot[pattern] if "NA" not in tup]
+            ):
+                outf.write(" ".join(map(str, tup)) + "\n")

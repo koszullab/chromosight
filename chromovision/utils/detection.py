@@ -1,19 +1,9 @@
+from __future__ import absolute_import
 import pathlib
 import functools
+import numpy as np
+from . import io as cio
 from os.path import join, dirname, abspath
-
-
-border_detector = functools.partial(
-    pattern_detector, pattern_type="borders", undetectable_bins_percentage=20.0
-)
-
-loop_detector = functools.partial(
-    pattern_detector, pattern_type="loops", undetectable_bins_percentage=1.0
-)
-
-PATTERN_DISPATCHER = {"loops": loop_detector, "borders": border_detector}
-chromo_dir = dirname(dirname(abspath(__file__)))
-PRESET_KERNEL_PATH = pathlib.Path(join(chromo_dir, "kernels"))
 
 
 def pattern_detector(
@@ -79,11 +69,11 @@ def pattern_detector(
         nr = matrix.shape[0]
         nc = matrix.shape[1]
         # Pattern matching operated here
-        mat_conv = utils.corrcoef2d(matrix, kernel)
+        mat_conv = corrcoef2d(matrix, kernel)
         mat_conv = mat_conv.tocoo()
         mat_conv.data[np.isnan(mat_conv.data)] = 0
         mat_conv.eliminate_zeros()
-        pattern_peak = utils.picker(mat_conv, precision)
+        pattern_peak = picker(mat_conv, precision)
         if pattern_peak.max() != 0:
             if pattern_type == "loops":
                 # Assume all loops are not found too far-off in the matrix
@@ -155,6 +145,19 @@ def pattern_detector(
     return detected_patterns, agglomerated_pattern, nb_patterns
 
 
+border_detector = functools.partial(
+    pattern_detector, pattern_type="borders", undetectable_bins_percentage=20.0
+)
+
+loop_detector = functools.partial(
+    pattern_detector, pattern_type="loops", undetectable_bins_percentage=1.0
+)
+
+PATTERN_DISPATCHER = {"loops": loop_detector, "borders": border_detector}
+chromo_dir = dirname(dirname(abspath(__file__)))
+PRESET_KERNEL_PATH = pathlib.Path(join(chromo_dir, "kernels"))
+
+
 def explore_patterns(
     contact_map,
     pattern_type="loops",
@@ -197,10 +200,8 @@ def explore_patterns(
 
     Returns
     -------
-    all_patterns : dict
-        A dictionary in the form 'chromosome': list_of_coordinates_and_scores,
-        and it is assumed that each matrix corresponds to a different
-        chromosome. The chromosome string is determined by the matrix filename.
+    all_patterns : set
+        A set of patterns, each in the form (chrom, pos1, pos2, score).
     kernels : dictionary of lists of arrays
         A dictionary with one key per iteration where the values are lists of
         agglomerated patterns after each pass used as kernels in the next one.
@@ -215,9 +216,9 @@ def explore_patterns(
     custom_pattern_detector = PATTERN_DISPATCHER.get(pattern_type, loop_detector)
 
     if custom_kernels is None:
-        chosen_kernels = load_kernels(pattern_type)
+        chosen_kernels = cio.load_kernels(pattern_type)
     else:
-        chosen_kernels = load_kernels(custom_kernels)
+        chosen_kernels = cio.load_kernels(custom_kernels)
     # Init parameters for the while loop:
     #   - There's always at least one iteration (with the kernel)
     #   - Loop stops when the same number of patterns are detected after an
@@ -230,10 +231,10 @@ def explore_patterns(
     hashed_neighborhoods = set()
     old_pattern_count, current_pattern_count = -1, 0
     list_current_pattern_count = []
+
     # Depending on matrix resolution, a pattern may be smeared over several
     # pixels. This trimming function ensures that there won't be many patterns
     # clustering around one location.
-
     def neigh_hash(coords, window):
         chromosome, pos1, pos2, _ = coords
         if pos1 == "NA" or pos2 == "NA":
@@ -241,7 +242,8 @@ def explore_patterns(
         else:
             return (chromosome, int(pos1) // window, int(pos2) // window)
 
-    max_iter = MAX_ITERATIONS if iterations == "auto" else iterations
+    # TODO: Set auto to use a kernel-specific config
+    max_iter = 3 if iterations == "auto" else iterations
     # Original kernels are loaded from a file, but next kernel will be "learnt"
     # from agglomerations at each iteration
     kernels = {i: [] for i in range(1, max_iter + 1)}
