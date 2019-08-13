@@ -38,6 +38,10 @@ def load_bedgraph2d(mat_path):
 
     # estimate bin size from file
     bin_size = np.median(bg2.end1 - bg2.start1).astype(int)
+    # Throw error if bins are not equally sized (e.g. restriction fragments)
+    if bin_size != bg2.end1[0] - bg2.start[0]:
+        sys.stderr.write("Error: Bins are not of equal size.")
+        sys.exit(1)
 
     # Get binID (within chromosome) from base pairs
     bg2["bin1"] = bg2["start1"] // bin_size
@@ -207,10 +211,15 @@ def load_kernel_config(kernel, custom=False):
     try:
         with open(config_path, "r") as config:
             kernel_config = json.load(config)
-    except FileNotFoundError:
-        sys.stderr.write(
-            f"Error: Kernel configuration file {kernel_config} does not exist.\n"
-        )
+    except FileNotFoundError as e:
+        if custom:
+            sys.stderr.write(
+                f"Error: Kernel configuration file {config_path} does not exist.\n"
+            )
+        else:
+            err_msg = f"Error: No preset configuration for pattern {kernel}.\n"
+        sys.stderr.write(err_msg)
+        raise e
 
     # Load kernel matrices using path in kernel config
     kernel_matrices = [None] * len(kernel_config["kernels"])
