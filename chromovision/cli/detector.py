@@ -52,7 +52,7 @@ def _override_kernel_config(param_name, param_value, param_type, config):
 
     if param_value == "auto":
         sys.stderr.write(
-            "{param_name} set to {default_val} from config file.\n".format(
+            "{param_name} set to {default_val} based on config file.\n".format(
                 default_val=config[param_name], param_name=param_name
             )
         )

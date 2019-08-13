@@ -1,9 +1,10 @@
 {
   "name": "loops",
   "kernels": [
-    "artificial_template_loops_type1.txt",
+    "artificial_template_loops_type1.txt"
   ],
   "max_dist": 2000000,
   "max_iterations": 3,
-  "max_perc_undetected": 1.0
+  "max_perc_undetected": 1.0,
+  "resolution": 5000
 }

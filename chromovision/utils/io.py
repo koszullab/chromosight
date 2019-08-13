@@ -6,7 +6,9 @@ Load and save contact matrices in sparse format
 import pandas as pd
 import numpy as np
 import pathlib
+import sys
 import json
+from os.path import join
 from scipy.sparse import coo_matrix, lil_matrix, csc_matrix, csr_matrix, triu
 
 
@@ -139,42 +141,76 @@ def load_cool(cool_path):
 
 
 def load_kernel_config(kernel, custom=False):
-    """Load pattern kernels
+    """
+    Load a kernel configuration from input JSON file.
 
-    Look for one or several kernel file (in CSV format).
+    All parameters associated with the kernel along its kernel matrices are
+    loaded into a dictionary.
+
+    A kernel config file is a JSON file with the following structure:
+
+    ```json
+    {
+        "name": str,
+        "kernels": [
+            str,
+            ...
+        ],
+        "max_dist": int,
+        "max_iterations": int,
+        "max_perc_undetected": float,
+        "resolution": int
+    }
+    ```
+    The kernels field should contain a list of path to kernel matrices to be
+    loaded. These path should be relative to the config file. When loaded, the
+    kernel field will contain the target matrices as 2D numpy arrays.
+
+    The kernel matrices files themselves are raw tsv files containing a dense
+    matrix of numeric value as read by the numpy.loadtxt function.
 
     Parameters
     ----------
-    pattern : str
-        The pattern type. Must be one of 'borders', 'loops' or 'centromeres',
-        but partial matching is allowed.
-
+    kernel : str
+        The name of the built-in pattern configuration to load if custom is
+        False. Otherwise, the path to the custom JSON configuration file to load.
+    custom : bool
+        Determines if a custom JSON configuration file must be loaded, or if a
+        preset configuration is used.
     Returns
     -------
     pattern_kernels : list
         A list of array_likes corresponding to the loaded patterns.
     """
+
     # Custom kernel: use litteral path as config path
     if custom:
         config_path = kernel
     # Preset kernel: Find preset config file matching pattern name
     else:
-        chromo_dir = dirname(dirname(abspath(__file__)))
+        # Find chromovision installation directory and get kernel config path
+        chromo_dir = pathlib.Path(__file__).parents[2]
         preset_kernel_dir = pathlib.Path(join(chromo_dir, "kernels"))
-        config_path = preset_kernel_dir.glob("*{}*".format(pattern))[0]
+        # Preset config filename should be {pattern}.json
+        config_path = join(preset_kernel_dir, f"{kernel}.json")
 
-    with open(config_path, "r") as config:
-        kernel_config = json.load(config)
-    pattern_path = pathlib.Path(pattern)
-    if pattern in PATTERN_DISPATCHER.keys():
-        pattern_globbing = 
-    elif pattern_path.is_dir():
-        pattern_globbing = pattern_path.glob("*")
-    else:
-        # Not finished ?
-        pattern_globbing = (pattern_path,)
-    for kernel_file in pattern_globbing:
-        yield np.loadtxt(kernel_file, dtype=np.float)
+    # Try parsing config file
+    try:
+        with open(config_path, "r") as config:
+            kernel_config = json.load(config)
+    except FileNotFoundError:
+        sys.stderr.write(
+            f"Error: Kernel configuration file {kernel_config} does not exist.\n"
+        )
+
+    # Load kernel matrices using path in kernel config
+    kernel_matrices = [None] * len(kernel_config["kernels"])
+    for i, kernel_path in enumerate(kernel_config["kernels"]):
+        kernel_path = join(pathlib.Path(config_path).parent, kernel_path)
+        kernel_matrices[i] = np.loadtxt(kernel_path)
+    # Replace matrices path by their content in the config dictionary
+    kernel_config["kernels"] = kernel_matrices
+
     return kernel_config
 
 
