@@ -124,11 +124,13 @@ class ContactMap:
                     if start_c1 == start_c2:
                         sub_mat = preproc.despeckle(sub_mat, th2=3)
                         sub_mat = preproc.detrend(sub_mat, sub_mat_detectable_bins)
+                        sub_mats.append(sub_mat)
+                        sub_mats_detectable_bins.append(sub_mat_detectable_bins)
                     # But interchromsomal matrices must only be scaled
-                    else:
+                    elif self.interchrom:
                         sub_mat = preproc.ztransform(sub_mat)
-                    sub_mats.append(sub_mat)
-                    sub_mats_detectable_bins.append(sub_mat_detectable_bins)
+                        sub_mats.append(sub_mat)
+                        sub_mats_detectable_bins.append(sub_mat_detectable_bins)
         return sub_mats, sub_mats_detectable_bins
 
     def get_submat_idx(self, mat_type="intra"):

@@ -159,6 +159,7 @@ def load_kernel_config(kernel, custom=False):
         "max_dist": int,
         "max_iterations": int,
         "max_perc_undetected": float,
+        "precision": float
         "resolution": int
     }
     ```
@@ -168,6 +169,14 @@ def load_kernel_config(kernel, custom=False):
 
     The kernel matrices files themselves are raw tsv files containing a dense
     matrix of numeric value as read by the numpy.loadtxt function.
+
+    Other fields are:
+    * name : Name of the pattern
+    * max_dist : maximum distance in basepairs to scan from the diagonal
+    * max_iterations: maximum number of scanning iterations to perform
+    * max_perc_undetected: Maximum percentage of undetected bins to include a pattern
+    * precision: Increasing this value reduces false positive patterns.
+    * resolution: Basepair resolution for the kernel matrix.
 
     Parameters
     ----------
@@ -238,12 +247,9 @@ def dense2sparse(M, format="coo"):
     return triu(sparse_mat)
 
 
-def write_results(patterns_to_plot, output):
-    for pattern in patterns_to_plot:
-        file_name = pattern + ".txt"
-        file_path = output / file_name
-        with file_path.open("w") as outf:
-            for tup in sorted(
-                [tup for tup in patterns_to_plot[pattern] if "NA" not in tup]
-            ):
-                outf.write(" ".join(map(str, tup)) + "\n")
+def write_results(patterns_to_plot, pattern_name, output):
+    file_name = pattern_name + ".txt"
+    file_path = output / file_name
+    with file_path.open("w") as outf:
+        for tup in sorted([tup for tup in patterns_to_plot if "NA" not in tup]):
+            outf.write(" ".join(map(str, tup)) + "\n")

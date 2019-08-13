@@ -6,20 +6,20 @@ Explore and detect patterns (loops, borders, centromeres, etc.) in Hi-C contact
 maps with pattern matching.
 
 Usage:
-    chromovision detect <contact_map> [<output>] [--kernels=None] [--loops]
-                        [--borders] [--precision=4] [--iterations=auto]
-                        [--inter] [--input-format cool]
+    chromovision detect <contact_map> [<output>] [--kernel-config FILE]
+                        [--pattern=loops] [--precision=auto] [--iterations=auto]
+                        [--inter]
 
 Arguments:
     -h, --help                  Display this help message.
     --version                   Display the program's current version.
-    contact_map                The Hi-C contact map to detect patterns on, in
+    contact_map                 The Hi-C contact map to detect patterns on, in
                                 bedgraph2d or cool format. 
     output                      name of the output directory
-    -k, --kernel-config None    A custom kernel template to use, if not using
-                                one of the presets. If not supplied, the
-                                loops or borders option must be used.
-                                [default: None]
+    -k, --kernel-config FILE    Optionally give a path to a custom JSON kernel
+                                config path. Use this to override pattern if 
+                                you do not want to use one of the preset 
+                                patterns.
     -P, --pattern loops         Which pattern to detect. This will use preset
                                 configurations for the given pattern. Possible
                                 values are: loops, borders. [default: loops]
@@ -73,7 +73,7 @@ def main():
     kernel_config_path = arguments["--kernel-config"]
     pattern = arguments["--pattern"]
     interchrom = arguments["--inter"]
-    precision = float(arguments["--precision"])
+    precision = arguments["--precision"]
     iterations = arguments["--iterations"]
     output = arguments["<output>"]
     list_current_pattern_count = []
@@ -124,7 +124,7 @@ def main():
         # all_patterns = map(utils.get_inter_idx, all_patterns)
     patterns_to_plot = list(all_patterns)
 
-    write_results(patterns_to_plot, output)
+    write_results(patterns_to_plot, kernel_config["name"], output)
     # base_names = pathlib.Path(map_path).name
 
     # Iterate over each intra or inter sub-matrix
@@ -148,7 +148,7 @@ def main():
                 kernel_id,
             )
             pileup_plot(pileup_matrix, name=my_name, output=output)
-    write_results(patterns_to_plot, output)
+    write_results(patterns_to_plot, kernel_config["name"], output)
 
     return 0
 

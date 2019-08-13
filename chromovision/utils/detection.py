@@ -2,23 +2,17 @@ from __future__ import absolute_import
 import pathlib
 import functools
 import numpy as np
-from . import io as cio
 from os.path import join, dirname, abspath
+from scipy.sparse import lil_matrix, coo_matrix
+from scipy.sparse.csgraph import connected_components
+from . import io as cio
 
 
-def pattern_detector(
-    contact_map,
-    kernel,
-    pattern_type="loops",
-    precision=4.0,
-    area=8,
-    undetectable_bins_percentage=1.0,
-    nb_patterns=[],
-):
+def pattern_detector(contact_map, kernel_config, kernel_matrix, area=8):
     """Pattern detector
 
     Detect patterns by iterated kernel matching, and compute the resulting
-    'agglomerated pattern' as matched on the matrices.
+    'pileup pattern' as matched on the matrices.
 
     Parameters
     ----------
@@ -26,28 +20,20 @@ def pattern_detector(
         An object containing a Hi-C contact map with chromosome indices, 
         chromosome names,  inter and intra chromosome sub-matrices and other
         attributes.
-    kernel : array_like
-        The initial template for pattern matching in the first pass.
-    pattern_type : str, optional
-        If set to "borders" or "loops", filtering is performed in order to
-        remove spurious false positives (such as far-off loops or off-diagonal
-        borders). Default is "loops".
-    precision : float, optional
-        Controls the amount of false positives. A higher precision means fewer
-        detected patterns overall and fewer false positives. Default is 4.0.
+    kernel_config : dict
+        The kernel configuration, as documented in
+        chromovision.utils.io.load_kernel_config
+    kernel_matrix : numpy.array
+        The kernel matrix to use for convolution as a 2D numpy array
     area : int, optional
-        The window size of the agglomerated pattern. The final windows will have
+        The window size of the pileup pattern. The final windows will have
         a width of 2 * area + 1. Default is 8.
-    undetectable_bins_percentage : float, optional
-        How much missing data is tolerated in the pattern windows. Patterns
-        with a percentage area above this parameter with only missing data are
-        discarded. Default is 1., i.e. one percent.
     Returns
     -------
     detected_pattern : list
         A list of detected patterns in tuple form: (name, x, y, score).
-    agglomerated_pattern : np.ndarray
-        The 'agglomerated' (element-wise median) matrix of all patterns
+    pileup_pattern : np.ndarray
+        The 'pileup' (element-wise median) matrix of all patterns
         detected this way.
     """
 
@@ -55,12 +41,15 @@ def pattern_detector(
     pattern_sums = np.zeros(
         (area * 2 + 1, area * 2 + 1)
     )  # sum of all detected patterns
-    agglomerated_pattern = np.zeros(
+    pileup_pattern = np.zeros(
         (area * 2 + 1, area * 2 + 1)
     )  # median of all detected patterns
     detected_patterns = []
+    # Apply detection procedure over each intra /inter sub matrix
     n_patterns = 0
-
+    # TODO: remove chromosome loop from here, should be in main script
+    # TODO: make a dedicated pileup function out of this and call picker
+    # and corrcoeff in main script
     for matrix, name, indices in zip(
         contact_map.sub_mats,
         contact_map.sub_mats_labels,
@@ -68,29 +57,18 @@ def pattern_detector(
     ):
         nr = matrix.shape[0]
         nc = matrix.shape[1]
-        # Pattern matching operated here
-        mat_conv = corrcoef2d(matrix, kernel)
+        # Pattern matching operate here
+        mat_conv = corrcoef2d(matrix, kernel_matrix)
         mat_conv = mat_conv.tocoo()
         mat_conv.data[np.isnan(mat_conv.data)] = 0
         mat_conv.eliminate_zeros()
-        pattern_peak = picker(mat_conv, precision)
-        if pattern_peak.max() != 0:
-            if pattern_type == "loops":
-                # Assume all loops are not found too far-off in the matrix
-                if not contact_map.interchrom:
-                    # NOTE: "Too far off" will depend on bin size here.
-                    mask = np.array(abs(pattern_peak[:, 0] - pattern_peak[:, 1])) < 5000
-                    pattern_peak = pattern_peak[mask, :]
-
-                mask = np.array(abs(pattern_peak[:, 0] - pattern_peak[:, 1])) > 2
-                pattern_peak = pattern_peak[mask, :]
-            elif pattern_type == "borders":
-                # Borders are always on the diagonal
-                mask = np.array(abs(pattern_peak[:, 0] - pattern_peak[:, 1])) == 0
-                pattern_peak = pattern_peak[mask, :]
+        # Find foci of highly correlated pixels
+        pattern_foci = picker(mat_conv, kernel_config["precision"])
+        # If foci table contains only zeros, no pattern was found
+        if pattern_foci.max() != 0:
             # Convert to csr for slicing
             mat_conv = mat_conv.tocsr()
-            for l in pattern_peak:
+            for l in pattern_foci:
                 if l[0] in indices[0] and l[1] in indices[1]:
                     p1 = int(l[0])
                     p2 = int(l[1])
@@ -114,7 +92,7 @@ def pattern_detector(
                         if (
                             len(pattern_window[pattern_window == 1.0])
                             < ((area * 2 + 1) ** 2)
-                            * undetectable_bins_percentage
+                            * kernel_config["max_perc_undetected"]
                             / 100.0
                         ):
                             n_patterns += 1
@@ -133,33 +111,26 @@ def pattern_detector(
         else:
             detected_patterns.append((name, "NA", "NA", "NA"))
 
-    # Computation of stats on the whole set - Agglomerated procedure :
+    # Computation of stats on the whole set - pileup procedure :
     for i in range(0, area * 2 + 1):
         for j in range(0, area * 2 + 1):
             list_temp = []
             for el in range(1, len(pattern_windows)):
                 list_temp.append(pattern_windows[el][i, j])
-            agglomerated_pattern[i, j] = np.median(list_temp)
+            pileup_pattern[i, j] = np.median(list_temp)
 
     nb_patterns = len(pattern_windows)
-    return detected_patterns, agglomerated_pattern, nb_patterns
+    return detected_patterns, pileup_pattern, nb_patterns
 
 
-def explore_patterns(
-    contact_map,
-    pattern_type="loops",
-    custom_kernels=None,
-    precision=4,
-    iterations="auto",
-    window=4,
-):
+def explore_patterns(contact_map, kernel_config, window=4):
     """Explore patterns in a list of matrices
 
     Given a pattern type, attempt to detect that pattern in each matrix with
     confidence determined by the precision parameter. The detection is done
     in a multi-pass process:
     - First, pattern matching is done with the initial supplied kernels.
-    - Then, an 'agglomerated' median pattern from all previously detected
+    - Then, an 'pileup' median pattern from all previously detected
     patterns is generated, and detection is done using this pattern for
     matching instead.
     - Repeat as needed or until convergence.
@@ -167,20 +138,11 @@ def explore_patterns(
     Parameters
     ----------
     contact_map : ContactMap object
-        Object containing the Hi-C contact map and all intra- + inter- chromosomal
-        sub matrices as well as other attributes.
-    pattern_type : file, str or pathlib.Path
-        The type of pattern to detect. Must be one of 'borders', 'loops', or
-        'centromeres', but partial matching is allowed. If it looks like a
-        path, instead the file is loaded and used as a tempalte itself.
-    precision : float, optional
-        The confidence with which pattern attribution is performed. The lower,
-        the more detected patterns, the more false positives. Default is 4.
-    iterations : str or int, optional
-        How many iterations after the first kernel-based pass to perform in
-        order to detect more patterns. If set to 'auto', iterations are
-        performed until no more patterns are detected from one pass to the
-        next.
+        Object containing the Hi-C contact map and all intra- + inter-
+        chromosomal sub matrices as well as other attributes.
+    kernel_config : dict
+        Kernel configuration as documented in
+        chromovision.utils.io.load_kernel_config
     window : int, optional
         The pattern window area. When a pattern is discovered in a previous
         pass, further detected patterns falling into that area are discarded.
@@ -191,7 +153,7 @@ def explore_patterns(
         A set of patterns, each in the form (chrom, pos1, pos2, score).
     kernels : dictionary of lists of arrays
         A dictionary with one key per iteration where the values are lists of
-        agglomerated patterns after each pass used as kernels in the next one.
+        pileup patterns after each pass used as kernels in the next one.
         Takes the form: {1: [kernel1,...], 2: [kernel1,...], ...}
     list_current_pattern_count : list
         List of the number of patterns detected at each iteration.
@@ -200,19 +162,14 @@ def explore_patterns(
     # Dispatch detectors: the border detector has specificities while the
     # loop detector is more generic, so we use the generic one by default if
     # a pattern specific detector isn't implemented.
-    custom_pattern_detector = PATTERN_DISPATCHER.get(pattern_type, loop_detector)
 
-    if custom_kernels is None:
-        chosen_kernels = cio.load_kernels(pattern_type)
-    else:
-        chosen_kernels = cio.load_kernels(custom_kernels)
     # Init parameters for the while loop:
     #   - There's always at least one iteration (with the kernel)
     #   - Loop stops when the same number of patterns are detected after an
     #     iterations, or the max number of iterations has been specified and
     #     reached.
     #   - After the first pass, instead of the starting kernel the
-    #     'agglomerated pattern' is used for pattern matching.
+    #     'pileup pattern' is used for pattern matching.
 
     all_patterns = set()
     hashed_neighborhoods = set()
@@ -229,27 +186,25 @@ def explore_patterns(
         else:
             return (chromosome, int(pos1) // window, int(pos2) // window)
 
-    # TODO: Set auto to use a kernel-specific config
-    max_iter = 3 if iterations == "auto" else iterations
     # Original kernels are loaded from a file, but next kernel will be "learnt"
     # from agglomerations at each iteration
-    kernels = {i: [] for i in range(1, max_iter + 1)}
-    kernels["ori"] = list(chosen_kernels)
+    kernels = {i: [] for i in range(1, kernel_config["max_iterations"] + 1)}
+    kernels["ori"] = kernel_config["kernels"]
     # Detect patterns at each iteration:
-    # For iterations beyond the first, use agglomerated patterns
+    # For iterations beyond the first, use pileup patterns
     # from previous iteration as kernel.
-    for i in range(1, max_iter + 1):
+    for i in range(1, kernel_config["max_iterations"] + 1):
         # Stop trying if fewer patterns are detected than in previous iteration
         if old_pattern_count != current_pattern_count:
             old_pattern_count = current_pattern_count
             # Use 'original' kernels from files for the first iteration
             current_kernels = kernels["ori"] if i == 1 else kernels[i - 1]
-            for kernel in current_kernels:
-                (
-                    detected_coords,
-                    agglomerated_pattern,
-                    nb_patterns,
-                ) = custom_pattern_detector(contact_map, kernel, precision=precision)
+            for kernel_matrix in current_kernels:
+                # After first iteration, kernel_matrix is a pileup from the
+                # previous iteration
+                (detected_coords, pileup_pattern, nb_patterns) = pattern_detector(
+                    contact_map, kernel_config, kernel_matrix
+                )
                 for new_coords in detected_coords:
                     if (
                         neigh_hash(new_coords, window=window)
@@ -262,12 +217,12 @@ def explore_patterns(
                             pos2 = int(pos2)
                         all_patterns.add((chromosome, pos1, pos2, score))
                         hashed_neighborhoods.add(neigh_hash(new_coords, window=window))
-                # The agglomerated patterns of this iteration make up the kernel for the next one :)
-                kernels[i].append(agglomerated_pattern)
+                # The pileup patterns of this iteration make up the kernel for the next one :)
+                kernels[i].append(pileup_pattern)
             current_pattern_count = nb_patterns
             list_current_pattern_count.append(current_pattern_count)
 
-    # Remove original kernels, as we are only interested by agglomerated ones
+    # Remove original kernels, as we are only interested by pileup ones
     del kernels["ori"]
     return all_patterns, kernels, list_current_pattern_count
 
@@ -481,7 +436,6 @@ def xcorr2(signal, kernel, max_scan_distance=None, threshold=1e-4):
 
     Ms, Ns = signal.shape
     Mk, Nk = kernel.shape
-
     if (Mk > Ms) or (Nk > Ns):
         raise ValueError("cannot have kernel bigger than signal")
 

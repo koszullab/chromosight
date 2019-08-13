@@ -6,5 +6,6 @@
   "max_dist": 2000000,
   "max_iterations": 3,
   "max_perc_undetected": 1.0,
+  "precision": 4,
   "resolution": 5000
 }
