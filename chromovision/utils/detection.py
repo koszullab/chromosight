@@ -1,9 +1,7 @@
 from __future__ import absolute_import
-import pathlib
-import functools
 import numpy as np
 from os.path import join, dirname, abspath
-from scipy.sparse import lil_matrix, coo_matrix
+from scipy.sparse import lil_matrix, coo_matrix, triu
 from scipy.sparse.csgraph import connected_components
 from . import io as cio
 
@@ -64,6 +62,7 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix, area=8):
         mat_conv.eliminate_zeros()
         # Find foci of highly correlated pixels
         pattern_foci = picker(mat_conv, kernel_config["precision"])
+
         # If foci table contains only zeros, no pattern was found
         if pattern_foci.max() != 0:
             # Convert to csr for slicing
@@ -254,6 +253,7 @@ def picker(mat_conv, precision=None):
     # Check if at least one candidate pixel was found
     if len(candidate_mat.data) > 0:
         num_foci, labelled_mat = label_connected_pixels_sparse(candidate_mat)
+
         # Will hold the coordinates of the best pixel for each focus
         foci_coords = np.zeros([num_foci, 2], int)
         # Iterate over candidate foci
@@ -433,6 +433,7 @@ def xcorr2(signal, kernel, max_scan_distance=None, threshold=1e-4):
         2-dimensional numpy array that's the convolution product of signal
         by kernel. The shape of out depends on cenetred_p.
     """
+    from matplotlib import pyplot as plt
 
     Ms, Ns = signal.shape
     Mk, Nk = kernel.shape
@@ -445,20 +446,28 @@ def xcorr2(signal, kernel, max_scan_distance=None, threshold=1e-4):
     Ki = (Mk - 1) // 2
     Kj = (Nk - 1) // 2
     out = lil_matrix((Ms, Ns))
-    out[Ki : Ms - (Mk - 1 - Ki), Kj : Ns - (Nk - 1 - Kj)] = 0.0
-    # Set a margin of kernel size below the diagonal to NA so
-    # that id does not affect correlation
-    for i in range(Mk):
-        out.setdiag(0, -i)
-    out = out.tocsr()
-
-    for ki in range(Mk):
-        # Note convolution is only computed up to a distance from the diagonal
-        for kj in range(ki, min(Nk, ki + max_scan_distance)):
-            out[Ki : Ms - (Mk - 1 - Ki), Kj : Ns - (Nk - 1 - Kj)] += (
-                kernel[ki, kj] * signal[ki : Ms - Mk + 1 + ki, kj : Ns - Nk + 1 + kj]
+    # out[Ki : Ms - (Mk - 1 - Ki), Kj : Ns - (Nk - 1 - Kj)] = 0.0
+    # Coordinates of nonzero
+    # Sx, Sy = mat.nonzero()
+    # Mask pixels further from diagonal than max_distance_scan
+    # max_scan_mask = abs(Sx - Sy) <= max_distance_scan
+    # Sx, Sy = Sx[max_scan_mask], Sy[max_scan_mask]
+    # for sx, sy in zip(Sx, Sy):
+    #    out[sx, sy] =
+    max_scan_distance = 30
+    for si in range(Ki + 1, Ms - (Ki + 1)):
+        for sj in range(si + (Ki + 1), min(max_scan_distance + si, Ns - (Kj + 1))):
+            out[(si - Ki - 1) : (si + Ki), (sj - Kj - 1) : (sj + Kj)] += (
+                signal[(si - Ki - 1) : (si + Ki), (sj - Kj - 1) : (sj + Kj)] * kernel
             )
-    out.eliminate_zeros()
+    # for ki in range(Mk):
+    #    # Note convolution is only computed up to a distance from the diagonal
+    #    for kj in range(Nk):
+    #        out[Ki : Ms - (Mk - 1 - Ki), Kj : Ns - (Nk - 1 - Kj)] += (
+    #            kernel[ki, kj] * signal[ki : Ms - Mk + 1 + ki, kj : Ns - Nk + 1 + kj]
+    #        )
+    #
+
     return out
 
 
@@ -467,6 +476,12 @@ def corrcoef2d(signal, kernel):
 
     Pearson correlation coefficient between signal and sliding kernel.
     """
+    # Set diagonals that will overlap the kernel in the lower triangle to their
+    # opposite diagonal (in upper triangl)
+    signal = signal.tolil()
+    for i in range(1, kernel.shape[0] // 2 + 1):
+        signal.setdiag(signal.diagonal(i), -i)
+
     # Kernel1 allows to compute the mean
     kernel1 = np.ones(kernel.shape) / kernel.size
     # Returns a matrix of means
@@ -486,5 +501,9 @@ def corrcoef2d(signal, kernel):
     # Divide them by corresponding entries in the numerator
     denominator = denominator.tocsr()
     corrcoef.data /= denominator[nz_vals].A1
+
+    # Only keep the upper triangle
+    corrcoef = triu(corrcoef)
+
     return corrcoef
 
