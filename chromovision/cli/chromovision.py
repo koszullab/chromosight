@@ -9,8 +9,18 @@ Usage:
     chromovision detect <contact_map> [<output>] [--kernel-config FILE]
                         [--pattern=loops] [--precision=auto] [--iterations=auto]
                         [--inter]
+    chromovision generate-config <prefix> [--preset loops]
 
-Arguments:
+    detect: 
+        performs pattern detection on a Hi-C contact map using kernel convolution
+    generate-config:
+        Generate pre-filled config files to use for `chromovision detect`. 
+        A config consists of a JSON file describing analysis parameters for the
+        detection and path pointing to kernel matrices files. Those matrices
+        files are tsv files with numeric values ordered in a square dense matrix
+        to use for convolution.
+
+Arguments for detect:
     -h, --help                  Display this help message.
     --version                   Display the program's current version.
     contact_map                 The Hi-C contact map to detect patterns on, in
@@ -22,7 +32,7 @@ Arguments:
                                 patterns.
     -P, --pattern loops         Which pattern to detect. This will use preset
                                 configurations for the given pattern. Possible
-                                values are: loops, borders. [default: loops]
+                                values are: loops, borders, hairpin. [default: loops]
     -p, --precision auto        Precision threshold when assessing pattern
                                 probability in the contact map. A lesser value
                                 leads to potentially more detections, but more
@@ -32,10 +42,19 @@ Arguments:
                                 template-based pass. Auto means an appropriate
                                 value will be loaded from the kernel
                                 configuration file. [default: auto]
+Arguments for generate-config:
+    prefix                      Path prefix for config files. If prefix is a/b,
+                                files a/b.json and a/b.1.txt will be generated.
+                                If a given pattern has N kernel matrices, N txt
+                                files are created they will be named a/b.[1-N].txt.
+    -p, --preset loops         Generate a preset config for the given pattern.
+                                Preset configs available are "loops" and 
+                                "borders". [default: loops]
 """
 import numpy as np
 import pathlib
 import sys
+import json
 import docopt
 from chromovision.version import __version__
 from chromovision.utils.contacts_map import ContactMap
@@ -65,10 +84,28 @@ def _override_kernel_config(param_name, param_value, param_type, config):
     return config
 
 
-def main():
+def cmd_generate_config(arguments):
+    # Parse command line arguments for generate_config
+    prefix = arguments["<prefix>"]
+    pattern = arguments["--preset"]
     arguments = docopt.docopt(__doc__, version=__version__)
 
-    # Parse command line arguments
+    kernel_config = load_kernel_config(pattern, False)
+
+    # Write kernel matrices to files with input prefix and replace kernels
+    # by their path in config
+    for mat_id, mat in enumerate(kernel_config["kernels"]):
+        mat_path = f"{prefix}.{mat_id+1}.txt"
+        np.savetxt(mat_path, mat)
+        kernel_config["kernels"][mat_id] = mat_path
+
+    # Write config to JSON file using prefix
+    with open(f"{prefix}.json", "w") as config_handle:
+        json.dump(kernel_config, config_handle, indent=4)
+
+
+def cmd_detect(arguments):
+    # Parse command line arguments for detect
     mat_path = arguments["<contact_map>"]
     kernel_config_path = arguments["--kernel-config"]
     pattern = arguments["--pattern"]
@@ -76,8 +113,6 @@ def main():
     precision = arguments["--precision"]
     iterations = arguments["--iterations"]
     output = arguments["<output>"]
-    list_current_pattern_count = []
-
     # If output is not specified, use current directory
     if not output:
         output = pathlib.Path()
@@ -150,6 +185,15 @@ def main():
             pileup_plot(pileup_matrix, name=my_name, output=output)
     write_results(patterns_to_plot, kernel_config["name"], output)
 
+
+def main():
+    arguments = docopt.docopt(__doc__, version=__version__)
+    detect = arguments["detect"]
+    generate_config = arguments["generate-config"]
+    if detect:
+        cmd_detect(arguments)
+    elif generate_config:
+        cmd_generate_config(arguments)
     return 0
 
 

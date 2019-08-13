@@ -46,5 +46,7 @@ setup(
     packages=find_packages(exclude=["demos"]),
     install_requires=REQUIREMENTS,
     include_package_data=True,
-    entry_points={"console_scripts": ["chromovision=chromovision.cli.detector:main"]},
+    entry_points={
+        "console_scripts": ["chromovision=chromovision.cli.chromovision:main"]
+    },
 )
