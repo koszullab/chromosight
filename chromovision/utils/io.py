@@ -221,6 +221,8 @@ def load_kernel_config(kernel, custom=False):
         sys.stderr.write(err_msg)
         raise e
 
+    # Set maximum distance parameter to base pair using resolution
+    kernel_config["max_dist"] = kernel_config["max_dist"] // kernel_config["resolution"]
     # Load kernel matrices using path in kernel config
     kernel_matrices = [None] * len(kernel_config["kernels"])
     for i, kernel_path in enumerate(kernel_config["kernels"]):
