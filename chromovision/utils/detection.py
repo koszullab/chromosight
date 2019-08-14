@@ -56,7 +56,7 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix, area=8):
         nr = matrix.shape[0]
         nc = matrix.shape[1]
         # Pattern matching operate here
-        mat_conv = corrcoef2d(matrix, kernel_matrix)
+        mat_conv = corrcoef2d(matrix, kernel_matrix, kernel_config["max_dist"])
         mat_conv = mat_conv.tocoo()
         mat_conv.data[np.isnan(mat_conv.data)] = 0
         mat_conv.eliminate_zeros()
@@ -435,17 +435,17 @@ def xcorr2(signal, kernel, max_scan_distance=None, threshold=1e-4):
     """
     from matplotlib import pyplot as plt
 
-    Ms, Ns = signal.shape
-    Mk, Nk = kernel.shape
-    if (Mk > Ms) or (Nk > Ns):
+    Sm, Sn = signal.shape
+    Km, Kn = kernel.shape
+    if (Km > Sm) or (Kn > Sn):
         raise ValueError("cannot have kernel bigger than signal")
 
     if max_scan_distance is None:
-        max_scan_distance = max(Ms, Ns)
+        max_scan_distance = max(Sm, Sn)
 
-    Ki = (Mk - 1) // 2
-    Kj = (Nk - 1) // 2
-    out = lil_matrix((Ms, Ns))
+    Ki = (Km - 1) // 2
+    Kj = (Kn - 1) // 2
+    out = lil_matrix((Sm, Sn))
     # out[Ki : Ms - (Mk - 1 - Ki), Kj : Ns - (Nk - 1 - Kj)] = 0.0
     # Coordinates of nonzero
     # Sx, Sy = mat.nonzero()
@@ -454,12 +454,12 @@ def xcorr2(signal, kernel, max_scan_distance=None, threshold=1e-4):
     # Sx, Sy = Sx[max_scan_mask], Sy[max_scan_mask]
     # for sx, sy in zip(Sx, Sy):
     #    out[sx, sy] =
-    max_scan_distance = 30
-    for si in range(Ki + 1, Ms - (Ki + 1)):
-        for sj in range(si + (Ki + 1), min(max_scan_distance + si, Ns - (Kj + 1))):
-            out[(si - Ki - 1) : (si + Ki), (sj - Kj - 1) : (sj + Kj)] += (
-                signal[(si - Ki - 1) : (si + Ki), (sj - Kj - 1) : (sj + Kj)] * kernel
-            )
+    for si in range(Ki, Sm - (Ki + 1)):
+        for sj in range(si, min(max_scan_distance + si, Sm - (Kj + 1))):
+            i_low, i_up = si - Ki, si + Ki + 2 - Kn % 2
+            j_low, j_up = sj - Kj, sj + Kj + 2 - Km % 2
+            out[i_low:i_up, j_low:j_up] += signal[i_low:i_up, j_low:j_up] * kernel
+
     # for ki in range(Mk):
     #    # Note convolution is only computed up to a distance from the diagonal
     #    for kj in range(Nk):
@@ -471,7 +471,7 @@ def xcorr2(signal, kernel, max_scan_distance=None, threshold=1e-4):
     return out
 
 
-def corrcoef2d(signal, kernel):
+def corrcoef2d(signal, kernel, max_scan_distance):
     """Signal-kernel 2D correlation
 
     Pearson correlation coefficient between signal and sliding kernel.
@@ -479,7 +479,7 @@ def corrcoef2d(signal, kernel):
     # Set diagonals that will overlap the kernel in the lower triangle to their
     # opposite diagonal (in upper triangl)
     signal = signal.tolil()
-    for i in range(1, kernel.shape[0] // 2 + 1):
+    for i in range(1, kernel.shape[0]):
         signal.setdiag(signal.diagonal(i), -i)
 
     # Kernel1 allows to compute the mean
@@ -489,7 +489,7 @@ def corrcoef2d(signal, kernel):
     std_signal = np.sqrt(xcorr2(signal ** 2, kernel1) - mean_signal ** 2)
     mean_kernel = np.mean(kernel)
     std_kernel = np.std(kernel)
-    corrcoef = xcorr2(signal, kernel / kernel.size)
+    corrcoef = xcorr2(signal, kernel / kernel.size, max_scan_distance=max_scan_distance)
     # Since elementwise sparse matrices division is not implemented, compute
     # numerator and denominator and perform division on the 1D array of nonzero
     # values.
@@ -504,6 +504,10 @@ def corrcoef2d(signal, kernel):
 
     # Only keep the upper triangle
     corrcoef = triu(corrcoef)
+    from matplotlib import pyplot as plt
+
+    plt.imshow(corrcoef.todense())
+    plt.show()
 
     return corrcoef
 
