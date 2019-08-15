@@ -1,9 +1,7 @@
 from __future__ import absolute_import
 import numpy as np
-from os.path import join, dirname, abspath
 from scipy.sparse import lil_matrix, coo_matrix, triu
 from scipy.sparse.csgraph import connected_components
-from . import io as cio
 
 
 def pattern_detector(contact_map, kernel_config, kernel_matrix, area=8):
@@ -64,7 +62,7 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix, area=8):
         pattern_foci = picker(mat_conv, kernel_config["precision"])
 
         # If foci table contains only zeros, no pattern was found
-        if pattern_foci.max() != 0:
+        if pattern_foci != "NA":
             # Convert to csr for slicing
             mat_conv = mat_conv.tocsr()
             for l in pattern_foci:
@@ -420,12 +418,7 @@ def xcorr2(signal, kernel, max_scan_distance=None, threshold=1e-4):
     kernel: array_like
         A 2-dimensional numpy array Mk x Nk acting as the pattern template.
     max_scan_distance : int or None, optional
-        Limits the range of computations beyond the diagonal. Default is None,
-        which means no such limit is taken into account.
-    threshold : float, optional
-        Sets all values in the final matrix below this threshold to zero to
-        reduce memory issues when handling sparse matrices. Default is set
-        to 1e-4
+        Limits the range of computations beyond the diagonal. Default is None
 
     Returns
     -------
@@ -433,7 +426,6 @@ def xcorr2(signal, kernel, max_scan_distance=None, threshold=1e-4):
         2-dimensional numpy array that's the convolution product of signal
         by kernel. The shape of out depends on cenetred_p.
     """
-    from matplotlib import pyplot as plt
 
     Sm, Sn = signal.shape
     Km, Kn = kernel.shape
@@ -471,7 +463,7 @@ def xcorr2(signal, kernel, max_scan_distance=None, threshold=1e-4):
     return out
 
 
-def corrcoef2d(signal, kernel, max_scan_distance):
+def corrcoef2d(signal, kernel, max_dist):
     """Signal-kernel 2D correlation
 
     Pearson correlation coefficient between signal and sliding kernel.
@@ -485,29 +477,28 @@ def corrcoef2d(signal, kernel, max_scan_distance):
     # Kernel1 allows to compute the mean
     kernel1 = np.ones(kernel.shape) / kernel.size
     # Returns a matrix of means
-    mean_signal = xcorr2(signal, kernel1)
-    std_signal = np.sqrt(xcorr2(signal ** 2, kernel1) - mean_signal ** 2)
+    mean_signal = xcorr2(signal, kernel1, max_scan_distance=max_dist)
+    std_signal = ((
+        signal - mean_signal) ** 2
+    ).sqrt()
     mean_kernel = np.mean(kernel)
     std_kernel = np.std(kernel)
-    corrcoef = xcorr2(signal, kernel / kernel.size, max_scan_distance=max_scan_distance)
+    conv = xcorr2(signal, kernel / kernel.size, max_scan_distance=max_dist)
+    # import pdb
+    # pdb.set_trace()
     # Since elementwise sparse matrices division is not implemented, compute
     # numerator and denominator and perform division on the 1D array of nonzero
     # values.
-    numerator = corrcoef - mean_signal * mean_kernel
+    numerator = conv - mean_signal * mean_kernel
     denominator = std_signal * std_kernel
     corrcoef = numerator.copy()
     # Get coords of non-zero (nz) values in the numerator
-    nz_vals = corrcoef.nonzero()
+    #nz_vals = corrcoef.nonzero()
     # Divide them by corresponding entries in the numerator
-    denominator = denominator.tocsr()
-    corrcoef.data /= denominator[nz_vals].A1
-
+    #denominator = denominator.tocsr()
+    
     # Only keep the upper triangle
     corrcoef = triu(corrcoef)
-    from matplotlib import pyplot as plt
-
-    plt.imshow(corrcoef.todense())
-    plt.show()
 
     return corrcoef
 
