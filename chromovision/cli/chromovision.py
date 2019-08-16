@@ -8,7 +8,7 @@ maps with pattern matching.
 Usage:
     chromovision detect <contact_map> [<output>] [--kernel-config FILE]
                         [--pattern=loops] [--precision=auto] [--iterations=auto]
-                        [--inter]
+                        [--inter] [--max-dist=auto]
     chromovision generate-config <prefix> [--preset loops]
 
     detect: 
@@ -26,10 +26,19 @@ Arguments for detect:
     contact_map                 The Hi-C contact map to detect patterns on, in
                                 bedgraph2d or cool format. 
     output                      name of the output directory
+    -I, --inter                 Enable to consider interchromosomal contacts.
+    -i, --iterations auto       How many iterations to perform after the first
+                                template-based pass. Auto sets an appropriate
+                                value loaded from the kernel configuration
+                                file. [default: auto]
     -k, --kernel-config FILE    Optionally give a path to a custom JSON kernel
                                 config path. Use this to override pattern if 
                                 you do not want to use one of the preset 
                                 patterns.
+    -m, --max-dist auto         Maximum distance from the diagonal (in base pairs)
+                                at which pattern detection should operate. Auto
+                                sets a value based on the kernel configuration
+                                file and the signal to noise ratio. [default: auto]
     -P, --pattern loops         Which pattern to detect. This will use preset
                                 configurations for the given pattern. Possible
                                 values are: loops, borders, hairpin. [default: loops]
@@ -37,11 +46,7 @@ Arguments for detect:
                                 probability in the contact map. A lesser value
                                 leads to potentially more detections, but more
                                 false positives. [default: auto]
-    -I, --inter                 Use to consider interchromosomal contacts.
-    -i, --iterations auto       How many iterations to perform after the first
-                                template-based pass. Auto means an appropriate
-                                value will be loaded from the kernel
-                                configuration file. [default: auto]
+
 Arguments for generate-config:
     prefix                      Path prefix for config files. If prefix is a/b,
                                 files a/b.json and a/b.1.txt will be generated.
@@ -106,12 +111,14 @@ def cmd_generate_config(arguments):
 
 def cmd_detect(arguments):
     # Parse command line arguments for detect
-    mat_path = arguments["<contact_map>"]
     kernel_config_path = arguments["--kernel-config"]
-    pattern = arguments["--pattern"]
     interchrom = arguments["--inter"]
-    precision = arguments["--precision"]
     iterations = arguments["--iterations"]
+    mat_path = arguments["<contact_map>"]
+    max_dist = arguments["--max-dist"]
+    pattern = arguments["--pattern"]
+    precision = arguments["--precision"]
+
     output = arguments["<output>"]
     # If output is not specified, use current directory
     if not output:
@@ -143,6 +150,9 @@ def cmd_detect(arguments):
     kernel_config = _override_kernel_config(
         "precision", precision, float, kernel_config
     )
+
+    #kernel_config = _override_kernel_config("max_dist", max_dist, int, kernel_config)
+    # Make shorten max distance in case matrix is noisy
 
     patterns_to_plot = dict()
     contact_map = ContactMap(mat_path, interchrom)

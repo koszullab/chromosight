@@ -10,7 +10,8 @@ from scipy.signal import savgol_filter
 
 def normalize(B, good_bins=None, iterations=10):
     """
-    Iterative normalisation of a Hi-C matrix.
+    Iterative normalisation of a Hi-C matrix (ICE procedure, 
+    Imakaev et al, doi: 10.1038/nmeth.2148)
 
     Parameters
     ----------
@@ -28,20 +29,25 @@ def normalize(B, good_bins=None, iterations=10):
     if good_bins is None:
         good_bins = np.arange(B.shape[0])
     r = B.copy()
-    for _ in range(1, iterations):
+    r = r.tocsr()
+    # Make a boolean mask from good bins
+    good_mask = np.isin(good_bins, range(r.shape[0]))
+    # Set all pixels in a nondetectable bin to 0
+    r[~good_mask, :] = 0.0
+    r[:, ~good_mask] = 0.0
+    r = r.tocoo()
+    # Update sparsity and get coordinates of nonzero pixels
+    r.eliminate_zeros()
+    nz_rows, nz_cols = r.nonzero()
+    for _ in range(iterations):
         bin_sums = sum_mat_bins(r)
-        # Retrieve coordinates of nonzero pixels
-        pixel_rows, pixel_cols = r.nonzero()
-        # Keep only coords of nonzero pixels that are in good col and row
-        # Valid pixels will be nonzero values in good bins
-        pixel_mask = np.isin(pixel_rows, good_bins) * np.isin(pixel_cols, good_bins)
-        pixel_rows = pixel_rows[pixel_mask]
-        pixel_cols = pixel_cols[pixel_mask]
         # ICE normalisation (Divide each valid pixel by the product of its row and column)
-        r.data /= np.float64(bin_sums[pixel_rows] * bin_sums[pixel_cols])
-    row_sums = np.array(r.sum(axis=1)).flatten()
+        r.data /= np.float64(bin_sums[nz_rows] * bin_sums[nz_cols])
+    bin_sums = sum_mat_bins(r)
     # Scale to 1
-    r.data = r.data * (1 / np.mean(row_sums))
+    r.data = r.data * (1 / np.median(bin_sums))
+    r.eliminate_zeros()
+
     return r
 
 
@@ -77,7 +83,15 @@ def distance_law(matrix, detectable_bins):
     n = min(matrix.shape)
     dist = np.zeros(n)
     for diag in range(n):
-        dist[diag] = np.mean(matrix.diagonal(diag)[detectable_bins[: n - diag]])
+        # Find detectable which fall in diagonal
+        # detect_bins_in_diag = (detectable_bins < diag) | (detectable_bins >= n - diag)
+        # detect_diag = detectable_bins[detect_bins_in_diag]
+        # Shift detectable bin indices to be relative to diagonal array
+        # detect_diag[(detect_diag >= diag)] -= diag
+        # print("D: ", diag)
+        # print("DETECT: ", detect_diag)
+        # print("DIAG: ", matrix.diagonal(diag))
+        dist[diag] = np.mean(matrix.diagonal(diag)[detectable_bins])
     return dist
 
 
@@ -144,7 +158,6 @@ def get_detectable_bins(matrix):
     mads = np.nanmedian(abs(sum_bins - np.median(sum_bins)), 0)
     # Find poor interacting rows and columns
     threshold_bins = np.median(sum_bins) - 2.0 * mads
-    good_indices = np.where(sum_bins > threshold_bins)
     # Removal of poor interacting rows and columns
     good_bins = np.where(sum_bins > threshold_bins)[0]
     return good_bins
@@ -213,6 +226,11 @@ def ztransform(matrix):
     N.data /= sd
 
     return N
+
+
+def signal_to_noise():
+    """Compute signal to noise ratio at each diagonal of the matrix"""
+    ...
 
 
 def sum_mat_bins(mat):

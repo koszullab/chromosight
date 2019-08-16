@@ -83,6 +83,7 @@ class ContactMap:
         # Guess file format fron file name
         extension = os.path.splitext(mat_path)[-1].lstrip(".")
         print("loading: ", mat_path)
+
         # Load contact map and chromosome start bins coords
         try:
             mat, chroms, bins, resolution = format_loader[extension](mat_path)
@@ -91,6 +92,7 @@ class ContactMap:
                 f"Unknown format: {extension}. Must be one of {format_loader.keys()}\n"
             )
             raise e
+
         return mat, chroms, bins, resolution
 
     def preprocess_matrix(self):
@@ -123,7 +125,7 @@ class ContactMap:
                     # Intrachromosomal matrices need to be detrended for distance law
                     if start_c1 == start_c2:
                         sub_mat = preproc.despeckle(sub_mat, th2=3)
-                        sub_mat = preproc.detrend(sub_mat, sub_mat_detectable_bins)
+                        sub_mat = preproc.detrend(sub_mat, sub_mat_detectable_bins[0])
                         sub_mats.append(sub_mat)
                         sub_mats_detectable_bins.append(sub_mat_detectable_bins)
                     # But interchromsomal matrices must only be scaled

@@ -2,6 +2,7 @@ from __future__ import absolute_import
 import numpy as np
 from scipy.sparse import lil_matrix, coo_matrix, triu
 from scipy.sparse.csgraph import connected_components
+from profilehooks import profile
 
 
 def pattern_detector(contact_map, kernel_config, kernel_matrix, area=8):
@@ -300,19 +301,19 @@ def label_connected_pixels_sparse(matrix, min_focus_size=2):
     
     Example
     -------
-    >>>M.todense()
-    [[1 0 0 0]
-     [1 0 1 0]
-     [1 0 1 1]
-     [0 0 0 0]]
-    >>>num_foci, foci_mat = label_foci(M)
-    >>>num_foci
+    >>> M.todense()
+    array([[1 0 0 0]
+           [1 0 1 0]
+           [1 0 1 1]
+           [0 0 0 0]])
+    >>> num_foci, foci_mat = label_foci(M)
+    >>> num_foci
     2
     >>>foci_mat.todense()
-    [[1 0 0 0]
-     [1 0 2 0]
-     [1 0 2 2]
-     [0 0 0 0]]
+    array([[1 0 0 0]
+           [1 0 2 0]
+           [1 0 2 2]
+           [0 0 0 0]])
     """
     candidates = matrix.copy()
     n_candidates = len(candidates.data)
