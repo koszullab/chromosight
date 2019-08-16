@@ -427,39 +427,26 @@ def xcorr2(signal, kernel, max_scan_distance=None, threshold=1e-4):
         by kernel. The shape of out depends on cenetred_p.
     """
 
-    Sm, Sn = signal.shape
-    Km, Kn = kernel.shape
-    if (Km > Sm) or (Kn > Sn):
+    sm, sn = signal.shape
+    km, kn = kernel.shape
+    if (km > sm) or (sn > sn):
         raise ValueError("cannot have kernel bigger than signal")
 
     if max_scan_distance is None:
-        max_scan_distance = max(Sm, Sn)
+        max_scan_distance = max(sm, sn)
 
-    Ki = (Km - 1) // 2
-    Kj = (Kn - 1) // 2
-    out = lil_matrix((Sm, Sn))
-    # out[Ki : Ms - (Mk - 1 - Ki), Kj : Ns - (Nk - 1 - Kj)] = 0.0
-    # Coordinates of nonzero
-    # Sx, Sy = mat.nonzero()
-    # Mask pixels further from diagonal than max_distance_scan
-    # max_scan_mask = abs(Sx - Sy) <= max_distance_scan
-    # Sx, Sy = Sx[max_scan_mask], Sy[max_scan_mask]
-    # for sx, sy in zip(Sx, Sy):
-    #    out[sx, sy] =
-    for si in range(Ki, Sm - (Ki + 1)):
-        for sj in range(si, min(max_scan_distance + si, Sm - (Kj + 1))):
-            i_low, i_up = si - Ki, si + Ki + 2 - Kn % 2
-            j_low, j_up = sj - Kj, sj + Kj + 2 - Km % 2
-            out[i_low:i_up, j_low:j_up] += signal[i_low:i_up, j_low:j_up] * kernel
-
-    # for ki in range(Mk):
-    #    # Note convolution is only computed up to a distance from the diagonal
-    #    for kj in range(Nk):
-    #        out[Ki : Ms - (Mk - 1 - Ki), Kj : Ns - (Nk - 1 - Kj)] += (
-    #            kernel[ki, kj] * signal[ki : Ms - Mk + 1 + ki, kj : Ns - Nk + 1 + kj]
-    #        )
-    #
-
+    # Kernel (half) height and width
+    kh = (km - 1) // 2
+    kw = (kn - 1) // 2
+    pad_h, pad_w = 2 - kn % 2, 2 - km % 2
+    out = lil_matrix((sm, sn))
+    for si in range(kh, sm - (kh + 1)):
+        for sj in range(si, min(max_scan_distance + si, sm - (kw + 1))):
+            i_low, i_up = si - kh, si + kh + pad_h
+            j_low, j_up = sj - kw, sj + kw + pad_w
+            out[i_low:i_up, j_low:j_up] += (
+                signal[i_low:i_up, j_low:j_up] @ kernel @ signal[i_low:i_up, j_low:j_up]
+            )
     return out
 
 
@@ -478,8 +465,10 @@ def corrcoef2d(signal, kernel, max_dist):
     kernel1 = np.ones(kernel.shape) / kernel.size
     # Returns a matrix of means
     mean_signal = xcorr2(signal, kernel1, max_scan_distance=max_dist)
-    std_signal = ((
-        signal - mean_signal) ** 2
+    std_signal = (
+        np.abs(
+            xcorr2(signal ** 2, kernel1, max_scan_distance=max_dist) - mean_signal ** 2
+        )
     ).sqrt()
     mean_kernel = np.mean(kernel)
     std_kernel = np.std(kernel)
@@ -493,10 +482,11 @@ def corrcoef2d(signal, kernel, max_dist):
     denominator = std_signal * std_kernel
     corrcoef = numerator.copy()
     # Get coords of non-zero (nz) values in the numerator
-    #nz_vals = corrcoef.nonzero()
+    nz_vals = corrcoef.nonzero()
     # Divide them by corresponding entries in the numerator
-    #denominator = denominator.tocsr()
-    
+    denominator = denominator.tocsr()
+    corrcoef.data /= denominator[nz_vals].A1
+
     # Only keep the upper triangle
     corrcoef = triu(corrcoef)
 
