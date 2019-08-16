@@ -141,8 +141,10 @@ def get_detectable_bins(matrix):
     -------
     """
     sum_bins = sum_mat_bins(matrix)
-    # Find poor interacting raws and columns
-    threshold_bins = np.median(sum_bins) - 2.0 * np.std(sum_bins)
+    mads = np.nanmedian(abs(sum_bins - np.median(sum_bins)), 0)
+    # Find poor interacting rows and columns
+    threshold_bins = np.median(sum_bins) - 2.0 * mads
+    good_indices = np.where(sum_bins > threshold_bins)
     # Removal of poor interacting rows and columns
     good_bins = np.where(sum_bins > threshold_bins)[0]
     return good_bins
