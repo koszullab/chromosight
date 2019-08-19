@@ -151,13 +151,12 @@ def cmd_detect(arguments):
         "precision", precision, float, kernel_config
     )
 
-    #kernel_config = _override_kernel_config("max_dist", max_dist, int, kernel_config)
+    # kernel_config = _override_kernel_config("max_dist", max_dist, int, kernel_config)
     # Make shorten max distance in case matrix is noisy
 
     patterns_to_plot = dict()
     contact_map = ContactMap(mat_path, interchrom)
 
-    # Loop over types of patterns (loops, TADs, ...)
     (all_patterns, pileup_patterns, list_current_pattern_count) = explore_patterns(
         contact_map, kernel_config
     )

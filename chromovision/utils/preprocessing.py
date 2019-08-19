@@ -82,16 +82,16 @@ def distance_law(matrix, detectable_bins):
     """
     n = min(matrix.shape)
     dist = np.zeros(n)
+
     for diag in range(n):
         # Find detectable which fall in diagonal
-        # detect_bins_in_diag = (detectable_bins < diag) | (detectable_bins >= n - diag)
-        # detect_diag = detectable_bins[detect_bins_in_diag]
-        # Shift detectable bin indices to be relative to diagonal array
-        # detect_diag[(detect_diag >= diag)] -= diag
-        # print("D: ", diag)
-        # print("DETECT: ", detect_diag)
-        # print("DIAG: ", matrix.diagonal(diag))
-        dist[diag] = np.mean(matrix.diagonal(diag)[detectable_bins])
+        detect_mask = np.zeros(n, dtype=bool)
+        detect_mask[detectable_bins] = 1
+        # Find diagonegativenal bins which are detectable
+        detect_mask_h = detect_mask[: (n - diag)]
+        detect_mask_v = detect_mask[n - (n - diag) :]
+        detect_mask_diag = detect_mask_h & detect_mask_v
+        dist[diag] = np.mean(matrix.diagonal(diag)[detect_mask_diag])
     return dist
 
 
@@ -183,7 +183,7 @@ def detrend(matrix, detectable_bins=None):
         The detrended Hi-C matrix.
     """
     matrix = matrix.tocsr()
-    y = distance_law(matrix, detectable_bins[0])
+    y = distance_law(matrix, detectable_bins)
     y[np.isnan(y)] = 0.0
     y_savgol = savgol_filter(y, window_length=17, polyorder=5)
 
@@ -192,12 +192,12 @@ def detrend(matrix, detectable_bins=None):
     clean_mat.data /= y_savgol[abs(clean_mat.row - clean_mat.col)]
     clean_mat = clean_mat.tocsr()
     # Set values in bad bins to 0
-    miss_row_mask = np.ones(detectable_bins[0].shape, dtype=bool)
-    miss_col_mask = np.ones(detectable_bins[1].shape, dtype=bool)
-    miss_row_mask[detectable_bins[0]] = 0
-    miss_col_mask[detectable_bins[1]] = 0
-    clean_mat[np.ix_(miss_row_mask, miss_col_mask)] = 0.0
+    miss_bin_mask = np.ones(matrix.shape[0], dtype=bool)
+    miss_bin_mask[detectable_bins] = 0
+    clean_mat[np.ix_(miss_bin_mask, miss_bin_mask)] = 0.0
     clean_mat.eliminate_zeros()
+    from matplotlib import pyplot as plt
+
     return clean_mat
 
 
