@@ -67,6 +67,7 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix, area=8):
             # Convert to csr for slicing
             mat_conv = mat_conv.tocsr()
             for l in pattern_foci:
+                # Make sure pattern falls within a detectable bin
                 if l[0] in indices[0] and l[1] in indices[1]:
                     p1 = int(l[0])
                     p2 = int(l[1])
@@ -242,6 +243,7 @@ def picker(mat_conv, precision=None):
     foci_coords : numpy.array of ints
         2D array of coordinates for identified patterns.
     """
+
     candidate_mat = mat_conv.copy()
     candidate_mat = candidate_mat.tocoo()
     # Compute a threshold from precision arg and set all pixels below to 0
@@ -315,6 +317,7 @@ def label_connected_pixels_sparse(matrix, min_focus_size=2):
            [1 0 2 2]
            [0 0 0 0]])
     """
+
     candidates = matrix.copy()
     n_candidates = len(candidates.data)
     candidates.data = candidates.data.astype(bool)
@@ -423,9 +426,8 @@ def xcorr2(signal, kernel, max_scan_distance=None, threshold=1e-4):
 
     Returns
     -------
-    out: scipy.sparse.csr_matrix
-        2-dimensional numpy array that's the convolution product of signal
-        by kernel. The shape of out depends on cenetred_p.
+    out: scipy.sparse.coo_matrix
+        Convolution product of signal by kernel.
     """
 
     sm, sn = signal.shape
@@ -448,6 +450,10 @@ def xcorr2(signal, kernel, max_scan_distance=None, threshold=1e-4):
             out[i_low:i_up, j_low:j_up] += (
                 signal[i_low:i_up, j_low:j_up] @ kernel @ signal[i_low:i_up, j_low:j_up]
             )
+    out = out.tocoo()
+    # Set very low pixels to 0
+    out.data[out.data < threshold] = 0
+    out.eliminate_zeros()
     return out
 
 

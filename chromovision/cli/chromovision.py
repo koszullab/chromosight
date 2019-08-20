@@ -61,6 +61,7 @@ import pathlib
 import sys
 import json
 import docopt
+from profilehooks import profile
 from chromovision.version import __version__
 from chromovision.utils.contacts_map import ContactMap
 from chromovision.utils.io import write_results, load_kernel_config
@@ -109,6 +110,7 @@ def cmd_generate_config(arguments):
         json.dump(kernel_config, config_handle, indent=4)
 
 
+@profile
 def cmd_detect(arguments):
     # Parse command line arguments for detect
     kernel_config_path = arguments["--kernel-config"]
@@ -150,12 +152,13 @@ def cmd_detect(arguments):
     kernel_config = _override_kernel_config(
         "precision", precision, float, kernel_config
     )
+    kernel_config = _override_kernel_config("max_dist", max_dist, int, kernel_config)
 
     # kernel_config = _override_kernel_config("max_dist", max_dist, int, kernel_config)
     # Make shorten max distance in case matrix is noisy
 
     patterns_to_plot = dict()
-    contact_map = ContactMap(mat_path, interchrom)
+    contact_map = ContactMap(mat_path, interchrom, kernel_config["max_dist"])
 
     (all_patterns, pileup_patterns, list_current_pattern_count) = explore_patterns(
         contact_map, kernel_config

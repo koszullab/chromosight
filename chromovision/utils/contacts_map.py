@@ -53,14 +53,18 @@ class ContactMap:
         Table containing bins genomic coordinates for the whole genome matrix.
     resolution : int
         Bin size of the Hi-C matrix.
+    max_dist : int
+        maximum distance from the diagonal at which intrachromosomal matrices
+        should be scanned.
         """
 
-    def __init__(self, mat_path, interchrom=False):
+    def __init__(self, mat_path, interchrom=False, max_dist=None):
         """
         Loads a cool or bg2 file containing a whole genome matrix, processes
         the contact map and splits it into intra and inter matrices.
         """
         self.interchrom = interchrom
+        self.max_dist = max_dist
         # Load contacts, bin and chromosome infos from file
         self.mat, chromstarts, self.bins, self.resolution = self.load_data(mat_path)
         # Getting start and end coordinates of chromosomes into a 2D array
@@ -68,7 +72,7 @@ class ContactMap:
         self.chroms = np.vstack([chromstarts, chromend]).T
 
         # Get indices of detectable bins and apply preprocessing treatment on matrix
-        self.mat, self.detectable_bins = self.preprocess_matrix()
+        self.mat, self.detectable_bins = self.preprocess_full_matrix()
 
         # Splitting whole genome matrix into chromosome sub matrices
         self.sub_mats, self.sub_mats_detectable_bins = self.split_chromosomes()
@@ -95,11 +99,29 @@ class ContactMap:
 
         return mat, chroms, bins, resolution
 
-    def preprocess_matrix(self):
+    def preprocess_full_matrix(self):
         """Apply general Hi-C preprocessing steps to the whole genome matrix"""
         detectable_bins = preproc.get_detectable_bins(self.mat)
         mat = preproc.normalize(self.mat, detectable_bins)
         return mat, detectable_bins
+
+    def preprocess_intra_matrix(self, sub_mat, sub_mat_detectable_bins):
+        # Remove speckles (outlier pixels)
+        sub_mat = preproc.despeckle(sub_mat, th2=3)
+        # Compute signal to noise ratio at all diagonals
+        snr_dist = preproc.signal_to_noise_threshold(sub_mat, sub_mat_detectable_bins)
+        # Define max_dist based on snr and pattern config
+        sub_mat_max_dist = min(self.max_dist, snr_dist)
+        # Detrend matrix for power law
+        sub_mat = preproc.detrend(sub_mat, sub_mat_detectable_bins)
+        # Remove pixels further than max_dist
+        for diag in range(sub_mat_max_dist + 1, sub_mat.shape[0]):
+            sub_mat.setdiag(0, diag)
+
+        return sub_mat
+
+    def preprocess_inter_matrix(self, sub_mat):
+        return preproc.ztransform(sub_mat)
 
     def split_chromosomes(self):
         """
@@ -124,13 +146,14 @@ class ContactMap:
                     )
                     # Intrachromosomal matrices need to be detrended for distance law
                     if start_c1 == start_c2:
-                        sub_mat = preproc.despeckle(sub_mat, th2=3)
-                        sub_mat = preproc.detrend(sub_mat, sub_mat_detectable_bins[0])
+                        sub_mat = self.preprocess_intra_matrix(
+                            sub_mat, sub_mat_detectable_bins[0]
+                        )
                         sub_mats.append(sub_mat)
                         sub_mats_detectable_bins.append(sub_mat_detectable_bins)
                     # But interchromsomal matrices must only be scaled
                     elif self.interchrom:
-                        sub_mat = preproc.ztransform(sub_mat)
+                        sub_mat = self.preprocess_inter_matrix(sub_mat)
                         sub_mats.append(sub_mat)
                         sub_mats_detectable_bins.append(sub_mat_detectable_bins)
         return sub_mats, sub_mats_detectable_bins

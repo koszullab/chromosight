@@ -51,7 +51,7 @@ def normalize(B, good_bins=None, iterations=10):
     return r
 
 
-def distance_law(matrix, detectable_bins):
+def distance_law(matrix, detectable_bins, fun=np.mean):
     """
     Computes genomic distance law by averaging over each diagonal in
     the upper triangle matrix.
@@ -62,6 +62,8 @@ def distance_law(matrix, detectable_bins):
         the input matrix to compute distance law from.
     detectable_bins : numpy.array of ints
         An array of detectable bins indices to consider when computing distance law.
+    fun : callable
+        A function to apply on each diagonal. Defaults to mean.
 
     Returns
     -------
@@ -87,11 +89,11 @@ def distance_law(matrix, detectable_bins):
         # Find detectable which fall in diagonal
         detect_mask = np.zeros(n, dtype=bool)
         detect_mask[detectable_bins] = 1
-        # Find diagonegativenal bins which are detectable
+        # Find bins which are detectable in the diagonal (intersect of hori and verti)
         detect_mask_h = detect_mask[: (n - diag)]
         detect_mask_v = detect_mask[n - (n - diag) :]
         detect_mask_diag = detect_mask_h & detect_mask_v
-        dist[diag] = np.mean(matrix.diagonal(diag)[detect_mask_diag])
+        dist[diag] = fun(matrix.diagonal(diag)[detect_mask_diag])
     return dist
 
 
@@ -138,6 +140,24 @@ def despeckle(matrix, th2=3):
     return A
 
 
+def mad(arr):
+    """
+    Compute median absolute deviation of input data.
+    
+    Parameters
+    ----------
+    arr : np.array
+        The input data, consisting of floats or ints
+    
+    Returns
+    -------
+    float :
+        The MAD of the input array.
+    """
+    mads = np.nanmedian(abs(arr - np.median(arr)), 0)
+    return mads
+
+
 def get_detectable_bins(matrix):
     """
     Returns lists of detectable indices after excluding low interacting bin
@@ -155,11 +175,11 @@ def get_detectable_bins(matrix):
     -------
     """
     sum_bins = sum_mat_bins(matrix)
-    mads = np.nanmedian(abs(sum_bins - np.median(sum_bins)), 0)
+    sum_mad = mad(sum_bins)
     # Find poor interacting rows and columns
-    threshold_bins = np.median(sum_bins) - 2.0 * mads
+    detect_threshold = np.median(sum_bins) - 2.0 * sum_mad
     # Removal of poor interacting rows and columns
-    good_bins = np.where(sum_bins > threshold_bins)[0]
+    good_bins = np.where(sum_bins > detect_threshold)[0]
     return good_bins
 
 
@@ -196,7 +216,6 @@ def detrend(matrix, detectable_bins=None):
     miss_bin_mask[detectable_bins] = 0
     clean_mat[np.ix_(miss_bin_mask, miss_bin_mask)] = 0.0
     clean_mat.eliminate_zeros()
-    from matplotlib import pyplot as plt
 
     return clean_mat
 
@@ -228,9 +247,36 @@ def ztransform(matrix):
     return N
 
 
-def signal_to_noise():
-    """Compute signal to noise ratio at each diagonal of the matrix"""
-    ...
+def signal_to_noise_threshold(matrix, detectable_bins, smooth=True):
+    """
+    Compute signal to noise ratio (SNR) at each diagonal of the matrix to determine
+    the maximum scanning distance from the diagonal. The SNR is smoothed using
+    the savgol filter.
+
+    Parameters
+    ----------
+    matrix : scipy.sparse.coo_matrix
+        The Hi-C contact map in sparse format.
+    detectable_bins : numpy.array
+        Array containing indices of detectable bins.
+    smooth : bool
+        Whether the SNR values should be smoothed using the savgol filter.
+    Returns
+    -------
+    int :
+        The maximum distance from the diagonal at which the matrix should be scanned
+    """
+    # Using median and mad to reduce sensitivity to outlier
+    dist_medians = distance_law(matrix, detectable_bins, np.median)
+    dist_mads = distance_law(matrix, detectable_bins, mad)
+    snr = dist_medians / dist_mads
+    # Values below 1 are considered too noisy
+    threshold_noise = 1.0
+    snr[np.isnan(snr)] = 0.0
+    if smooth:
+        snr = savgol_filter(snr, window_length=17, polyorder=5)
+    max_dist = min(np.where(snr < threshold_noise)[0])
+    return max_dist
 
 
 def sum_mat_bins(mat):
