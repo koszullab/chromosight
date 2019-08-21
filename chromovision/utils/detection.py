@@ -1,8 +1,7 @@
 from __future__ import absolute_import
 import numpy as np
-from scipy.sparse import lil_matrix, coo_matrix, triu
+from scipy.sparse import lil_matrix, coo_matrix, csr_matrix, triu
 from scipy.sparse.csgraph import connected_components
-from profilehooks import profile
 
 
 def pattern_detector(contact_map, kernel_config, kernel_matrix, area=8):
@@ -442,13 +441,13 @@ def xcorr2(signal, kernel, max_scan_distance=None, threshold=1e-4):
     kh = (km - 1) // 2
     kw = (kn - 1) // 2
     pad_h, pad_w = 2 - kn % 2, 2 - km % 2
-    out = lil_matrix((sm, sn))
+    out = csr_matrix((sm, sn))
     for si in range(kh, sm - (kh + 1)):
         for sj in range(si, min(max_scan_distance + si, sm - (kw + 1))):
             i_low, i_up = si - kh, si + kh + pad_h
             j_low, j_up = sj - kw, sj + kw + pad_w
-            out[i_low:i_up, j_low:j_up] += (
-                signal[i_low:i_up, j_low:j_up] @ kernel @ signal[i_low:i_up, j_low:j_up]
+            out[i_low:i_up, j_low:j_up] += np.multiply(
+                signal[i_low:i_up, j_low:j_up].todense(), kernel
             )
     out = out.tocoo()
     # Set very low pixels to 0
@@ -496,6 +495,17 @@ def corrcoef2d(signal, kernel, max_dist):
 
     # Only keep the upper triangle
     corrcoef = triu(corrcoef)
+    from matplotlib import pyplot as plt
+
+    cmap = plt.get_cmap("viridis")
+    cmap.set_bad(color="red", alpha=1.0)
+    fig, ax = plt.subplots(5, 1, sharex=True, sharey=True)
+    ax[0].imshow(signal.todense(), cmap=cmap)
+    ax[1].imshow(conv.todense(), cmap=cmap)
+    ax[2].imshow(numerator.todense(), cmap=cmap)
+    ax[3].imshow(denominator.todense(), cmap=cmap)
+    ax[4].imshow(corrcoef.todense(), cmap=cmap, vmax=0.15)
+    plt.show()
 
     return corrcoef
 
