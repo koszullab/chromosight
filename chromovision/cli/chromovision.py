@@ -61,7 +61,6 @@ import pathlib
 import sys
 import json
 import docopt
-from profilehooks import profile
 from chromovision.version import __version__
 from chromovision.utils.contacts_map import ContactMap
 from chromovision.utils.io import write_results, load_kernel_config
@@ -110,7 +109,6 @@ def cmd_generate_config(arguments):
         json.dump(kernel_config, config_handle, indent=4)
 
 
-@profile
 def cmd_detect(arguments):
     # Parse command line arguments for detect
     kernel_config_path = arguments["--kernel-config"]

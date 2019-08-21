@@ -8,7 +8,7 @@ import numpy as np
 from scipy.signal import savgol_filter
 
 
-def normalize(B, good_bins=None, iterations=10):
+def normalize(B, good_bins=None, iterations=100):
     """
     Iterative normalisation of a Hi-C matrix (ICE procedure, 
     Imakaev et al, doi: 10.1038/nmeth.2148)
@@ -41,6 +41,8 @@ def normalize(B, good_bins=None, iterations=10):
     nz_rows, nz_cols = r.nonzero()
     for _ in range(iterations):
         bin_sums = sum_mat_bins(r)
+        # Divide sums by their mean to avoid instability
+        bin_sums /= np.median(bin_sums)
         # ICE normalisation (Divide each valid pixel by the product of its row and column)
         r.data /= np.float64(bin_sums[nz_rows] * bin_sums[nz_cols])
     bin_sums = sum_mat_bins(r)
