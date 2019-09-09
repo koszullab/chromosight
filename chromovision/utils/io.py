@@ -128,10 +128,13 @@ def load_cool(cool_path):
     mat = c.pixels()[:]
     # Number of fragments  (bins) per chromosome
     bins = c.bins()[:]
+    # Number of bins per chromosome
     n_bins = bins.groupby("chrom", sort=False).count().start[:-1]
     n_bins = n_bins.astype(np.int64)
     # Starting bin of each chromosome
     chrom_start = np.insert(np.array(n_bins), 0, 0)
+    # Make chromstart cumulative
+    chrom_start = np.cumsum(chrom_start)
     # Make a sparse (COO) matrix from the pixels table
     n = int(max(np.amax(mat.bin1_id), np.amax(mat.bin2_id))) + 1
     shape = (n, n)
