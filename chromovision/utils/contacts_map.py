@@ -111,7 +111,10 @@ class ContactMap:
         # Compute signal to noise ratio at all diagonals
         snr_dist = preproc.signal_to_noise_threshold(sub_mat, sub_mat_detectable_bins)
         # Define max_dist based on snr and pattern config
-        sub_mat_max_dist = min(self.max_dist, snr_dist)
+        if self.max_dist is None:
+            sub_mat_max_dist = snr_dist
+        else:
+            sub_mat_max_dist = min(self.max_dist, snr_dist)
         # Detrend matrix for power law
         sub_mat = preproc.detrend(sub_mat, sub_mat_detectable_bins)
         # Remove pixels further than max_dist
