@@ -1,6 +1,6 @@
 from __future__ import absolute_import
 import numpy as np
-from scipy.sparse import lil_matrix, coo_matrix, csr_matrix, triu
+from scipy.sparse import lil_matrix, coo_matrix, csr_matrix, triu, csc_matrix
 from scipy.sparse.csgraph import connected_components
 
 
@@ -431,24 +431,27 @@ def xcorr2(signal, kernel, max_scan_distance=None, threshold=1e-4):
 
     sm, sn = signal.shape
     km, kn = kernel.shape
+
+    # Kernel (half) height and width
+    kh = (km - 1) // 2
+    kw = (kn - 1) // 2
+
     if (km > sm) or (sn > sn):
         raise ValueError("cannot have kernel bigger than signal")
 
     if max_scan_distance is None:
         max_scan_distance = max(sm, sn)
 
-    # Kernel (half) height and width
-    kh = (km - 1) // 2
-    kw = (kn - 1) // 2
-    pad_h, pad_w = 2 - kn % 2, 2 - km % 2
-    out = csr_matrix((sm, sn))
-    for si in range(kh, sm - (kh + 1)):
-        for sj in range(si, min(max_scan_distance + si, sm - (kw + 1))):
-            i_low, i_up = si - kh, si + kh + pad_h
-            j_low, j_up = sj - kw, sj + kw + pad_w
-            out[i_low:i_up, j_low:j_up] += np.multiply(
-                signal[i_low:i_up, j_low:j_up].todense(), kernel
+    out = lil_matrix((sm, sn))
+    out[kh : sm - (km - 1 - kh), kw : sn - (kn - 1 - kw)] = 0.0
+    out = out.tocsc()
+    for ki in range(km):
+        # Note convolution is only computed up to a distance from the diagonal
+        for kj in range(kn):
+            out[kh : sm - kh, kw : sn - kw] += (
+                kernel[ki, kj] * signal[ki : sm - km + 1 + ki, kj : sn - kn + 1 + kj]
             )
+
     out = out.tocoo()
     # Set very low pixels to 0
     out.data[out.data < threshold] = 0
@@ -479,8 +482,7 @@ def corrcoef2d(signal, kernel, max_dist):
     mean_kernel = np.mean(kernel)
     std_kernel = np.std(kernel)
     conv = xcorr2(signal, kernel / kernel.size, max_scan_distance=max_dist)
-    # import pdb
-    # pdb.set_trace()
+
     # Since elementwise sparse matrices division is not implemented, compute
     # numerator and denominator and perform division on the 1D array of nonzero
     # values.
@@ -492,20 +494,9 @@ def corrcoef2d(signal, kernel, max_dist):
     # Divide them by corresponding entries in the numerator
     denominator = denominator.tocsr()
     corrcoef.data /= denominator[nz_vals].A1
-
+    corrcoef.data[corrcoef.data < 0] = 0
     # Only keep the upper triangle
     corrcoef = triu(corrcoef)
-    from matplotlib import pyplot as plt
-
-    cmap = plt.get_cmap("viridis")
-    cmap.set_bad(color="red", alpha=1.0)
-    fig, ax = plt.subplots(5, 1, sharex=True, sharey=True)
-    ax[0].imshow(signal.todense(), cmap=cmap)
-    ax[1].imshow(conv.todense(), cmap=cmap)
-    ax[2].imshow(numerator.todense(), cmap=cmap)
-    ax[3].imshow(denominator.todense(), cmap=cmap)
-    ax[4].imshow(corrcoef.todense(), cmap=cmap, vmax=0.15)
-    plt.show()
 
     return corrcoef
 

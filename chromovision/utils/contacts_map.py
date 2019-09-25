@@ -70,10 +70,8 @@ class ContactMap:
         # Getting start and end coordinates of chromosomes into a 2D array
         chromend = np.append(chromstarts[1:], self.mat.shape[0])
         self.chroms = np.vstack([chromstarts, chromend]).T
-
         # Get indices of detectable bins and apply preprocessing treatment on matrix
         self.mat, self.detectable_bins = self.preprocess_full_matrix()
-
         # Splitting whole genome matrix into chromosome sub matrices
         self.sub_mats, self.sub_mats_detectable_bins = self.split_chromosomes()
 
