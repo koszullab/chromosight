@@ -3,7 +3,6 @@ import numpy as np
 from scipy.sparse import lil_matrix, coo_matrix, csr_matrix, triu, csc_matrix
 from scipy.sparse.csgraph import connected_components
 import warnings
-import profilehooks
 
 warnings.filterwarnings("ignore")
 
