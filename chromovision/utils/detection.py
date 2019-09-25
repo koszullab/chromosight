@@ -2,6 +2,10 @@ from __future__ import absolute_import
 import numpy as np
 from scipy.sparse import lil_matrix, coo_matrix, csr_matrix, triu, csc_matrix
 from scipy.sparse.csgraph import connected_components
+import warnings
+import profilehooks
+
+warnings.filterwarnings("ignore")
 
 
 def pattern_detector(contact_map, kernel_config, kernel_matrix, area=8):
@@ -443,8 +447,8 @@ def xcorr2(signal, kernel, max_scan_distance=None, threshold=1e-4):
         max_scan_distance = max(sm, sn)
 
     out = lil_matrix((sm, sn))
+    signal = signal.tocsc()
     out[kh : sm - (km - 1 - kh), kw : sn - (kn - 1 - kw)] = 0.0
-    out = out.tocsc()
     for ki in range(km):
         # Note convolution is only computed up to a distance from the diagonal
         for kj in range(kn):
@@ -476,7 +480,8 @@ def corrcoef2d(signal, kernel, max_dist):
     mean_signal = xcorr2(signal, kernel1, max_scan_distance=max_dist)
     std_signal = (
         np.abs(
-            xcorr2(signal ** 2, kernel1, max_scan_distance=max_dist) - mean_signal ** 2
+            xcorr2(signal.power(2), kernel1, max_scan_distance=max_dist)
+            - mean_signal.power(2)
         )
     ).sqrt()
     mean_kernel = np.mean(kernel)
@@ -497,6 +502,9 @@ def corrcoef2d(signal, kernel, max_dist):
     corrcoef.data[corrcoef.data < 0] = 0
     # Only keep the upper triangle
     corrcoef = triu(corrcoef)
+    from matplotlib import pyplot as plt
 
+    plt.imshow(corrcoef.todense())
+    plt.show()
     return corrcoef
 
