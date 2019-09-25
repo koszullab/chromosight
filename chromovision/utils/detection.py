@@ -257,7 +257,6 @@ def picker(mat_conv, precision=None):
     # Check if at least one candidate pixel was found
     if len(candidate_mat.data) > 0:
         num_foci, labelled_mat = label_connected_pixels_sparse(candidate_mat)
-
         # Will hold the coordinates of the best pixel for each focus
         foci_coords = np.zeros([num_foci, 2], int)
         # Iterate over candidate foci
@@ -445,16 +444,12 @@ def xcorr2(signal, kernel, max_scan_distance=None, threshold=1e-4):
 
     if max_scan_distance is None:
         max_scan_distance = max(sm, sn)
-
-    out = lil_matrix((sm, sn))
+    out = csc_matrix((sm - km + 1, sn - kn + 1), dtype=np.float64)
     signal = signal.tocsc()
-    out[kh : sm - (km - 1 - kh), kw : sn - (kn - 1 - kw)] = 0.0
     for ki in range(km):
         # Note convolution is only computed up to a distance from the diagonal
         for kj in range(kn):
-            out[kh : sm - kh, kw : sn - kw] += (
-                kernel[ki, kj] * signal[ki : sm - km + 1 + ki, kj : sn - kn + 1 + kj]
-            )
+            out += kernel[ki, kj] * signal[ki : sm - km + 1 + ki, kj : sn - kn + 1 + kj]
 
     out = out.tocoo()
     # Set very low pixels to 0
@@ -502,9 +497,5 @@ def corrcoef2d(signal, kernel, max_dist):
     corrcoef.data[corrcoef.data < 0] = 0
     # Only keep the upper triangle
     corrcoef = triu(corrcoef)
-    from matplotlib import pyplot as plt
-
-    plt.imshow(corrcoef.todense())
-    plt.show()
     return corrcoef
 
