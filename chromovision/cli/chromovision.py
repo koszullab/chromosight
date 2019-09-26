@@ -161,12 +161,6 @@ def cmd_detect(arguments):
     (all_patterns, pileup_patterns, list_current_pattern_count) = explore_patterns(
         contact_map, kernel_config
     )
-    if contact_map.interchrom is not None:
-        # Get bin indices of patterns in full genome matrix.
-        all_patterns = (
-            contact_map.get_full_mat_pattern(pattern) for pattern in all_patterns
-        )
-        # all_patterns = map(utils.get_inter_idx, all_patterns)
     patterns_to_plot = list(all_patterns)
 
     write_results(patterns_to_plot, kernel_config["name"], output)

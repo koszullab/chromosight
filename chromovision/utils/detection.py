@@ -3,9 +3,86 @@ import numpy as np
 from scipy.sparse import lil_matrix, coo_matrix, csr_matrix, triu, csc_matrix
 from scipy.sparse.csgraph import connected_components
 import warnings
-import profilehooks
 
 warnings.filterwarnings("ignore")
+
+
+def validate_patterns(
+    coords, matrix, conv_mat, detectable_bins, kernel_matrix, kernel_config
+):
+    # Pre-compute height, width and half (radius)
+    win_h, win_w = kernel_matrix.shape
+    half_h, half_w = win_h // 2 + 1, win_w // 2 + 1
+    # Store coords to drop
+    blacklist = []
+    # Copy coords object and append column for scores
+    validated_coords = np.append(coords, np.zeros(coords.shape[0]), 1)
+    # Initialize structure to store pattern windows
+    pattern_windows = np.zeros(
+        (win_h, win_w, coords.shape[0])
+    )  # list containing all pannel of detected patterns
+    for i, l in enumerate(coords):
+        p1 = int(l[0])
+        p2 = int(l[1])
+        if p1 > p2:
+            p1, p2 = p2, p1
+        # Check for out of bounds errors
+        if (
+            p1 - half_h >= 0
+            and p1 + half_h + 1 < matrix.shape[0]
+            and p2 - half_w >= 0
+            and p2 + half_w + 1 < matrix.shape[1]
+        ):
+            # Get bin ids to use in window
+            win_rows, win_cols = (
+                range(p1 - half_h, p1 + half_h + 1),
+                range(p2 - half_w, p2 + half_w + 1),
+            )
+            # Subset window from chrom matrix
+            pattern_window = matrix[np.ix_(win_rows, win_cols)].todense()
+            n_rows, n_cols = pattern_window.shape
+            tot_pixels = n_rows * n_cols
+            # Compute number of missing rows and cols
+            n_bad_rows = win_rows - len(set(win_rows).intersection(detectable_bins))
+            n_bad_cols = win_cols - len(set(win_cols).intersection(detectable_bins))
+
+            # Number of undetected pixels is "bad rows area" + "bad cols area" - "bad rows x bad cols intersection"
+            tot_undetected = (
+                n_bad_rows * n_cols + n_bad_cols * n_rows - n_bad_rows * n_bad_cols
+            )
+            # The pattern should not contain more undetectable bins that the max
+            # value defined in kernel config
+            if (
+                tot_undetected / tot_pixels
+                < kernel_config["max_perc_undetected"] / 100.0
+            ):
+
+                validated_coords[i, 2] = conv_mat[l[0], l[1]]
+                pattern_windows[:, :, i] = pattern_window
+            else:
+                # Current pattern will be dropped due to undetectable bins
+                blacklist.append(i)
+        # if len(pattern_windows) > 0:
+        # from matplotlib import pyplot as plt
+        # fig, ax = plt.subplots(len(pattern_windows), 1)
+        # for i, axi in enumerate(ax.flatten()):
+        #         axi.imshow(pattern_windows[i])
+        # plt.show()
+        else:
+            # Current pattern will be dropped due to out of bound error
+            blacklist.append(i)
+
+    # Drop patterns that did not pass filters
+    blacklist = np.array(blacklist)
+    filtered_coords = validated_coords[~blacklist, :]
+    filtered_windows = pattern_windows[:, :, ~blacklist]
+
+    return filtered_coords, filtered_windows
+
+
+def pileup_patterns(pattern_windows):
+    """Generate a pileup from an input list of pattern coords and a Hi-C matrix"""
+    return pattern_windows.median(axis=2)
 
 
 def pattern_detector(contact_map, kernel_config, kernel_matrix, area=8):
@@ -37,20 +114,10 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix, area=8):
         detected this way.
     """
 
-    pattern_windows = []  # list containing all pannel of detected patterns
-    pattern_sums = np.zeros(
-        (area * 2 + 1, area * 2 + 1)
-    )  # sum of all detected patterns
-    pileup_pattern = np.zeros(
-        (area * 2 + 1, area * 2 + 1)
-    )  # median of all detected patterns
-    detected_patterns = []
-    # Apply detection procedure over each intra /inter sub matrix
-    n_patterns = 0
+    all_pattern_coords = []
+    all_pattern_windows = []
     # TODO: remove chromosome loop from here, should be in main script
-    # TODO: make a dedicated pileup function out of this and call picker
-    # and corrcoeff in main script
-    for matrix, name, indices in zip(
+    for matrix, submat_idx, indices in zip(
         contact_map.sub_mats,
         contact_map.sub_mats_labels,
         contact_map.sub_mats_detectable_bins,
@@ -63,66 +130,23 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix, area=8):
         mat_conv.data[np.isnan(mat_conv.data)] = 0
         mat_conv.eliminate_zeros()
         # Find foci of highly correlated pixels
-        pattern_foci = picker(mat_conv, kernel_config["precision"])
+        chrom_pattern_coords = picker(mat_conv, kernel_config["precision"])
+        chrom_pattern_windows, filtered_chrom_patterns = validate_patterns(
+            chrom_pattern_coords, matrix, mat_conv.tocsr(), indices
+        )
+        converted_coords = contact_map.get_full_mat_pattern(
+            filtered_chrom_patterns, submat_idx
+        )
+        all_pattern_coords.append(converted_coords)
+        all_pattern_windows.append(chrom_pattern_windows)
 
-        # If foci table contains only zeros, no pattern was found
-        if pattern_foci != "NA":
-            # Convert to csr for slicing
-            mat_conv = mat_conv.tocsr()
-            for l in pattern_foci:
-                # Make sure pattern falls within a detectable bin
-                if l[0] in indices[0] and l[1] in indices[1]:
-                    p1 = int(l[0])
-                    p2 = int(l[1])
-                    if p1 > p2:
-                        p22 = p2
-                        p2 = p1
-                        p1 = p22
-                    if (
-                        p1 - area >= 0
-                        and p1 + area + 1 < nr
-                        and p2 - area >= 0
-                        and p2 + area + 1 < nc
-                    ):
-                        pattern_window = matrix[
-                            np.ix_(
-                                range(p1 - area, p1 + area + 1),
-                                range(p2 - area, p2 + area + 1),
-                            )
-                        ].todense()
-                        # The pattern should not be too close to an undetectable bin
-                        if (
-                            len(pattern_window[pattern_window == 1.0])
-                            < ((area * 2 + 1) ** 2)
-                            * kernel_config["max_perc_undetected"]
-                            / 100.0
-                        ):
-                            n_patterns += 1
-                            score = mat_conv[l[0], l[1]]
-                            detected_patterns.append((name, l[0], l[1], score))
-                            pattern_sums += pattern_window
-                            pattern_windows.append(pattern_window)
-                        else:
-                            detected_patterns.append((name, "NA", "NA", "NA"))
-            # if len(pattern_windows) > 0:
-            # from matplotlib import pyplot as plt
-            # fig, ax = plt.subplots(len(pattern_windows), 1)
-            # for i, axi in enumerate(ax.flatten()):
-            #         axi.imshow(pattern_windows[i])
-            # plt.show()
-        else:
-            detected_patterns.append((name, "NA", "NA", "NA"))
+    # Combine patterns of all chromosomes into a single array
+    all_pattern_coords = np.concatenate(all_pattern_coords, axis=1)
+    all_pattern_windows = np.concatenate(all_pattern_windows, axis=2)
+    # Make a pileup from all pattern windows
+    pileup = pileup_patterns(all_pattern_windows)
 
-    # Computation of stats on the whole set - pileup procedure :
-    for i in range(0, area * 2 + 1):
-        for j in range(0, area * 2 + 1):
-            list_temp = []
-            for el in range(1, len(pattern_windows)):
-                list_temp.append(pattern_windows[el][i, j])
-            pileup_pattern[i, j] = np.median(list_temp)
-
-    nb_patterns = len(pattern_windows)
-    return detected_patterns, pileup_pattern, nb_patterns
+    return all_pattern_coords, pileup
 
 
 def explore_patterns(contact_map, kernel_config, window=4):
