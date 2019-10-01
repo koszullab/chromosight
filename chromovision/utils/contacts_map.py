@@ -188,15 +188,15 @@ class ContactMap:
 
         return get_mat_idx
 
-    def get_full_mat_pattern(self, pattern, submat_idx):
+    def get_full_mat_pattern(self, patterns, submat_idx):
         """
-        Converts bin indices of a pattern from an submatrix into their value in the
-        original full-genome matrix.
+        Converts bin indices of a list of patterns from an submatrix into their
+        value in the original full-genome matrix.
 
         Parameters
         ----------
         pattern : tuple
-            A pattern as given by explore_pattern (chrom, pos1, pos2, score).
+            A pattern as given by explore_pattern (pos1, pos2).
             When using interchromosomal matrices, is an index based on the
             order in which submatrices where split.
         mat_idx : int
@@ -213,6 +213,7 @@ class ContactMap:
         startA = self.chroms[chrA, 0]
         startB = self.chroms[chrB, 0]
         # Shift index by start bin of chromosomes
-        inter_pattern = (0, pattern[1] + startA, pattern[2] + startB, pattern[3])
-        return inter_pattern
+        patterns[:, 0] += startA
+        patterns[:, 1] += startB
+        return patterns
 
