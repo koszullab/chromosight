@@ -62,12 +62,6 @@ def validate_patterns(
             else:
                 # Current pattern will be dropped due to undetectable bins
                 blacklist.append(i)
-        # if len(pattern_windows) > 0:
-        # from matplotlib import pyplot as plt
-        # fig, ax = plt.subplots(len(pattern_windows), 1)
-        # for i, axi in enumerate(ax.flatten()):
-        #         axi.imshow(pattern_windows[i])
-        # plt.show()
         else:
             # Current pattern will be dropped due to out of bound error
             blacklist.append(i)
@@ -76,6 +70,13 @@ def validate_patterns(
     blacklist = np.array(blacklist)
     filtered_coords = validated_coords[~blacklist, :]
     filtered_windows = pattern_windows[:, :, ~blacklist]
+    print(pattern_windows.shape, filtered_windows.shape)
+    from matplotlib import pyplot as plt
+
+    fig, ax = plt.subplots(filtered_windows.shape[2], 1)
+    for i, axi in enumerate(ax.flatten()):
+        axi.imshow(filtered_windows[:, :, i])
+    plt.show()
 
     return filtered_coords, filtered_windows
 
@@ -128,7 +129,7 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix, area=8):
         mat_conv.data[np.isnan(mat_conv.data)] = 0
         mat_conv.eliminate_zeros()
         # Find foci of highly correlated pixels
-        chrom_pattern_coords = picker(mat_conv, kernel_config["precision"])
+        chrom_pattern_coords = picker(mat_conv, matrix, kernel_config["precision"])
         # If no pattern was detected on this chromosome, go to next one
         if chrom_pattern_coords is None:
             continue
@@ -140,6 +141,7 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix, area=8):
             kernel_matrix,
             kernel_config["max_perc_undetected"],
         )
+        # Convert coordinates from chromosome to whole genome bins
         converted_coords = contact_map.get_full_mat_pattern(
             filtered_chrom_patterns, submat_idx
         )
@@ -258,7 +260,7 @@ def explore_patterns(contact_map, kernel_config, window=4):
     return all_patterns, kernels, list_current_pattern_count
 
 
-def picker(mat_conv, precision=None):
+def picker(mat_conv, matrix, precision=None):
     """Pick pixels out of a convolution map
     Given a correlation heat map, pick (i, j) of local maxima
     Parameters
@@ -286,6 +288,7 @@ def picker(mat_conv, precision=None):
     # Check if at least one candidate pixel was found
     if len(candidate_mat.data) > 0:
         num_foci, labelled_mat = label_connected_pixels_sparse(candidate_mat)
+        mat_conv = mat_conv.tocsr()
         # Will hold the coordinates of the best pixel for each focus
         foci_coords = np.zeros([num_foci, 2], int)
         # Iterate over candidate foci
@@ -295,8 +298,12 @@ def picker(mat_conv, precision=None):
         for focus_rank, focus_id in enumerate(np.unique(labelled_mat.data)):
             # Remember 1D indices of datapoint in focus
             focus_idx = np.where(labelled_mat.data == focus_id)[0]
+            focus_rows, focus_cols = (
+                labelled_mat.row[focus_idx],
+                labelled_mat.col[focus_idx],
+            )
             # Find index of max value within those indices
-            focus_pixel_idx = np.argmax(mat_conv.data[focus_idx])
+            focus_pixel_idx = np.argmax(mat_conv[focus_rows, focus_cols])
             # Retrieve row of original index
             original_pixel_idx = focus_idx[focus_pixel_idx]
             focus_pixel_row = labelled_mat.row[original_pixel_idx]
@@ -533,9 +540,6 @@ def corrcoef2d(signal, kernel, max_dist):
     corrcoef.data[corrcoef.data < 0] = 0
     # Only keep the upper triangle
     corrcoef = triu(corrcoef)
-    import matplotlib.pyplot as plt
 
-    plt.imshow(corrcoef.todense())
-    plt.show()
     return corrcoef
 
