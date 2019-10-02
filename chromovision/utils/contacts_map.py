@@ -188,31 +188,24 @@ class ContactMap:
 
         return get_mat_idx
 
-    def get_full_mat_pattern(self, pattern):
+    def get_full_mat_pattern(self, patterns, submat_idx):
         """
-        Converts bin indices of a pattern from an submatrix into their value in the
-        original full-genome matrix.
+        Converts bin indices of a list of patterns from an submatrix into their
+        value in the original full-genome matrix.
 
         Parameters
         ----------
         pattern : tuple
-            A pattern as given by explore_pattern (chrom, pos1, pos2, score).
+            A pattern as given by explore_pattern (pos1, pos2).
             When using interchromosomal matrices, is an index based on the
             order in which submatrices where split.
-        label : int
+        mat_idx : int
             The index of the submatrix in the list of submatrices. Depends on the
             order in which interchrom_wrapper split them.
-        chroms : array_like
-            2D numpy array containing start and end bins of chromosomes as columns,
-            and one chromosome per row.
         """
-
-        if pattern[1] == "NA":
-            return pattern
 
         # Fancy trick to get chromosomes from matrix index in lower triangle of
         # whole genome matrix
-        submat_idx = pattern[0]
         chrA = int(np.floor(-0.5 + np.sqrt(0.25 + 2 * submat_idx)))
         triangular_number = chrA * (chrA + 1) / 2
         chrB = int(submat_idx - triangular_number)
@@ -220,6 +213,7 @@ class ContactMap:
         startA = self.chroms[chrA, 0]
         startB = self.chroms[chrB, 0]
         # Shift index by start bin of chromosomes
-        inter_pattern = (0, pattern[1] + startA, pattern[2] + startB, pattern[3])
-        return inter_pattern
+        patterns[:, 0] += startA
+        patterns[:, 1] += startB
+        return patterns
 

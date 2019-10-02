@@ -1,10 +1,90 @@
 from __future__ import absolute_import
+import sys
 import numpy as np
 from scipy.sparse import lil_matrix, coo_matrix, csr_matrix, triu, csc_matrix
 from scipy.sparse.csgraph import connected_components
 import warnings
 
 warnings.filterwarnings("ignore")
+
+
+def validate_patterns(
+    coords, matrix, conv_mat, detectable_bins, kernel_matrix, max_undetected_perc
+):
+    # Pre-compute height, width and half (radius)
+    win_h, win_w = kernel_matrix.shape
+    half_h, half_w = win_h // 2 + 1, win_w // 2 + 1
+    # Store coords to drop
+    blacklist = []
+    detectable_rows = set(detectable_bins[0])
+    detectable_cols = set(detectable_bins[1])
+    # Copy coords object and append column for scores
+    validated_coords = np.append(coords, np.zeros((coords.shape[0], 1)), 1)
+    # Initialize structure to store pattern windows
+    pattern_windows = np.zeros(
+        (win_h, win_w, coords.shape[0])
+    )  # list containing all pannel of detected patterns
+    for i, l in enumerate(coords):
+        p1 = int(l[0])
+        p2 = int(l[1])
+        if p1 > p2:
+            p1, p2 = p2, p1
+        # Check for out of bounds errors
+        if (
+            p1 - half_h >= 0
+            and p1 + half_h + 1 < matrix.shape[0]
+            and p2 - half_w >= 0
+            and p2 + half_w + 1 < matrix.shape[1]
+        ):
+            # Get bin ids to use in window
+            win_rows, win_cols = (
+                range(p1 - half_h + 1, p1 + half_h),
+                range(p2 - half_w + 1, p2 + half_w),
+            )
+            # Subset window from chrom matrix
+            pattern_window = matrix[np.ix_(win_rows, win_cols)].todense()
+            n_rows, n_cols = pattern_window.shape
+            tot_pixels = n_rows * n_cols
+            # Compute number of missing rows and cols
+            n_bad_rows = n_rows - len(set(win_rows).intersection(detectable_rows))
+            n_bad_cols = n_cols - len(set(win_cols).intersection(detectable_cols))
+
+            # Number of undetected pixels is "bad rows area" + "bad cols area" - "bad rows x bad cols intersection"
+            tot_undetected = (
+                n_bad_rows * n_cols + n_bad_cols * n_rows - n_bad_rows * n_bad_cols
+            )
+            # The pattern should not contain more undetectable bins that the max
+            # value defined in kernel config
+            if tot_undetected / tot_pixels < max_undetected_perc / 100.0:
+
+                validated_coords[i, 2] = conv_mat[l[0], l[1]]
+                pattern_windows[:, :, i] = pattern_window
+            else:
+                # Current pattern will be dropped due to undetectable bins
+                blacklist.append(i)
+        else:
+            # Current pattern will be dropped due to out of bound error
+            blacklist.append(i)
+    # Drop patterns that did not pass filters
+    blacklist = np.array(blacklist)
+    blacklist_mask = np.zeros(coords.shape[0], dtype=bool)
+    blacklist_mask[blacklist] = True
+    filtered_coords = validated_coords[~blacklist_mask, :]
+    filtered_windows = pattern_windows[:, :, ~blacklist_mask]
+
+    # from matplotlib import pyplot as plt
+
+    # fig, ax = plt.subplots(filtered_windows.shape[2], 1)
+    # for i, axi in enumerate(ax.flatten()):
+    #    axi.imshow(filtered_windows[:, :, i])
+    # plt.show()
+
+    return filtered_coords, filtered_windows
+
+
+def pileup_patterns(pattern_windows):
+    """Generate a pileup from an input list of pattern coords and a Hi-C matrix"""
+    return np.apply_along_axis(np.median, 2, pattern_windows)
 
 
 def pattern_detector(contact_map, kernel_config, kernel_matrix, area=8):
@@ -36,92 +116,52 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix, area=8):
         detected this way.
     """
 
-    pattern_windows = []  # list containing all pannel of detected patterns
-    pattern_sums = np.zeros(
-        (area * 2 + 1, area * 2 + 1)
-    )  # sum of all detected patterns
-    pileup_pattern = np.zeros(
-        (area * 2 + 1, area * 2 + 1)
-    )  # median of all detected patterns
-    detected_patterns = []
-    # Apply detection procedure over each intra /inter sub matrix
-    n_patterns = 0
+    all_pattern_coords = []
+    all_pattern_windows = []
     # TODO: remove chromosome loop from here, should be in main script
-    # TODO: make a dedicated pileup function out of this and call picker
-    # and corrcoeff in main script
-    for matrix, name, indices in zip(
+    for matrix, submat_idx, indices in zip(
         contact_map.sub_mats,
         contact_map.sub_mats_labels,
         contact_map.sub_mats_detectable_bins,
     ):
-        nr = matrix.shape[0]
-        nc = matrix.shape[1]
         # Pattern matching operate here
         mat_conv = corrcoef2d(matrix, kernel_matrix, kernel_config["max_dist"])
         mat_conv = mat_conv.tocoo()
         mat_conv.data[np.isnan(mat_conv.data)] = 0
         mat_conv.eliminate_zeros()
         # Find foci of highly correlated pixels
-        pattern_foci = picker(mat_conv, kernel_config["precision"])
+        chrom_pattern_coords = picker(mat_conv, matrix, kernel_config["precision"])
+        # If no pattern was detected on this chromosome, go to next one
+        if chrom_pattern_coords is None:
+            continue
+        filtered_chrom_patterns, chrom_pattern_windows = validate_patterns(
+            chrom_pattern_coords,
+            matrix,
+            mat_conv.tocsr(),
+            indices,
+            kernel_matrix,
+            kernel_config["max_perc_undetected"],
+        )
+        # Convert coordinates from chromosome to whole genome bins
+        converted_coords = contact_map.get_full_mat_pattern(
+            filtered_chrom_patterns, submat_idx
+        )
+        all_pattern_coords.append(converted_coords)
+        all_pattern_windows.append(chrom_pattern_windows)
 
-        # If foci table contains only zeros, no pattern was found
-        if pattern_foci != "NA":
-            # Convert to csr for slicing
-            mat_conv = mat_conv.tocsr()
-            for l in pattern_foci:
-                # Make sure pattern falls within a detectable bin
-                if l[0] in indices[0] and l[1] in indices[1]:
-                    p1 = int(l[0])
-                    p2 = int(l[1])
-                    if p1 > p2:
-                        p22 = p2
-                        p2 = p1
-                        p1 = p22
-                    if (
-                        p1 - area >= 0
-                        and p1 + area + 1 < nr
-                        and p2 - area >= 0
-                        and p2 + area + 1 < nc
-                    ):
-                        pattern_window = matrix[
-                            np.ix_(
-                                range(p1 - area, p1 + area + 1),
-                                range(p2 - area, p2 + area + 1),
-                            )
-                        ].todense()
-                        # The pattern should not be too close to an undetectable bin
-                        if (
-                            len(pattern_window[pattern_window == 1.0])
-                            < ((area * 2 + 1) ** 2)
-                            * kernel_config["max_perc_undetected"]
-                            / 100.0
-                        ):
-                            n_patterns += 1
-                            score = mat_conv[l[0], l[1]]
-                            detected_patterns.append((name, l[0], l[1], score))
-                            pattern_sums += pattern_window
-                            pattern_windows.append(pattern_window)
-                        else:
-                            detected_patterns.append((name, "NA", "NA", "NA"))
-            # if len(pattern_windows) > 0:
-            # from matplotlib import pyplot as plt
-            # fig, ax = plt.subplots(len(pattern_windows), 1)
-            # for i, axi in enumerate(ax.flatten()):
-            #         axi.imshow(pattern_windows[i])
-            # plt.show()
-        else:
-            detected_patterns.append((name, "NA", "NA", "NA"))
+    # If no pattern detected on any chromosome, exit gracefully
+    if len(all_pattern_coords) == 0:
+        sys.stderr.write("No pattern detected ! Exiting.\n")
+        sys.exit(0)
 
-    # Computation of stats on the whole set - pileup procedure :
-    for i in range(0, area * 2 + 1):
-        for j in range(0, area * 2 + 1):
-            list_temp = []
-            for el in range(1, len(pattern_windows)):
-                list_temp.append(pattern_windows[el][i, j])
-            pileup_pattern[i, j] = np.median(list_temp)
+    # Combine patterns of all chromosomes into a single array
+    all_pattern_coords = np.concatenate(all_pattern_coords, axis=0)
+    all_pattern_windows = np.concatenate(all_pattern_windows, axis=2)
 
-    nb_patterns = len(pattern_windows)
-    return detected_patterns, pileup_pattern, nb_patterns
+    # Make a pileup from all pattern windows
+    pileup = pileup_patterns(all_pattern_windows)
+
+    return all_pattern_coords, pileup
 
 
 def explore_patterns(contact_map, kernel_config, window=4):
@@ -181,11 +221,7 @@ def explore_patterns(contact_map, kernel_config, window=4):
     # pixels. This trimming function ensures that there won't be many patterns
     # clustering around one location.
     def neigh_hash(coords, window):
-        chromosome, pos1, pos2, _ = coords
-        if pos1 == "NA" or pos2 == "NA":
-            return "NA"
-        else:
-            return (chromosome, int(pos1) // window, int(pos2) // window)
+        return (coords[0] // window, coords[1] // window)
 
     # Original kernels are loaded from a file, but next kernel will be "learnt"
     # from agglomerations at each iteration
@@ -203,7 +239,7 @@ def explore_patterns(contact_map, kernel_config, window=4):
             for kernel_matrix in current_kernels:
                 # After first iteration, kernel_matrix is a pileup from the
                 # previous iteration
-                (detected_coords, pileup_pattern, nb_patterns) = pattern_detector(
+                detected_coords, pileup_pattern = pattern_detector(
                     contact_map, kernel_config, kernel_matrix
                 )
                 for new_coords in detected_coords:
@@ -211,24 +247,21 @@ def explore_patterns(contact_map, kernel_config, window=4):
                         neigh_hash(new_coords, window=window)
                         not in hashed_neighborhoods
                     ):
-                        chromosome, pos1, pos2, score = new_coords
-                        if pos1 != "NA":
-                            pos1 = int(pos1)
-                        if pos2 != "NA":
-                            pos2 = int(pos2)
-                        all_patterns.add((chromosome, pos1, pos2, score))
+                        pos1, pos2, score = new_coords
+                        pos1 = int(pos1)
+                        pos2 = int(pos2)
+                        all_patterns.add((pos1, pos2, score))
                         hashed_neighborhoods.add(neigh_hash(new_coords, window=window))
                 # The pileup patterns of this iteration make up the kernel for the next one :)
                 kernels[i].append(pileup_pattern)
-            current_pattern_count = nb_patterns
-            list_current_pattern_count.append(current_pattern_count)
+            list_current_pattern_count.append(detected_coords.shape[0])
 
     # Remove original kernels, as we are only interested by pileup ones
     del kernels["ori"]
     return all_patterns, kernels, list_current_pattern_count
 
 
-def picker(mat_conv, precision=None):
+def picker(mat_conv, matrix, precision=None):
     """Pick pixels out of a convolution map
     Given a correlation heat map, pick (i, j) of local maxima
     Parameters
@@ -256,6 +289,7 @@ def picker(mat_conv, precision=None):
     # Check if at least one candidate pixel was found
     if len(candidate_mat.data) > 0:
         num_foci, labelled_mat = label_connected_pixels_sparse(candidate_mat)
+        mat_conv = mat_conv.tocsr()
         # Will hold the coordinates of the best pixel for each focus
         foci_coords = np.zeros([num_foci, 2], int)
         # Iterate over candidate foci
@@ -265,8 +299,12 @@ def picker(mat_conv, precision=None):
         for focus_rank, focus_id in enumerate(np.unique(labelled_mat.data)):
             # Remember 1D indices of datapoint in focus
             focus_idx = np.where(labelled_mat.data == focus_id)[0]
+            focus_rows, focus_cols = (
+                labelled_mat.row[focus_idx],
+                labelled_mat.col[focus_idx],
+            )
             # Find index of max value within those indices
-            focus_pixel_idx = np.argmax(mat_conv.data[focus_idx])
+            focus_pixel_idx = np.argmax(mat_conv[focus_rows, focus_cols])
             # Retrieve row of original index
             original_pixel_idx = focus_idx[focus_pixel_idx]
             focus_pixel_row = labelled_mat.row[original_pixel_idx]
@@ -275,7 +313,7 @@ def picker(mat_conv, precision=None):
             foci_coords[focus_rank, 0] = focus_pixel_row
             foci_coords[focus_rank, 1] = focus_pixel_col
     else:
-        foci_coords = "NA"
+        foci_coords = None
     return foci_coords
 
 
@@ -444,16 +482,23 @@ def xcorr2(signal, kernel, max_scan_distance=None, threshold=1e-4):
     if max_scan_distance is None:
         max_scan_distance = max(sm, sn)
     out = csc_matrix((sm - km + 1, sn - kn + 1), dtype=np.float64)
+
     signal = signal.tocsc()
     for ki in range(km):
         # Note convolution is only computed up to a distance from the diagonal
         for kj in range(kn):
             out += kernel[ki, kj] * signal[ki : sm - km + 1 + ki, kj : sn - kn + 1 + kj]
 
-    out = out.tocoo()
     # Set very low pixels to 0
     out.data[out.data < threshold] = 0
     out.eliminate_zeros()
+
+    # Resize matrix: increment rows and cols by half kernel and set shape to input
+    # matrix, effectively adding margins.
+    out = out.tocoo()
+    rows, cols = out.row + kh, out.col + kw
+    out = coo_matrix((out.data, (rows, cols)), shape=(sm, sn), dtype=np.float64)
+
     return out
 
 
@@ -496,5 +541,6 @@ def corrcoef2d(signal, kernel, max_dist):
     corrcoef.data[corrcoef.data < 0] = 0
     # Only keep the upper triangle
     corrcoef = triu(corrcoef)
+
     return corrcoef
 
