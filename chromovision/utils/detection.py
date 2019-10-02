@@ -65,18 +65,19 @@ def validate_patterns(
         else:
             # Current pattern will be dropped due to out of bound error
             blacklist.append(i)
-
     # Drop patterns that did not pass filters
     blacklist = np.array(blacklist)
-    filtered_coords = validated_coords[~blacklist, :]
-    filtered_windows = pattern_windows[:, :, ~blacklist]
-    print(pattern_windows.shape, filtered_windows.shape)
-    from matplotlib import pyplot as plt
+    blacklist_mask = np.zeros(coords.shape[0], dtype=bool)
+    blacklist_mask[blacklist] = True
+    filtered_coords = validated_coords[~blacklist_mask, :]
+    filtered_windows = pattern_windows[:, :, ~blacklist_mask]
 
-    fig, ax = plt.subplots(filtered_windows.shape[2], 1)
-    for i, axi in enumerate(ax.flatten()):
-        axi.imshow(filtered_windows[:, :, i])
-    plt.show()
+    # from matplotlib import pyplot as plt
+
+    # fig, ax = plt.subplots(filtered_windows.shape[2], 1)
+    # for i, axi in enumerate(ax.flatten()):
+    #    axi.imshow(filtered_windows[:, :, i])
+    # plt.show()
 
     return filtered_coords, filtered_windows
 
