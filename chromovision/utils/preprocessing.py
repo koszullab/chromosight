@@ -207,7 +207,10 @@ def detrend(matrix, detectable_bins=None):
     matrix = matrix.tocsr()
     y = distance_law(matrix, detectable_bins)
     y[np.isnan(y)] = 0.0
-    y_savgol = savgol_filter(y, window_length=17, polyorder=5)
+    if len(y) > 17:
+        y_savgol = savgol_filter(y, window_length=17, polyorder=5)
+    else:
+        y_savgol = y
 
     # Detrending by the distance law
     clean_mat = matrix.tocoo()
@@ -275,9 +278,12 @@ def signal_to_noise_threshold(matrix, detectable_bins, smooth=True):
     # Values below 1 are considered too noisy
     threshold_noise = 1.0
     snr[np.isnan(snr)] = 0.0
-    if smooth:
-        snr = savgol_filter(snr, window_length=17, polyorder=5)
-    max_dist = min(np.where(snr < threshold_noise)[0])
+    try:
+        if smooth:
+            snr = savgol_filter(snr, window_length=17, polyorder=5)
+        max_dist = min(np.where(snr < threshold_noise)[0])
+    except ValueError:
+        max_dist = matrix.shape[0]
     return max_dist
 
 
