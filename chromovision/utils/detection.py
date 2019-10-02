@@ -68,7 +68,8 @@ def validate_patterns(
     # Drop patterns that did not pass filters
     blacklist = np.array(blacklist)
     blacklist_mask = np.zeros(coords.shape[0], dtype=bool)
-    blacklist_mask[blacklist] = True
+    if len(blacklist):
+        blacklist_mask[blacklist] = True
     filtered_coords = validated_coords[~blacklist_mask, :]
     filtered_windows = pattern_windows[:, :, ~blacklist_mask]
 
