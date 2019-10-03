@@ -72,17 +72,17 @@ list_chr1 =[]
 list_chr2 =[]
 list_path =[]
 
-for c1, c2 in list_combi_chrs:
+# Reshape and saving:
+for c1, c2 in mat_chro.keys():
     mat_chro[c1,c2] = coo_matrix(mat_chro[c1,c2])
     if len(mat_chro[c1,c2].data) > 0 :
-        print(c1,c2)
-        Nx = max(mat_chro[c1,c2].row)
-        Ny = max(mat_chro[c1,c2].col)    
+        nx = max(mat_chro[c1,c2].row) + 1
+        ny = max(mat_chro[c1,c2].col) + 1   
         if c1 == c2:
-            Nx = max(Nx, Ny)
-            Ny = max(Nx, Ny)
-        mat_chro[c1,c2] = mat_chro[c1,c2].tocsr()    
-        csr_matrix.resize(mat_chro[c1,c2], (Nx,Ny) )
+            nx = max(nx, ny) + 1 
+            ny = max(nx, ny) + 1
+        mat_chro[c1,c2] = mat_chro[c1,c2].tocsr()     
+        csr_matrix.resize(mat_chro[c1,c2], (nx,ny) )
         name_file = c1+"_"+c2+"_sparse_matrice_"+str(bin_size)+".txt"
         path= output_dir+name_file
         scipy.sparse.save_npz(name_file,mat_chro[c1,c2], compressed=True)
