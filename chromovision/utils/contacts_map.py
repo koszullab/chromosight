@@ -5,78 +5,43 @@ from . import preprocessing as preproc
 import os
 import sys
 import numpy as np
+import pandas as pd
 
 
-class ContactMap:
-
+class HicGenome:
     """
-    Stores all aspects of the contact map. Including a list of sub matrices
-    (sub_mats) for intra- and inter- chromosomal contacts.
+    Class used to manage relationships between whole genome and intra- or inter-
+    chromosomal Hi-C sub matrices. Also handles reading and writing data.
 
-    E.g. for a matrix of 3 chromosomes,
-    sub_mats would contain 6 sub matrices (3^2 + 3) / 2, for the 3 inter
-    matrices in the upper triangle and the 3 intra matrices on the diagonal.
-    they would be stored in sub_mats as follows:
-
-    Given the full matrix of 3 chromosomes where tile ij means the subset of
-    the matrix between chromosomes i and j, and XX means not stored:
-    00 01 02
-    XX 11 12
-    XX XX 22
-
-    sub_mats contains the following sub matrices: [ 00 01 02 11 12 22 ]
-    in the case where interchrom attribute is set to False,
-    sub_mats contains only: [00 11 22]
-
-    Attributes
-    ----------
-    mat : scipy.sparse.coo_matrix
-        The full contact map in sparse, upper triangle format
-    chroms : numpy.array of ints
-        A 2D numpy array containing boundaries of chromosomes. Number
-        of rows is # chromosomes and there are two columns for the start
-        and end of each chromosome.
-    chrom_labels : numpy.array of strs
-        A 1D numpy array containing names of chromosomes
-    interchrom : bool
-        Wether interchromosomal contacts should be considered
-    sub_mats : list of scipy.sparse.csr_matrix
-        Sub matrices extracted from the full contact map. Each matrix
-        represents an inter or intra contact map.
-    sub_mats_detectable_bins : list of numpy.array of ints
-        Each element of the list is an array of detectable bin indices
-        for the corresponding matrix in sub_mats.
-    sub_mats_labels : numpy.array of strs
-        Labels corresponding to the chromosomes in each sub matrix. Defaults
-        to simple numbering scheme.
+    Attributes:
+    -----------
+    matrix : scipy.sparse.coo_matrix
+        The whole genome Hi-C contact map, in sparse format
+    sub_mats : pandas.DataFrame
+        Table containing intra- and optionally inter-chromosomal matrices.
+    good_bins : list of arrays of ints
+        List of two arrays containing indices of detectable rows and columns.
+    chroms : pandas.DataFrame
+        Table containing chromosome related informations.
     bins : pandas.DataFrame
-        Table containing bins genomic coordinates for the whole genome matrix.
+        Table containing bin related informations.
     resolution : int
-        Bin size of the Hi-C matrix.
-    max_dist : int
-        maximum distance from the diagonal at which intrachromosomal matrices
-        should be scanned.
-        """
+        The basepair resolution of the Hi-C matrix.
+    inter : bool
+        Whether interchromosomal matrices should be stored.
+    """
 
-    def __init__(self, mat_path, interchrom=False, max_dist=None):
-        """
-        Loads a cool or bg2 file containing a whole genome matrix, processes
-        the contact map and splits it into intra and inter matrices.
-        """
-        self.interchrom = interchrom
-        self.max_dist = max_dist
-        # Load contacts, bin and chromosome infos from file
-        self.mat, chromstarts, self.bins, self.resolution = self.load_data(mat_path)
-        # Getting start and end coordinates of chromosomes into a 2D array
-        chromend = np.append(chromstarts[1:], self.mat.shape[0])
-        self.chroms = np.vstack([chromstarts, chromend]).T
-        # Get indices of detectable bins and apply preprocessing treatment on matrix
-        self.mat, self.detectable_bins = self.preprocess_full_matrix()
-        # Splitting whole genome matrix into chromosome sub matrices
-        self.sub_mats, self.sub_mats_detectable_bins = self.split_chromosomes()
+    def __init___(self, path, inter=False):
+        # Load Hi-C matrix and associated metadata
+        self.matrix, self.chroms, self.bins, self.resolution = self.load_data(path)
 
-        # TODO: Allow to read labels from file, for now we just use numbers
-        self.sub_mats_labels = list(range(len(self.sub_mats)))
+        self.inter = inter
+
+        # Preprocess the full genome matrix
+        self.detectable_bins = preproc.get_detectable_bins(self.matrix)
+        self.matrix = preproc.normalize(self.matrix, good_bins=self.good_bins)
+
+        # Create sub matrices objects
 
     def load_data(self, mat_path):
         """Load contact, bin and chromosome informations from input path"""
@@ -88,20 +53,143 @@ class ContactMap:
 
         # Load contact map and chromosome start bins coords
         try:
-            mat, chroms, bins, resolution = format_loader[extension](mat_path)
+            sub_mat_df, chrom_start, bins, resolution = format_loader[extension](
+                mat_path
+            )
         except KeyError as e:
             sys.stderr.write(
                 f"Unknown format: {extension}. Must be one of {format_loader.keys()}\n"
             )
             raise e
+        return sub_mat_df, chrom_start, bins, resolution
 
-        return mat, chroms, bins, resolution
+    def make_sub_matrices(self):
+        """
+        Generates a table of Hi-C sub matrices. Each sub matrix is either intra
+        or interchromosomal. The table has 3 columns: chr1, chr2 and contact_map.
+        The contact_map column contains instances of the ContactMap class.
 
-    def preprocess_full_matrix(self):
-        """Apply general Hi-C preprocessing steps to the whole genome matrix"""
-        detectable_bins = preproc.get_detectable_bins(self.mat)
-        mat = preproc.normalize(self.mat, detectable_bins)
-        return mat, detectable_bins
+        Returns
+        -------
+        pandas.DataFrame:
+            The table of sub matrices which will contain n_chrom rows if the inter
+            attribute is set to false, or (n_chrom^2) / 2 + n_chroms / 2 if inter
+            is True (that is, the upper triangle matrix).
+        """
+        # Convert whole genome matrix to CSR for indexing
+        matrix = self.matrix.tocsr()
+        # Create an empty dataframe to store sub matrix info
+        sub_cols = ["chr1", "chr2", "contact_map"]
+        n_chroms = self.chroms.shape[0]
+        if self.inter:
+            sub_mats = pd.DataFrame(
+                np.zeros((int(n_chroms ** 2 / 2 + n_chroms / 2), 3), dtype=str),
+                columns=sub_cols,
+            )
+        else:
+            sub_mats = pd.DataFrame(
+                np.zeros((n_chroms, 3), dtype=str), columns=sub_cols
+            )
+
+        d = self.detectable_bins
+
+        # Loop over all possible combinations of chromosomes
+        # in the upper triangle matrix
+        sub_mat_idx = 0
+        for i1, r1 in self.chroms.iterrows():
+            for i2, r2 in self.chroms.iterrows():
+                s1, e1 = r1.start_bin, r1.end_bin
+                s2, e2 = r2.start_bin, r2.end_bin
+                if i1 >= i2:
+                    # Subset intra / inter sub_matrix and matching detectable bins
+                    sub_mat = matrix[s1:e1, s2:e2]
+                    sub_mat_detectable_bins = (
+                        d[(d >= s1) & (d < e1)] - s1,
+                        d[(d >= s2) & (d < e2)] - s2,
+                    )
+                    if i1 == i2:
+                        sub_mats.contact_map[sub_mat_idx] = ContactMap(
+                            sub_mat,
+                            resolution=self.resolution,
+                            detectable_bins=sub_mat_detectable_bins,
+                            inter=False,
+                        )
+                        sub_mat_idx += 1
+                    elif self.inter:
+                        sub_mats.contact_map[sub_mat_idx] = ContactMap(
+                            sub_mat,
+                            resolution=self.resolution,
+                            detectable_bins=sub_mat_detectable_bins,
+                            inter=True,
+                        )
+                        sub_mat_idx += 1
+        return sub_mats
+
+    def get_full_mat_pattern(self, c1, c2, patterns):
+        """
+        Converts bin indices of a list of patterns from an submatrix into their
+        value in the original full-genome matrix.
+
+        Parameters
+        ----------
+        c1 : str
+            Name of the first chromosome of the sub matrix (rows).
+        c2 : str
+            Name of the second chromosome of the sub matrix (cols).
+        pattern : numpy.array
+            A 2D array of pattern coordinates. Each row is a pattern, column 0
+            is the bin on c1 and column 1 is the bin on c2.
+        """
+
+        # Get start bin for chromosomes of interest
+        startA = self.chroms.loc[self.chroms.name == c1, "start"]
+        startB = self.chroms.loc[self.chroms.name == c2, "start"]
+        # Shift index by start bin of chromosomes
+        patterns[:, 0] += startA
+        patterns[:, 1] += startB
+        return patterns
+
+
+class ContactMap:
+    """
+    Class to store and manipulate a simple Hi-C matrix, either intra or
+    inter-chromosomal.
+
+    Attributes:
+    -----------
+    matrix : scipy.sparse.coo_matrix
+        Sparse matrix object containing the Hi-C contact data. Either intra or
+        interchromosomal matrix.
+    detectable_bins : tuple of arrays
+        List containing two arrays (rows and columns) of indices from bins
+        considered detectable in the matrix.
+    resolution : int
+        The basepair resolution of the matrix
+    inter : bool
+        True if the matrix represents contacts between two different,
+        False otherwise.
+    
+    """
+
+    def __init__(self, matrix, resolution, detectable_bins=None, inter=False):
+        # If detectable were not provided, compute them from the input matrix
+        if detectable_bins is None:
+            detectable_bins = preproc.get_detectable_bins(matrix)
+        self.detectable_bins = detectable_bins
+        self.matrix = matrix
+        self.resolution = resolution
+        self.inter = inter
+
+        # Apply preprocessing steps on the input matrix
+        if self.inter:
+            self.matrix = self.preprocess_inter_matrix(self.matrix)
+        else:
+            self.matrix = self.preprocess_intra_matrix(
+                self.matrix, self.detectable_bins
+            )
+
+    def preprocess_inter_matrix(self, sub_mat):
+        return preproc.ztransform(sub_mat)
 
     def preprocess_intra_matrix(self, sub_mat, sub_mat_detectable_bins):
         # Remove speckles (outlier pixels)
@@ -120,100 +208,3 @@ class ContactMap:
             sub_mat.setdiag(0, diag)
 
         return sub_mat
-
-    def preprocess_inter_matrix(self, sub_mat):
-        return preproc.ztransform(sub_mat)
-
-    def split_chromosomes(self):
-        """
-        Split the whole genome matrix into intra- and inter- chromosomal sub
-        matrices. And apply specific preprocessing steps to sub-matrices.
-        """
-        # Convert whole genome matrix to CSR for indexing
-        mat = self.mat.tocsr()
-        # shorthand
-        detect = self.detectable_bins
-        sub_mats, sub_mats_detectable_bins = [], []
-        # Loop over all possible combinations of chromosomes
-        for start_c1, end_c1 in self.chroms:
-            for start_c2, end_c2 in self.chroms:
-                # Do not use lower triangle
-                if start_c1 >= start_c2:
-                    sub_mat = mat[start_c1:end_c1, start_c2:end_c2]
-                    # Retrieve indices of detectable bins in submatrix and make
-                    sub_mat_detectable_bins = (
-                        detect[(detect >= start_c1) & (detect < end_c1)] - start_c1,
-                        detect[(detect >= start_c2) & (detect < end_c2)] - start_c2,
-                    )
-                    # Intrachromosomal matrices need to be detrended for distance law
-                    if start_c1 == start_c2:
-                        sub_mat = self.preprocess_intra_matrix(
-                            sub_mat, sub_mat_detectable_bins[0]
-                        )
-                        sub_mats.append(sub_mat)
-                        sub_mats_detectable_bins.append(sub_mat_detectable_bins)
-                    # But interchromsomal matrices must only be scaled
-                    elif self.interchrom:
-                        sub_mat = self.preprocess_inter_matrix(sub_mat)
-                        sub_mats.append(sub_mat)
-                        sub_mats_detectable_bins.append(sub_mat_detectable_bins)
-        return sub_mats, sub_mats_detectable_bins
-
-    def get_submat_idx(self, mat_type="intra"):
-        """
-        Retrieves indices of intra- or inter-chromosomal contact maps. This is
-        done by extracting sub matrices that are on the diagonal of the 
-        UPPER TRIANGLE full matrix.
-
-        """
-        n_chr = self.chroms.shape[0]
-        # Retrieve indices of all matrices on the diagonal of the
-        # upper triangle whole genome matrix.
-        if self.interchrom:
-            intra_mat_idx = [n_chr * i - (i ** 2 - i) / 2 for i in range(n_chr)]
-        # Only intrachromosomal matrices have been kept, get all submatrices
-        else:
-            intra_mat_idx = list(range(n_chr))
-        if mat_type == "inter":
-            # Get all sub matrices that are not intra
-            if self.interchrom:
-                get_mat_idx = [
-                    i for i in range(len(self.sub_mats)) if i not in intra_mat_idx
-                ]
-            # If interchrom is disabled, there is no inter- submatrix to get
-            else:
-                get_mat_idx = []
-        else:
-            get_mat_idx = intra_mat_idx
-
-        return get_mat_idx
-
-    def get_full_mat_pattern(self, patterns, submat_idx):
-        """
-        Converts bin indices of a list of patterns from an submatrix into their
-        value in the original full-genome matrix.
-
-        Parameters
-        ----------
-        pattern : tuple
-            A pattern as given by explore_pattern (pos1, pos2).
-            When using interchromosomal matrices, is an index based on the
-            order in which submatrices where split.
-        mat_idx : int
-            The index of the submatrix in the list of submatrices. Depends on the
-            order in which interchrom_wrapper split them.
-        """
-
-        # Fancy trick to get chromosomes from matrix index in lower triangle of
-        # whole genome matrix
-        chrA = int(np.floor(-0.5 + np.sqrt(0.25 + 2 * submat_idx)))
-        triangular_number = chrA * (chrA + 1) / 2
-        chrB = int(submat_idx - triangular_number)
-        # Get start bin for chromosomes of interest
-        startA = self.chroms[chrA, 0]
-        startB = self.chroms[chrB, 0]
-        # Shift index by start bin of chromosomes
-        patterns[:, 0] += startA
-        patterns[:, 1] += startB
-        return patterns
-

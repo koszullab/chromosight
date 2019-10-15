@@ -159,6 +159,7 @@ def load_cool(cool_path):
     mat = c.pixels()[:]
     # Number of fragments  (bins) per chromosome
     bins = c.bins()[:]
+    chroms = c.chroms()[:]
     # Number of bins per chromosome
     n_bins = bins.groupby("chrom", sort=False).count().start[:-1]
     n_bins = n_bins.astype(np.int64)
@@ -175,109 +176,9 @@ def load_cool(cool_path):
     # Only keep upper triangle
     mat = triu(mat)
     bins = bins[["chrom", "start", "end"]]
+    chroms["start_bin"] = chrom_start[:-1]
+    chroms["end_bin"] = chrom_start[1:]
     return mat, chrom_start, bins, c.binsize
-
-
-def alpha_load_cool(cool_path, inter=False, tmpdir=None):
-    """
-    Loads a cool file and save each intra-chromosomal, and optionally inter-
-    chromosomale, sub-matrix into a temporary npz file for later access and 
-    processing.
-    
-    Parameters
-    ----------
-    cool : str
-        Path to the input .cool file.
-    inter : bool
-        Whether to include interchromosomal sub matrices
-    tmpdir : str
-        The directory where temporary npz files are stored. Will be generated
-        automatically if None.
-
-    Returns
-    -------
-    sub_mats : pandas.DataFrame
-        A DataFrame with one row per submatrix and columns chr1, chr2 and path
-        where chr1 is the chromosome corresponding to the rows of the submatrix,
-        chr2 corresponds to columns, and path is the path to the npz file 
-        containing the submatrix.
-    chrom_start : numpy.array
-        1D array of starting bins for each chromosome.
-    bins : pandas.DataFrame
-        Dataframe containing metadata about matrix bins. Columns are 'chrom', 
-        'start and 'end'.
-    binsize : int
-        The resolution of the Hi-C matrix.
-    """
-    try:
-        import cooler
-    except ImportError:
-        print(
-            "The cooler package is required to use cool files. Please install it first."
-        )
-        raise
-
-    c = cooler.Cooler(cool_path)  # pylint: disable=undefined-variable
-    mat = c.pixels()[:]
-    # Number of fragments  (bins) per chromosome
-    bins = c.bins()[:]
-    chroms = c.chroms()[:]
-    # Number of bins per chromosome
-    n_bins = bins.groupby("chrom", sort=False).count().start[:-1]
-    n_bins = n_bins.astype(np.int64)
-    # Starting bin of each chromosome
-    chrom_start = np.insert(np.array(n_bins), 0, 0)
-    # Make chromstart cumulative
-    chrom_start = np.cumsum(chrom_start)
-
-    # Prerequisite for processing sub matrices
-    sub_cols = ["chr1", "chr2", "path"]
-    n_chroms = chroms.shape[0]
-
-    def _submat_path(chr1, chr2):
-        return f"{chr1}_{chr2}_{c.binsize}"
-
-    def _format_pixels(pixels):
-        """
-        Gets pixels of a submatrix into numpy array format, decrement
-        indices to start at 0 and discard lower triangle.
-        """
-        pixels.bin1_id -= pixels.bin1_id.min()
-        pixels.bin2_id -= pixels.bin2_id.min()
-        pixels = pixels.loc[pixels.bin1_id <= pixels.bin2_id, :]
-        return np.array(pixels)
-
-    # h5 archive will contain all sub matrices as individual datasets
-    hf = h5py.File(join(tmpdir, "data.h5"), "w")
-    if inter:
-        # all intra- and inter-chromosomal matrices of the upper triangle whole
-        # genome matrix are used. For N chroms: N^2 / 2 + N/2 sub matrices
-        sub_mats = pd.DataFrame(
-            np.zeros((int(n_chroms ** 2 / 2 + n_chroms / 2), 3), dtype=str),
-            columns=sub_cols,
-        )
-        sub_mat_id = 0
-        for i, chrom1 in enumerate(chroms["name"]):
-            for j, chrom2 in enumerate(chroms["name"]):
-                if j > i:
-                    path = _submat_path(i, j)
-                    sub_mats.iloc[sub_mat_id, :] = (chrom1, chrom2, path)
-                    sub_pixels = c.pixels().fetch(chrom1, chrom2)
-                    hf.create_dataset(path, data=_format_pixels(sub_pixels))
-                    sub_mat_id += 1
-
-    else:
-        # Only intra-chromosomal matrices are used
-        sub_mats = pd.DataFrame(np.zeros((n_chroms, 3), dtype=str), columns=sub_cols)
-        for i, chrom in enumerate(chroms["name"]):
-            path = _submat_path(i, i)
-            sub_mats.iloc[i, :] = (chrom, chrom, path)
-            sub_pixels = c.pixels().fetch(chrom)
-            hf.create_dataset(path, data=_format_pixels(sub_pixels))
-
-    # Only keep upper triangle
-    bins = bins[["chrom", "start", "end"]]
-    return sub_mats, chrom_start, bins, c.binsize
 
 
 def load_kernel_config(kernel, custom=False):
@@ -402,4 +303,3 @@ def write_results(patterns_to_plot, pattern_name, output):
     with file_path.open("w") as outf:
         for tup in sorted([tup for tup in patterns_to_plot if "NA" not in tup]):
             outf.write(" ".join(map(str, tup)) + "\n")
-
