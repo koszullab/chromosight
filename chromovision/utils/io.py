@@ -178,7 +178,7 @@ def load_cool(cool_path):
     bins = bins[["chrom", "start", "end"]]
     chroms["start_bin"] = chrom_start[:-1]
     chroms["end_bin"] = chrom_start[1:]
-    return mat, chrom_start, bins, c.binsize
+    return mat, chroms, bins, c.binsize
 
 
 def load_kernel_config(kernel, custom=False):

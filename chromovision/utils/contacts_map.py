@@ -38,8 +38,11 @@ class HicGenome:
         self.inter = inter
         self.max_dist = max_dist
         # Preprocess the full genome matrix
-        self.detectable_bins = preproc.get_detectable_bins(self.matrix)
+        self.detectable_bins = preproc.get_detectable_bins(self.matrix)[0]
         self.matrix = preproc.normalize(self.matrix, good_bins=self.detectable_bins)
+        print("Whole genome matrix_normalized")
+        self.sub_mats = self.make_sub_matrices()
+        print("Sub matrices extracted")
 
         # Create sub matrices objects
 
@@ -53,15 +56,13 @@ class HicGenome:
 
         # Load contact map and chromosome start bins coords
         try:
-            sub_mat_df, chrom_start, bins, resolution = format_loader[extension](
-                mat_path
-            )
+            sub_mat_df, chroms, bins, resolution = format_loader[extension](mat_path)
         except KeyError as e:
             sys.stderr.write(
                 f"Unknown format: {extension}. Must be one of {format_loader.keys()}\n"
             )
             raise e
-        return sub_mat_df, chrom_start, bins, resolution
+        return sub_mat_df, chroms, bins, resolution
 
     def make_sub_matrices(self):
         """
@@ -100,7 +101,7 @@ class HicGenome:
             for i2, r2 in self.chroms.iterrows():
                 s1, e1 = r1.start_bin, r1.end_bin
                 s2, e2 = r2.start_bin, r2.end_bin
-                if i1 >= i2:
+                if i1 == i2 or (i1 < i2 and self.inter):
                     # Subset intra / inter sub_matrix and matching detectable bins
                     sub_mat = matrix[s1:e1, s2:e2]
                     sub_mat_detectable_bins = (
@@ -115,15 +116,16 @@ class HicGenome:
                             inter=False,
                             max_dist=self.max_dist,
                         )
-                        sub_mat_idx += 1
-                    elif self.inter:
+                    else:
                         sub_mats.contact_map[sub_mat_idx] = ContactMap(
                             sub_mat,
                             resolution=self.resolution,
                             detectable_bins=sub_mat_detectable_bins,
                             inter=True,
                         )
-                        sub_mat_idx += 1
+                    sub_mats.chr1[sub_mat_idx] = r1["name"]
+                    sub_mats.chr2[sub_mat_idx] = r2["name"]
+                    sub_mat_idx += 1
         return sub_mats
 
     def get_full_mat_pattern(self, chr1, chr2, patterns):
@@ -197,40 +199,39 @@ class ContactMap:
     def __init__(
         self, matrix, resolution, detectable_bins=None, inter=False, max_dist=None
     ):
-        # If detectable were not provided, compute them from the input matrix
-        if detectable_bins is None:
-            detectable_bins = preproc.get_detectable_bins(matrix)
-        self.detectable_bins = detectable_bins
         self.matrix = matrix
         self.resolution = resolution
         self.inter = inter
         self.max_dist = max_dist
+        # If detectable were not provided, compute them from the input matrix
+        if detectable_bins is None:
+            detectable_bins = preproc.get_detectable_bins(self.matrix, inter=self.inter)
+        self.detectable_bins = detectable_bins
 
         # Apply preprocessing steps on the input matrix
         if self.inter:
-            self.matrix = self.preprocess_inter_matrix(self.matrix)
+            self.matrix = self.preprocess_inter_matrix()
         else:
-            self.matrix = self.preprocess_intra_matrix(
-                self.matrix, self.detectable_bins
-            )
+            self.matrix = self.preprocess_intra_matrix()
 
-    def preprocess_inter_matrix(self, sub_mat):
-        return preproc.ztransform(sub_mat)
+    def preprocess_inter_matrix(self):
+        return preproc.ztransform(self.matrix)
 
-    def preprocess_intra_matrix(self, sub_mat, sub_mat_detectable_bins):
+    def preprocess_intra_matrix(self):
         # Remove speckles (outlier pixels)
-        sub_mat = preproc.despeckle(sub_mat, th2=3)
+        sub_mat = preproc.despeckle(self.matrix, th2=3)
         # Compute signal to noise ratio at all diagonals
-        snr_dist = preproc.signal_to_noise_threshold(sub_mat, sub_mat_detectable_bins)
+        snr_dist = preproc.signal_to_noise_threshold(sub_mat, self.detectable_bins[0])
         # Define max_dist based on snr and pattern config
         if self.max_dist is None:
             sub_mat_max_dist = snr_dist
         else:
             sub_mat_max_dist = min(self.max_dist, snr_dist)
         # Detrend matrix for power law
-        sub_mat = preproc.detrend(sub_mat, sub_mat_detectable_bins)
+        sub_mat = preproc.detrend(sub_mat, self.detectable_bins[0])
+        sub_mat = sub_mat.tolil()
         # Remove pixels further than max_dist
         for diag in range(sub_mat_max_dist + 1, sub_mat.shape[0]):
             sub_mat.setdiag(0, diag)
-
+        sub_mat = sub_mat.tocoo()
         return sub_mat

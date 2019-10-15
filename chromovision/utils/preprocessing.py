@@ -160,7 +160,7 @@ def mad(arr):
     return mads
 
 
-def get_detectable_bins(matrix):
+def get_detectable_bins(matrix, inter=False):
     """
     Returns lists of detectable indices after excluding low interacting bin
     based on the distribution of pixel values in the matrix.
@@ -169,19 +169,33 @@ def get_detectable_bins(matrix):
     ----------
     matrix : array_like
         A Hi-C matrix in tihe form of a 2D numpy array or coo matrix
+    inter : bool
+        Whether the matrix is interchromosomal. Default is to consider the matrix
+        is intrachromosomal (i.e. upper symmetric).
 
     Returns
     -------
     numpy array :
-        1D array containing indices of low interacting bins.
+        tuple of 2 1D arrays containing indices of low interacting rows and
+        columns, respectively.
     -------
     """
-    sum_bins = sum_mat_bins(matrix)
-    sum_mad = mad(sum_bins)
-    # Find poor interacting rows and columns
-    detect_threshold = np.median(sum_bins) - 2.0 * sum_mad
-    # Removal of poor interacting rows and columns
-    good_bins = np.where(sum_bins > detect_threshold)[0]
+    if not inter:
+        sum_bins = sum_mat_bins(matrix)
+        sum_mad = mad(sum_bins)
+        # Find poor interacting rows and columns
+        detect_threshold = np.median(sum_bins) - 2.0 * sum_mad
+        # Removal of poor interacting rows and columns
+        good_bins = np.where(sum_bins > detect_threshold)[0]
+        good_bins = (good_bins, good_bins)
+    else:
+        sum_rows, sum_cols = matrix.sum(axis=0), matrix.sum(axis=1)
+        mad_rows, mad_cols = mad(sum_rows), mad(sum_cols)
+        detect_thresh_rows = np.median(sum_rows) - 2.0 * mad_rows
+        detect_thresh_cols = np.median(sum_cols) - 2.0 * mad_cols
+        good_rows = np.where(sum_rows > detect_thresh_rows)[0]
+        good_cols = np.where(sum_cols > detect_thresh_cols)[0]
+        good_bins = (good_rows, good_cols)
     return good_bins
 
 
