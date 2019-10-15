@@ -43,7 +43,7 @@ def pattern_plot(contact_map, patterns, output=None, name=None):
                     _, pos1, pos2, _ = loop
                     plt.scatter(pos1, pos2, s=15, facecolors="none", edgecolors="blue")
 
-    emplacement = output / pathlib.Path(str(name + 1) + ".pdf2")
+    emplacement = output / pathlib.Path(str(name + 1) + ".2.pdf")
     plt.savefig(emplacement, dpi=100, format="pdf")
     plt.close("all")
 

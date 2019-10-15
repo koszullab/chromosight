@@ -91,15 +91,14 @@ def pileup_patterns(pattern_windows):
 def pattern_detector(contact_map, kernel_config, kernel_matrix, area=8):
     """Pattern detector
 
-    Detect patterns by iterated kernel matching, and compute the resulting
-    'pileup pattern' as matched on the matrices.
+    Detect patterns by iterated kernel matching, and extract windows around the
+    detected patterns.
 
     Parameters
     ----------
     contact_map : ContactMap object
-        An object containing a Hi-C contact map with chromosome indices, 
-        chromosome names,  inter and intra chromosome sub-matrices and other
-        attributes.
+        An object containing an inter- or intra-chromosomal Hi-C contact map
+        and additional metadata.
     kernel_config : dict
         The kernel configuration, as documented in
         chromovision.utils.io.load_kernel_config
@@ -110,59 +109,31 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix, area=8):
         a width of 2 * area + 1. Default is 8.
     Returns
     -------
-    detected_pattern : list
-        A list of detected patterns in tuple form: (name, x, y, score).
-    pileup_pattern : np.ndarray
-        The 'pileup' (element-wise median) matrix of all patterns
-        detected this way.
+    filtered_chrom_patterns : numpy.array
+        A 2D array of detected patterns with 3 columns: x, y, score.
+    chrom_pattern_windows : numpy array
+        A 3D array containing the pile of windows around detected patterns.
     """
 
-    all_pattern_coords = []
-    all_pattern_windows = []
-    # TODO: remove chromosome loop from here, should be in main script
-    for matrix, submat_idx, indices in zip(
-        contact_map.sub_mats,
-        contact_map.sub_mats_labels,
-        contact_map.sub_mats_detectable_bins,
-    ):
-        # Pattern matching operate here
-        mat_conv = corrcoef2d(matrix, kernel_matrix, kernel_config["max_dist"])
-        mat_conv = mat_conv.tocoo()
-        mat_conv.data[np.isnan(mat_conv.data)] = 0
-        mat_conv.eliminate_zeros()
-        # Find foci of highly correlated pixels
-        chrom_pattern_coords = picker(mat_conv, matrix, kernel_config["precision"])
-        # If no pattern was detected on this chromosome, go to next one
-        if chrom_pattern_coords is None:
-            continue
-        filtered_chrom_patterns, chrom_pattern_windows = validate_patterns(
-            chrom_pattern_coords,
-            matrix,
-            mat_conv.tocsr(),
-            indices,
-            kernel_matrix,
-            kernel_config["max_perc_undetected"],
-        )
-        # Convert coordinates from chromosome to whole genome bins
-        converted_coords = contact_map.get_full_mat_pattern(
-            filtered_chrom_patterns, submat_idx
-        )
-        all_pattern_coords.append(converted_coords)
-        all_pattern_windows.append(chrom_pattern_windows)
+    # Pattern matching operate here
+    mat_conv = corrcoef2d(contact_map.matrix, kernel_matrix, kernel_config["max_dist"])
+    mat_conv = mat_conv.tocoo()
+    mat_conv.data[np.isnan(mat_conv.data)] = 0
+    mat_conv.eliminate_zeros()
+    # Find foci of highly correlated pixels
+    chrom_pattern_coords = picker(
+        mat_conv, contact_map.matrix, kernel_config["precision"]
+    )
+    filtered_chrom_patterns, chrom_pattern_windows = validate_patterns(
+        chrom_pattern_coords,
+        contact_map.matrix,
+        mat_conv.tocsr(),
+        contact_map.detectable_bins,
+        kernel_matrix,
+        kernel_config["max_perc_undetected"],
+    )
 
-    # If no pattern detected on any chromosome, exit gracefully
-    if len(all_pattern_coords) == 0:
-        sys.stderr.write("No pattern detected ! Exiting.\n")
-        sys.exit(0)
-
-    # Combine patterns of all chromosomes into a single array
-    all_pattern_coords = np.concatenate(all_pattern_coords, axis=0)
-    all_pattern_windows = np.concatenate(all_pattern_windows, axis=2)
-
-    # Make a pileup from all pattern windows
-    pileup = pileup_patterns(all_pattern_windows)
-
-    return all_pattern_coords, pileup
+    return filtered_chrom_patterns, chrom_pattern_windows
 
 
 def explore_patterns(contact_map, kernel_config, window=4):

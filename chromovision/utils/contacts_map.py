@@ -19,7 +19,7 @@ class HicGenome:
         The whole genome Hi-C contact map, in sparse format
     sub_mats : pandas.DataFrame
         Table containing intra- and optionally inter-chromosomal matrices.
-    good_bins : list of arrays of ints
+    detectable_bins : list of arrays of ints
         List of two arrays containing indices of detectable rows and columns.
     chroms : pandas.DataFrame
         Table containing chromosome related informations.
@@ -31,15 +31,15 @@ class HicGenome:
         Whether interchromosomal matrices should be stored.
     """
 
-    def __init___(self, path, inter=False):
+    def __init__(self, path, inter=False, max_dist=None):
         # Load Hi-C matrix and associated metadata
         self.matrix, self.chroms, self.bins, self.resolution = self.load_data(path)
 
         self.inter = inter
-
+        self.max_dist = max_dist
         # Preprocess the full genome matrix
         self.detectable_bins = preproc.get_detectable_bins(self.matrix)
-        self.matrix = preproc.normalize(self.matrix, good_bins=self.good_bins)
+        self.matrix = preproc.normalize(self.matrix, good_bins=self.detectable_bins)
 
         # Create sub matrices objects
 
@@ -113,6 +113,7 @@ class HicGenome:
                             resolution=self.resolution,
                             detectable_bins=sub_mat_detectable_bins,
                             inter=False,
+                            max_dist=self.max_dist,
                         )
                         sub_mat_idx += 1
                     elif self.inter:
@@ -125,29 +126,48 @@ class HicGenome:
                         sub_mat_idx += 1
         return sub_mats
 
-    def get_full_mat_pattern(self, c1, c2, patterns):
+    def get_full_mat_pattern(self, chr1, chr2, patterns):
         """
         Converts bin indices of a list of patterns from an submatrix into their
         value in the original full-genome matrix.
 
         Parameters
         ----------
-        c1 : str
+        chr1 : str
             Name of the first chromosome of the sub matrix (rows).
-        c2 : str
+        chr2 : str
             Name of the second chromosome of the sub matrix (cols).
         pattern : numpy.array
             A 2D array of pattern coordinates. Each row is a pattern, column 0
-            is the bin on c1 and column 1 is the bin on c2.
+            is the bin on chr1 and column 1 is the bin on chr2.
         """
 
         # Get start bin for chromosomes of interest
-        startA = self.chroms.loc[self.chroms.name == c1, "start"]
-        startB = self.chroms.loc[self.chroms.name == c2, "start"]
+        startA = self.chroms.loc[self.chroms.name == chr1, "start"]
+        startB = self.chroms.loc[self.chroms.name == chr2, "start"]
         # Shift index by start bin of chromosomes
         patterns[:, 0] += startA
         patterns[:, 1] += startB
         return patterns
+
+    def bin_to_coords(self, bin_idx):
+        """
+        Converts a bin ID to a genomic coordinates based on the whole genome
+        contact map.
+
+        Parameters
+        ----------
+        bin_idx : int
+            A bin number corresponding to a row or column of the whole genome matrix.
+        
+        Returns
+        -------
+        tuple :
+            A tuple of the form (chrom, start, end) where chrom is the chromosome
+            name (str), and start and end are the genomic coordinates of the bin (int).
+        
+        """
+        return self.bins.iloc[bin_idx, :]
 
 
 class ContactMap:
@@ -168,10 +188,15 @@ class ContactMap:
     inter : bool
         True if the matrix represents contacts between two different,
         False otherwise.
+    max_dist : int
+        Maximum distance (in bins) at which contact values should be analysed. Only
+        valid for intrachromosomal matrices.
     
     """
 
-    def __init__(self, matrix, resolution, detectable_bins=None, inter=False):
+    def __init__(
+        self, matrix, resolution, detectable_bins=None, inter=False, max_dist=None
+    ):
         # If detectable were not provided, compute them from the input matrix
         if detectable_bins is None:
             detectable_bins = preproc.get_detectable_bins(matrix)
@@ -179,6 +204,7 @@ class ContactMap:
         self.matrix = matrix
         self.resolution = resolution
         self.inter = inter
+        self.max_dist = max_dist
 
         # Apply preprocessing steps on the input matrix
         if self.inter:

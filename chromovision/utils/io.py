@@ -161,7 +161,7 @@ def load_cool(cool_path):
     bins = c.bins()[:]
     chroms = c.chroms()[:]
     # Number of bins per chromosome
-    n_bins = bins.groupby("chrom", sort=False).count().start[:-1]
+    n_bins = bins.groupby("chrom", sort=False).count().start
     n_bins = n_bins.astype(np.int64)
     # Starting bin of each chromosome
     chrom_start = np.insert(np.array(n_bins), 0, 0)
