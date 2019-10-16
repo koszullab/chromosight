@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 import sys
 import numpy as np
+import pandas as pd
 from scipy.sparse import lil_matrix, coo_matrix, csr_matrix, triu, csc_matrix
 from scipy.sparse.csgraph import connected_components
 import warnings
@@ -11,6 +12,7 @@ warnings.filterwarnings("ignore")
 def validate_patterns(
     coords, matrix, conv_mat, detectable_bins, kernel_matrix, max_undetected_perc
 ):
+    matrix = matrix.tocsr()
     # Pre-compute height, width and half (radius)
     win_h, win_w = kernel_matrix.shape
     half_h, half_w = win_h // 2 + 1, win_w // 2 + 1
@@ -231,6 +233,38 @@ def explore_patterns(contact_map, kernel_config, window=4):
     # Remove original kernels, as we are only interested by pileup ones
     del kernels["ori"]
     return all_patterns, kernels, list_current_pattern_count
+
+
+def remove_smears(patterns, win_size=8):
+    """
+    Identify patterns that are too close from each other to exclude them.
+    This can happen when patterns smear over several pixels and are detected twice.
+    When that happens, the pattern with the highest score in the smear will be kept.
+
+    Parameters
+    ----------
+    patterns : numpy.array of float
+        2D Array of patterns, with 3 columns: row, column and score.
+    win_size : int
+        The maximum number of pixels at which patterns are considered overlapping.
+    
+    Returns
+    -------
+    numpy.array of bool :
+        Boolean array indicating which patterns are valid (True values) and
+        which are smears (False values)
+    """
+    print(patterns)
+    p = pd.DataFrame(patterns, columns=["row", "col", "score"])
+    # Divide each row / col by the window size to serve as a "hash"
+    p.row = p.row // win_size
+    p.col = p.col // win_size
+    # Group patterns by row-col combination and retrieve the index of the
+    # pattern with the best score in each group
+    best_idx = p.groupby(["row", "col"], sort=False)["score"].idxmax().values
+    good_patterns_mask = np.zeros(patterns.shape[0], dtype=bool)
+    good_patterns_mask[best_idx] = True
+    return good_patterns_mask
 
 
 def picker(mat_conv, matrix, precision=None):

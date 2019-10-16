@@ -297,9 +297,11 @@ def dense2sparse(M, format="coo"):
     return triu(sparse_mat)
 
 
-def write_results(patterns_to_plot, pattern_name, output):
+def write_results(coords, pattern_name, output):
+    """
+    Writes coordinates to a text file.
+    """
+    coords_df = pd.DataFrame(coords, columns=["row", "col", "score"])
     file_name = pattern_name + ".txt"
-    file_path = output / file_name
-    with file_path.open("w") as outf:
-        for tup in sorted([tup for tup in patterns_to_plot if "NA" not in tup]):
-            outf.write(" ".join(map(str, tup)) + "\n")
+    file_path = join(output, file_name)
+    coords_df.to_csv(file_path, sep="\t", index=None)

@@ -145,8 +145,8 @@ class HicGenome:
         """
 
         # Get start bin for chromosomes of interest
-        startA = self.chroms.loc[self.chroms.name == chr1, "start"]
-        startB = self.chroms.loc[self.chroms.name == chr2, "start"]
+        startA = self.chroms.loc[self.chroms.name == chr1, "start_bin"].values[0]
+        startB = self.chroms.loc[self.chroms.name == chr2, "start_bin"].values[0]
         # Shift index by start bin of chromosomes
         patterns[:, 0] += startA
         patterns[:, 1] += startB
