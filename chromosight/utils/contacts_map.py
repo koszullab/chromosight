@@ -141,17 +141,18 @@ class HicGenome:
             Name of the first chromosome of the sub matrix (rows).
         chr2 : str
             Name of the second chromosome of the sub matrix (cols).
-        pattern : numpy.array
-            A 2D array of pattern coordinates. Each row is a pattern, column 0
-            is the bin on chr1 and column 1 is the bin on chr2.
+        pattern : pandas.DataFrame
+            A dataframme of pattern coordinates. Each row is a pattern and
+            columns should be bin1 and bin2, for row and column coordinates in
+            the Hi-C matrix, respectively.
         """
 
         # Get start bin for chromosomes of interest
         startA = self.chroms.loc[self.chroms.name == chr1, "start_bin"].values[0]
         startB = self.chroms.loc[self.chroms.name == chr2, "start_bin"].values[0]
         # Shift index by start bin of chromosomes
-        patterns[:, 0] += startA
-        patterns[:, 1] += startB
+        patterns.bin1 += startA
+        patterns.bin2 += startB
         return patterns
 
     def bin_to_coords(self, bin_idx):
@@ -238,5 +239,4 @@ class ContactMap:
             (sub_mat.data[keep_offsets], sub_mat.offsets[keep_offsets]),
             shape=sub_mat.shape,
         ).tocoo()
-        # sub_mat = dia_matrix((data, offsets), shape=(4, 4))
         return sub_mat

@@ -12,6 +12,38 @@ warnings.filterwarnings("ignore")
 def validate_patterns(
     coords, matrix, conv_mat, detectable_bins, kernel_matrix, max_undetected_perc
 ):
+    """
+    Filters detected patterns to remove those in noisy regions or too close to
+    matrix boundaries. Also returns the surrounding window of Hi-C contacts around
+    each detected pattern.
+
+    Parameters
+    ----------
+    coords : numpy.array of int
+        Coordinates of all detected patterns in the sub matrix. One pattern per
+        row, the first column is the row number, second column is the col number.
+    matrix : scipy.sparse.csr_matrix
+        Hi-C contact map of the sub matrix.
+    conv_mat : scipy.sparse.csr_matrix
+        Convolution product of the kernel with the Hi-C sub matrix.
+    detectable_bins : list of numpy.array
+        List of two 1D numpy arrays of ints representing ids of detectable rows
+        and columns, respectively.
+    kernel_matrix : numpy.array of float
+        The kernel that was used for pattern detection on the Hi-C matrix.
+    max_undetected_perc : float
+        Proportion of undetectable pixels allowed in a pattern window to consider
+        it valid.
+
+    Returns
+    -------
+    filtered_coords : pandas.DataFrame
+        Table of coordinates that passed the filters. The dataframe has 3:
+        columns: bin1 (rows), bin2 (col) and score (the correlation coefficient).
+    filtered_windows : numpy.array
+        3D numpy array of signal windows around detected patterns. Each window
+        spans axes 0 and 1, and they are stacked along axis 2.
+    """
     matrix = matrix.tocsr()
     # Pre-compute height, width and half (radius)
     win_h, win_w = kernel_matrix.shape
@@ -21,7 +53,10 @@ def validate_patterns(
     detectable_rows = set(detectable_bins[0])
     detectable_cols = set(detectable_bins[1])
     # Copy coords object and append column for scores
-    validated_coords = np.append(coords, np.zeros((coords.shape[0], 1)), 1)
+    validated_coords = pd.DataFrame(
+        {"bin1": coords[:, 0], "bin2": coords[:, 1], "score": np.zeros(coords.shape[0])}
+    )
+    # validated_coords = np.append(coords, np.zeros((coords.shape[0], 1)), 1)
     # Initialize structure to store pattern windows
     pattern_windows = np.zeros(
         (win_h, win_w, coords.shape[0])
@@ -59,7 +94,7 @@ def validate_patterns(
             # value defined in kernel config
             if tot_undetected / tot_pixels < max_undetected_perc / 100.0:
 
-                validated_coords[i, 2] = conv_mat[l[0], l[1]]
+                validated_coords.score[i] = conv_mat[l[0], l[1]]
                 pattern_windows[:, :, i] = pattern_window
             else:
                 # Current pattern will be dropped due to undetectable bins
@@ -72,7 +107,7 @@ def validate_patterns(
     blacklist_mask = np.zeros(coords.shape[0], dtype=bool)
     if len(blacklist):
         blacklist_mask[blacklist] = True
-    filtered_coords = validated_coords[~blacklist_mask, :]
+    filtered_coords = validated_coords.loc[~blacklist_mask, :]
     filtered_windows = pattern_windows[:, :, ~blacklist_mask]
 
     # from matplotlib import pyplot as plt
@@ -139,7 +174,8 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix, area=8):
 
 
 def explore_patterns(contact_map, kernel_config, window=4):
-    """Explore patterns in a list of matrices
+    """
+    NOTE: Deprecated
 
     Given a pattern type, attempt to detect that pattern in each matrix with
     confidence determined by the precision parameter. The detection is done
@@ -255,13 +291,13 @@ def remove_smears(patterns, win_size=8):
         which are smears (False values)
     """
     print(patterns)
-    p = pd.DataFrame(patterns, columns=["row", "col", "score"])
+    p = patterns.copy()
     # Divide each row / col by the window size to serve as a "hash"
-    p.row = p.row // win_size
-    p.col = p.col // win_size
+    p.row = p.bin1 // win_size
+    p.col = p.bin2 // win_size
     # Group patterns by row-col combination and retrieve the index of the
     # pattern with the best score in each group
-    best_idx = p.groupby(["row", "col"], sort=False)["score"].idxmax().values
+    best_idx = p.groupby(["bin1", "bin2"], sort=False)["score"].idxmax().values
     good_patterns_mask = np.zeros(patterns.shape[0], dtype=bool)
     good_patterns_mask[best_idx] = True
     return good_patterns_mask

@@ -58,6 +58,7 @@ Arguments for generate-config:
                                 "borders". [default: loops]
 """
 import numpy as np
+import pandas as pd
 import pathlib
 import sys
 import json
@@ -65,13 +66,9 @@ import docopt
 import multiprocessing as mp
 from chromosight.version import __version__
 from chromosight.utils.contacts_map import HicGenome
-from chromosight.utils.io import write_results, load_kernel_config
+from chromosight.utils.io import write_patterns, load_kernel_config
 from chromosight.utils.plotting import pattern_plot, pileup_plot
-from chromosight.utils.detection import (
-    pattern_detector,
-    pileup_patterns,
-    remove_smears,
-)
+from chromosight.utils.detection import pattern_detector, pileup_patterns, remove_smears
 
 
 def _override_kernel_config(param_name, param_value, param_type, config):
@@ -200,7 +197,9 @@ def cmd_detect(arguments):
             hic_genome.get_full_mat_pattern(d["chr1"], d["chr2"], d["coords"])
             for d in sub_mat_results
         ]
-        all_pattern_coords.append(np.concatenate(kernel_coords, axis=0))
+        all_pattern_coords.append(
+            pd.concat(kernel_coords, axis=0).reset_index(drop=True)
+        )
 
         # Extract surrounding windows for each sub_matrix
         kernel_windows = np.concatenate([w["windows"] for w in sub_mat_results], axis=2)
@@ -221,15 +220,15 @@ def cmd_detect(arguments):
         sys.exit(0)
 
     # Combine patterns of all kernel matrices into a single array
-    all_pattern_coords = np.concatenate(all_pattern_coords, axis=0)
+    all_pattern_coords = pd.concat(all_pattern_coords, axis=0)
     #
 
     # Remove patterns with overlapping windows (smeared patterns)
     good_patterns = remove_smears(all_pattern_coords, win_size=8)
-    all_pattern_coords = all_pattern_coords[good_patterns, :]
+    all_pattern_coords = all_pattern_coords.loc[good_patterns, :]
 
     ### 2: WRITE OUTPUT
-    write_results(all_pattern_coords, kernel_config["name"], output)
+    write_patterns(all_pattern_coords, kernel_config["name"], output)
     # base_names = pathlib.Path(map_path).name
 
 
