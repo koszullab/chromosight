@@ -6,15 +6,15 @@ Explore and detect patterns (loops, borders, centromeres, etc.) in Hi-C contact
 maps with pattern matching.
 
 Usage:
-    chromovision detect <contact_map> [<output>] [--kernel-config FILE]
+    chromosight detect <contact_map> [<output>] [--kernel-config FILE]
                         [--pattern=loops] [--precision=auto] [--iterations=auto]
                         [--inter] [--max-dist=auto] [--threads 1]
-    chromovision generate-config <prefix> [--preset loops]
+    chromosight generate-config <prefix> [--preset loops]
 
     detect: 
         performs pattern detection on a Hi-C contact map using kernel convolution
     generate-config:
-        Generate pre-filled config files to use for `chromovision detect`. 
+        Generate pre-filled config files to use for `chromosight detect`. 
         A config consists of a JSON file describing analysis parameters for the
         detection and path pointing to kernel matrices files. Those matrices
         files are tsv files with numeric values ordered in a square dense matrix
@@ -63,11 +63,11 @@ import sys
 import json
 import docopt
 import multiprocessing as mp
-from chromovision.version import __version__
-from chromovision.utils.contacts_map import HicGenome
-from chromovision.utils.io import write_results, load_kernel_config
-from chromovision.utils.plotting import pattern_plot, pileup_plot
-from chromovision.utils.detection import (
+from chromosight.version import __version__
+from chromosight.utils.contacts_map import HicGenome
+from chromosight.utils.io import write_results, load_kernel_config
+from chromosight.utils.plotting import pattern_plot, pileup_plot
+from chromosight.utils.detection import (
     pattern_detector,
     pileup_patterns,
     remove_smears,

@@ -21,7 +21,7 @@ CLASSIFIERS = [
     "Operating System :: MacOS",
 ]
 
-name = "chromovision"
+name = "chromosight"
 
 MAJOR = 0
 MINOR = 1
@@ -33,7 +33,7 @@ LICENSE = "GPLv3"
 with open("requirements.txt", "r") as f:
     REQUIREMENTS = f.read().splitlines()
 
-with open("chromovision/version.py", "w") as f:
+with open("chromosight/version.py", "w") as f:
     f.write("__version__ = '{}'\n".format(VERSION))
 
 setup(
@@ -47,6 +47,6 @@ setup(
     install_requires=REQUIREMENTS,
     include_package_data=True,
     entry_points={
-        "console_scripts": ["chromovision=chromovision.cli.chromovision:main"]
+        "console_scripts": ["chromosight=chromosight.cli.chromosight:main"]
     },
 )

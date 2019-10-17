@@ -103,7 +103,7 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix, area=8):
         and additional metadata.
     kernel_config : dict
         The kernel configuration, as documented in
-        chromovision.utils.io.load_kernel_config
+        chromosight.utils.io.load_kernel_config
     kernel_matrix : numpy.array
         The kernel matrix to use for convolution as a 2D numpy array
     area : int, optional
@@ -157,7 +157,7 @@ def explore_patterns(contact_map, kernel_config, window=4):
         chromosomal sub matrices as well as other attributes.
     kernel_config : dict
         Kernel configuration as documented in
-        chromovision.utils.io.load_kernel_config
+        chromosight.utils.io.load_kernel_config
     window : int, optional
         The pattern window area. When a pattern is discovered in a previous
         pass, further detected patterns falling into that area are discarded.

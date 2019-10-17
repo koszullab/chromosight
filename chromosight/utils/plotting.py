@@ -10,7 +10,7 @@ def pattern_plot(contact_map, patterns, output=None, name=None):
 
     Parameters
     ----------
-    contact_map : chromovision.utils.contact_map.ContactMap
+    contact_map : chromosight.utils.contact_map.ContactMap
         Object containing all information related to a Hi-C contact map.
     patterns : dict
         Dictionary object storing all patterns to be plotted. Structured as :
