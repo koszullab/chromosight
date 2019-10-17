@@ -3,9 +3,11 @@ from __future__ import absolute_import
 from . import io as cio
 from . import preprocessing as preproc
 import os
+from time import time
 import sys
 import numpy as np
 import pandas as pd
+from scipy.sparse import dia_matrix
 
 
 class HicGenome:
@@ -229,9 +231,12 @@ class ContactMap:
             sub_mat_max_dist = min(self.max_dist, snr_dist)
         # Detrend matrix for power law
         sub_mat = preproc.detrend(sub_mat, self.detectable_bins[0])
-        sub_mat = sub_mat.tolil()
-        # Remove pixels further than max_dist
-        for diag in range(sub_mat_max_dist + 1, sub_mat.shape[0]):
-            sub_mat.setdiag(0, diag)
-        sub_mat = sub_mat.tocoo()
+        # Create a new matrix from the diagonals below max dist (faster than removing them)
+        sub_mat = sub_mat.todia()
+        keep_offsets = np.where(sub_mat.offsets < sub_mat_max_dist)[0]
+        sub_mat = dia_matrix(
+            (sub_mat.data[keep_offsets], sub_mat.offsets[keep_offsets]),
+            shape=sub_mat.shape,
+        ).tocoo()
+        # sub_mat = dia_matrix((data, offsets), shape=(4, 4))
         return sub_mat
