@@ -200,7 +200,6 @@ def cmd_detect(arguments):
         all_pattern_coords.append(
             pd.concat(kernel_coords, axis=0).reset_index(drop=True)
         )
-
         # Extract surrounding windows for each sub_matrix
         kernel_windows = np.concatenate([w["windows"] for w in sub_mat_results], axis=2)
         # Compute and plot pileup
@@ -209,10 +208,6 @@ def cmd_detect(arguments):
         )
         kernel_pileup = pileup_patterns(kernel_windows)
         pileup_plot(kernel_pileup, name=pileup_fname, output=output)
-
-    # for _, sub in hic_genome.sub_mats.iterrows():
-    #        all_pattern_coords.append(converted_coords)
-    #        all_pattern_windows.append(chrom_windows)
 
     # If no pattern detected on any chromosome, exit gracefully
     if len(all_pattern_coords) == 0:
@@ -224,7 +219,7 @@ def cmd_detect(arguments):
     #
 
     # Remove patterns with overlapping windows (smeared patterns)
-    good_patterns = remove_smears(all_pattern_coords, win_size=8)
+    good_patterns = remove_smears(all_pattern_coords, win_size=4)
     all_pattern_coords = all_pattern_coords.loc[good_patterns, :]
 
     ### 2: WRITE OUTPUT
