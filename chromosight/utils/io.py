@@ -270,12 +270,6 @@ def load_kernel_config(kernel, custom=False):
     # Replace matrices path by their content in the config dictionary
     kernel_config["kernels"] = kernel_matrices
 
-    # Set maximum distance parameter to bins using resolution
-    # Make sure max distance is not smaller than kernel
-    kernel_config["max_dist"] = max(
-        kernel_config["max_dist"] // kernel_config["resolution"], largest_kernel
-    )
-
     return kernel_config
 
 

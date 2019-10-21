@@ -38,11 +38,12 @@ class HicGenome:
         self.matrix, self.chroms, self.bins, self.resolution = self.load_data(path)
 
         self.inter = inter
-        self.max_dist = max_dist
+        # Convert maximum distance to bins using resolution
+        self.max_dist = max_dist // self.resolution
         # Preprocess the full genome matrix
         self.detectable_bins = preproc.get_detectable_bins(self.matrix)[0]
         self.matrix = preproc.normalize(self.matrix, good_bins=self.detectable_bins)
-        print("Whole genome matrix_normalized")
+        print("Whole genome matrix normalized")
         self.sub_mats = self.make_sub_matrices()
         print("Sub matrices extracted")
 
@@ -229,7 +230,7 @@ class ContactMap:
         if self.max_dist is None:
             sub_mat_max_dist = snr_dist
         else:
-            sub_mat_max_dist = min(self.max_dist, snr_dist)
+            sub_mat_max_dist = max(self.max_dist, snr_dist)
         # Detrend matrix for power law
         sub_mat = preproc.detrend(sub_mat, self.detectable_bins[0])
         # Create a new matrix from the diagonals below max dist (faster than removing them)
