@@ -58,6 +58,7 @@ def validate_patterns(
     )
     # validated_coords = np.append(coords, np.zeros((coords.shape[0], 1)), 1)
     # Initialize structure to store pattern windows
+
     pattern_windows = np.zeros(
         (win_h, win_w, coords.shape[0])
     )  # list containing all pannel of detected patterns
@@ -125,7 +126,7 @@ def pileup_patterns(pattern_windows):
     return np.apply_along_axis(np.median, 2, pattern_windows)
 
 
-def pattern_detector(contact_map, kernel_config, kernel_matrix, area=8):
+def pattern_detector(contact_map, kernel_config, kernel_matrix, area=3):
     """Pattern detector
 
     Detect patterns by iterated kernel matching, and extract windows around the
