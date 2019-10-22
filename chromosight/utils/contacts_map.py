@@ -45,11 +45,14 @@ class HicGenome:
         # Convert maximum scanning distance to bins using resolution
         try:
             self.max_dist = self.kernel_config["max_dist"] // self.resolution
+            # Get the size of the largest convolution kernel
+            self.largest_kernel = max(
+                [s.shape[0] for s in self.kernel_config["kernels"]]
+            )
         except KeyError:
             self.max_dist = None
+            self.largest_kernel = 3
 
-        # Get the size of the largest convolution kernel
-        self.largest_kernel = max([s.shape[0] for s in self.kernel_config["kernels"]])
         # Preprocess the full genome matrix
         self.detectable_bins = preproc.get_detectable_bins(self.matrix)[0]
         self.matrix = preproc.normalize(self.matrix, good_bins=self.detectable_bins)
@@ -158,14 +161,14 @@ class HicGenome:
             columns should be bin1 and bin2, for row and column coordinates in
             the Hi-C matrix, respectively.
         """
-
+        full_patterns = patterns.copy()
         # Get start bin for chromosomes of interest
         startA = self.chroms.loc[self.chroms.name == chr1, "start_bin"].values[0]
         startB = self.chroms.loc[self.chroms.name == chr2, "start_bin"].values[0]
         # Shift index by start bin of chromosomes
-        patterns.bin1 += startA
-        patterns.bin2 += startB
-        return patterns
+        full_patterns.bin1 += startA
+        full_patterns.bin2 += startB
+        return full_spatterns
 
     def bin_to_coords(self, bin_idx):
         """
@@ -253,6 +256,7 @@ class ContactMap:
         keep_distance = sub_mat_max_dist + (self.largest_kernel)
         # Detrend matrix for power law
         sub_mat = preproc.detrend(sub_mat, self.detectable_bins[0])
+
         # Create a new matrix from the diagonals below max dist (faster than removing them)
         sub_mat = preproc.diag_trim(sub_mat.todia(), keep_distance)
         sub_mat = sub_mat.tocoo()
