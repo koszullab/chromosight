@@ -6,6 +6,7 @@ Operations to perform on Hi-C matrices before analyses
 """
 import numpy as np
 from scipy.signal import savgol_filter
+from scipy.sparse import dia_matrix
 
 
 def normalize(B, good_bins=None, iterations=100):
@@ -51,6 +52,33 @@ def normalize(B, good_bins=None, iterations=100):
     r.eliminate_zeros()
 
     return r
+
+
+def diag_trim(mat, n):
+    """
+    Trim an upper triangle sparse matrix so that only the first n diagonals are kept.
+
+    Parameters
+    ----------
+
+    mat : scipy.sparse.dia_matrix
+        The sparse matrix to be trimmed
+    n : int
+        The number of diagonals from the center to keep (0-based).
+
+    Returns
+    -------
+    scipy.sparse.dia_matrix :
+        The diagonally trimmed upper triangle matrix with only the first n diagonal.
+    """
+    # Create a new matrix from the diagonals below max dist (faster than removing them)
+
+    keep_offsets = np.where((mat.offsets <= n) & (mat.offsets > 0))[0]
+    trimmed = dia_matrix(
+        (mat.data[keep_offsets], mat.offsets[keep_offsets]), shape=mat.shape
+    )
+
+    return trimmed
 
 
 def distance_law(matrix, detectable_bins, fun=np.mean):

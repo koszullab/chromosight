@@ -173,7 +173,7 @@ def cmd_detect(arguments):
 
     # kernel_config = _override_kernel_config("max_dist", max_dist, int, kernel_config)
     # Make shorten max distance in case matrix is noisy
-    hic_genome = HicGenome(mat_path, interchrom, kernel_config["max_dist"])
+    hic_genome = HicGenome(mat_path, interchrom, kernel_config)
 
     all_pattern_coords = []
 
@@ -196,12 +196,19 @@ def cmd_detect(arguments):
         kernel_coords = [
             hic_genome.get_full_mat_pattern(d["chr1"], d["chr2"], d["coords"])
             for d in sub_mat_results
+            if d["coords"] is not None
         ]
-        all_pattern_coords.append(
-            pd.concat(kernel_coords, axis=0).reset_index(drop=True)
-        )
+        try:
+            all_pattern_coords.append(
+                pd.concat(kernel_coords, axis=0).reset_index(drop=True)
+            )
+        # If no pattern was found with this kernel, skip directly to the next one
+        except ValueError:
+            continue
         # Extract surrounding windows for each sub_matrix
-        kernel_windows = np.concatenate([w["windows"] for w in sub_mat_results], axis=2)
+        kernel_windows = np.concatenate(
+            [w["windows"] for w in sub_mat_results if w["windows"] is not None], axis=2
+        )
         # Compute and plot pileup
         pileup_fname = ("pileup_of_{n}_{pattern}_kernel_{kernel}").format(
             pattern=kernel_config["name"], n=kernel_windows.shape[2], kernel=kernel_id

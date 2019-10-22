@@ -5,6 +5,7 @@ import pandas as pd
 from scipy.sparse import lil_matrix, coo_matrix, csr_matrix, triu, csc_matrix
 from scipy.sparse.csgraph import connected_components
 import warnings
+import chromosight.utils.preprocessing as preproc
 
 warnings.filterwarnings("ignore")
 
@@ -52,6 +53,7 @@ def validate_patterns(
     blacklist = []
     detectable_rows = set(detectable_bins[0])
     detectable_cols = set(detectable_bins[1])
+
     # Copy coords object and append column for scores
     validated_coords = pd.DataFrame(
         {"bin1": coords[:, 0], "bin2": coords[:, 1], "score": np.zeros(coords.shape[0])}
@@ -65,6 +67,7 @@ def validate_patterns(
     for i, l in enumerate(coords):
         p1 = int(l[0])
         p2 = int(l[1])
+        print(p1, p2)
         if p1 > p2:
             p1, p2 = p2, p1
         # Check for out of bounds errors
@@ -162,6 +165,8 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix, area=3):
     chrom_pattern_coords = picker(
         mat_conv, contact_map.matrix, kernel_config["precision"]
     )
+    if chrom_pattern_coords is None:
+        return None, None
     filtered_chrom_patterns, chrom_pattern_windows = validate_patterns(
         chrom_pattern_coords,
         contact_map.matrix,
@@ -291,7 +296,6 @@ def remove_smears(patterns, win_size=8):
         Boolean array indicating which patterns are valid (True values) and
         which are smears (False values)
     """
-    print(patterns)
     p = patterns.copy()
     # Divide each row / col by the window size to serve as a "hash"
     p.row = p.bin1 // win_size
@@ -528,7 +532,6 @@ def xcorr2(signal, kernel, max_scan_distance=None, threshold=1e-4):
 
     signal = signal.tocsc()
     for ki in range(km):
-        # Note convolution is only computed up to a distance from the diagonal
         for kj in range(kn):
             out += kernel[ki, kj] * signal[ki : sm - km + 1 + ki, kj : sn - kn + 1 + kj]
 
@@ -541,6 +544,8 @@ def xcorr2(signal, kernel, max_scan_distance=None, threshold=1e-4):
     out = out.tocoo()
     rows, cols = out.row + kh, out.col + kw
     out = coo_matrix((out.data, (rows, cols)), shape=(sm, sn), dtype=np.float64)
+    # Trim diagonals further than max_scan_distance
+    out = preproc.diag_trim(out.todia(), max_scan_distance)
 
     return out
 

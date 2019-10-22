@@ -31,15 +31,25 @@ class HicGenome:
         The basepair resolution of the Hi-C matrix.
     inter : bool
         Whether interchromosomal matrices should be stored.
+    kernel_config : dict
+        Kernel configuration associated with the Hi-C genome
+    max_dist : int
+        Maximum scanning distance for convolution during pattern detection.
     """
 
-    def __init__(self, path, inter=False, max_dist=None):
+    def __init__(self, path, inter=False, kernel_config={}):
         # Load Hi-C matrix and associated metadata
         self.matrix, self.chroms, self.bins, self.resolution = self.load_data(path)
-
+        self.kernel_config = kernel_config
         self.inter = inter
-        # Convert maximum distance to bins using resolution
-        self.max_dist = max_dist // self.resolution
+        # Convert maximum scanning distance to bins using resolution
+        try:
+            self.max_dist = self.kernel_config["max_dist"] // self.resolution
+        except KeyError:
+            self.max_dist = None
+
+        # Get the size of the largest convolution kernel
+        self.largest_kernel = max([s.shape[0] for s in self.kernel_config["kernels"]])
         # Preprocess the full genome matrix
         self.detectable_bins = preproc.get_detectable_bins(self.matrix)[0]
         self.matrix = preproc.normalize(self.matrix, good_bins=self.detectable_bins)
@@ -118,6 +128,7 @@ class HicGenome:
                             detectable_bins=sub_mat_detectable_bins,
                             inter=False,
                             max_dist=self.max_dist,
+                            largest_kernel=self.largest_kernel,
                         )
                     else:
                         sub_mats.contact_map[sub_mat_idx] = ContactMap(
@@ -201,12 +212,19 @@ class ContactMap:
     """
 
     def __init__(
-        self, matrix, resolution, detectable_bins=None, inter=False, max_dist=None
+        self,
+        matrix,
+        resolution,
+        detectable_bins=None,
+        inter=False,
+        max_dist=None,
+        largest_kernel=0,
     ):
         self.matrix = matrix
         self.resolution = resolution
         self.inter = inter
         self.max_dist = max_dist
+        self.largest_kernel = largest_kernel
         # If detectable were not provided, compute them from the input matrix
         if detectable_bins is None:
             detectable_bins = preproc.get_detectable_bins(self.matrix, inter=self.inter)
@@ -226,18 +244,20 @@ class ContactMap:
         sub_mat = preproc.despeckle(self.matrix, th2=3)
         # Compute signal to noise ratio at all diagonals
         snr_dist = preproc.signal_to_noise_threshold(sub_mat, self.detectable_bins[0])
-        # Define max_dist based on snr and pattern config
+        # Define max scanning dist based on snr and pattern config
         if self.max_dist is None:
             sub_mat_max_dist = snr_dist
         else:
             sub_mat_max_dist = max(self.max_dist, snr_dist)
+        # If we scan until a given distance, data values in a margin must be kept as well
+        keep_distance = sub_mat_max_dist + (self.largest_kernel)
         # Detrend matrix for power law
         sub_mat = preproc.detrend(sub_mat, self.detectable_bins[0])
         # Create a new matrix from the diagonals below max dist (faster than removing them)
-        sub_mat = sub_mat.todia()
-        keep_offsets = np.where(sub_mat.offsets < sub_mat_max_dist)[0]
-        sub_mat = dia_matrix(
-            (sub_mat.data[keep_offsets], sub_mat.offsets[keep_offsets]),
-            shape=sub_mat.shape,
-        ).tocoo()
+        sub_mat = preproc.diag_trim(sub_mat.todia(), keep_distance)
+        sub_mat = sub_mat.tocoo()
+        # Fill diagonals of the lower triangle that might overlap the kernel
+        for i in range(1, self.largest_kernel):
+            sub_mat.setdiag(sub_mat.diagonal(i), -i)
+
         return sub_mat
