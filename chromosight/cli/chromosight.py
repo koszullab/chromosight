@@ -230,6 +230,7 @@ def cmd_detect(arguments):
     all_pattern_coords = all_pattern_coords.loc[good_patterns, :]
 
     ### 2: WRITE OUTPUT
+    print(f"{all_pattern_coords.shape[0]} patterns detected")
     write_patterns(all_pattern_coords, kernel_config["name"], output)
     # base_names = pathlib.Path(map_path).name
 

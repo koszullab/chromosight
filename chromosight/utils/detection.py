@@ -67,7 +67,6 @@ def validate_patterns(
     for i, l in enumerate(coords):
         p1 = int(l[0])
         p2 = int(l[1])
-        print(p1, p2)
         if p1 > p2:
             p1, p2 = p2, p1
         # Check for out of bounds errors
@@ -175,7 +174,6 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix, area=3):
         kernel_matrix,
         kernel_config["max_perc_undetected"],
     )
-
     return filtered_chrom_patterns, chrom_pattern_windows
 
 
@@ -304,7 +302,11 @@ def remove_smears(patterns, win_size=8):
     # pattern with the best score in each group
     best_idx = p.groupby(["bin1", "bin2"], sort=False)["score"].idxmax().values
     good_patterns_mask = np.zeros(patterns.shape[0], dtype=bool)
-    good_patterns_mask[best_idx] = True
+    try:
+        good_patterns_mask[best_idx] = True
+    except IndexError:
+        # no input pattern
+        pass
     return good_patterns_mask
 
 
@@ -333,6 +335,7 @@ def picker(mat_conv, matrix, precision=None):
     candidate_mat.data[candidate_mat.data < thres] = 0
     candidate_mat.data[candidate_mat.data != 0] = 1
     candidate_mat.eliminate_zeros()
+
     # Check if at least one candidate pixel was found
     if len(candidate_mat.data) > 0:
         num_foci, labelled_mat = label_connected_pixels_sparse(candidate_mat)
@@ -585,8 +588,13 @@ def corrcoef2d(signal, kernel, max_dist):
     nz_vals = corrcoef.nonzero()
     # Divide them by corresponding entries in the numerator
     denominator = denominator.tocsr()
-    corrcoef.data /= denominator[nz_vals].A1
+    try:
+        corrcoef.data /= denominator[nz_vals].A1
+    # Case there are no nonzero corrcoef
+    except AttributeError:
+        pass
     corrcoef.data[corrcoef.data < 0] = 0
+
     # Only keep the upper triangle
     corrcoef = triu(corrcoef)
 
