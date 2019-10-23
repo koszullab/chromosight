@@ -81,7 +81,7 @@ def diag_trim(mat, n):
     return trimmed
 
 
-def distance_law(matrix, detectable_bins, fun=np.mean):
+def distance_law(matrix, detectable_bins=None, fun=np.nanmedian):
     """
     Computes genomic distance law by averaging over each diagonal in
     the upper triangle matrix.
@@ -256,7 +256,8 @@ def detrend(matrix, detectable_bins=None):
 
     # Detrending by the distance law
     clean_mat = matrix.tocoo()
-    clean_mat.data /= y_savgol[abs(clean_mat.row - clean_mat.col)]
+    # clean_mat.data /= y_savgol[abs(clean_mat.row - clean_mat.col)]
+    clean_mat.data /= y[abs(clean_mat.row - clean_mat.col)]
     clean_mat = clean_mat.tocsr()
     # Set values in bad bins to 0
     miss_bin_mask = np.ones(matrix.shape[0], dtype=bool)
