@@ -5,6 +5,7 @@ Load and save contact matrices in sparse format
 """
 import pandas as pd
 import numpy as np
+import h5py
 import pathlib
 import sys
 import json
@@ -99,6 +100,36 @@ def load_bedgraph2d(mat_path):
     return mat, chrom_start, bins, bin_size
 
 
+def save_sub_matrices(mat, input_fmt="cool", inter=False, tmpdir=None):
+    """
+    Given an input cooler object save each sub matrix (intra- and optionally
+    inter-chromosomal) as a npz file in a temporary folder.
+
+    Parameters:
+    ----------
+    mat : cooler.Cooler or pandas.DataFrame
+        The input data to store into files. Can be a cooler object or a dataframe,
+        if a 2D bedgraph file is used as input.
+    input_fmt : str
+        The input format, either cool or bg2 depending if a cool file or a 2D
+        bedgraph file is used as input.
+    inter : bool
+        Whether to consider interchromosomal matrices. If True, files are saved
+        for interchromosomal contacts, otherwise only intra-chromosomal matrices
+        are saved.
+    tmpdir : str
+        The directory where temporary files are stored. Will be generated automatically
+        if None.
+    
+    Returns:
+    -------
+    dict :
+        A dictionary of the form {(chr1, chr2): path, ...} where chr1 is the
+        chromosome corresponding to the rows of the submatrix, chr2 corresponds
+        to columns, and path is the path to the npz file containing the submatrix
+    """
+
+
 def load_cool(cool_path):
     """
     Reads a cool file into memory and parses it into a COO sparse matrix
@@ -128,8 +159,9 @@ def load_cool(cool_path):
     mat = c.pixels()[:]
     # Number of fragments  (bins) per chromosome
     bins = c.bins()[:]
+    chroms = c.chroms()[:]
     # Number of bins per chromosome
-    n_bins = bins.groupby("chrom", sort=False).count().start[:-1]
+    n_bins = bins.groupby("chrom", sort=False).count().start
     n_bins = n_bins.astype(np.int64)
     # Starting bin of each chromosome
     chrom_start = np.insert(np.array(n_bins), 0, 0)
@@ -144,7 +176,9 @@ def load_cool(cool_path):
     # Only keep upper triangle
     mat = triu(mat)
     bins = bins[["chrom", "start", "end"]]
-    return mat, chrom_start, bins, c.binsize
+    chroms["start_bin"] = chrom_start[:-1]
+    chroms["end_bin"] = chrom_start[1:]
+    return mat, chroms, bins, c.binsize
 
 
 def load_kernel_config(kernel, custom=False):
@@ -204,7 +238,7 @@ def load_kernel_config(kernel, custom=False):
         config_path = kernel
     # Preset kernel: Find preset config file matching pattern name
     else:
-        # Find chromovision installation directory and get kernel config path
+        # Find chromosight installation directory and get kernel config path
         chromo_dir = pathlib.Path(__file__).parents[2]
         preset_kernel_dir = pathlib.Path(join(chromo_dir, "kernels"))
         # Preset config filename should be {pattern}.json
@@ -236,19 +270,7 @@ def load_kernel_config(kernel, custom=False):
     # Replace matrices path by their content in the config dictionary
     kernel_config["kernels"] = kernel_matrices
 
-    # Set maximum distance parameter to bins using resolution
-    # Make sure max distance is not smaller than kernel
-    kernel_config["max_dist"] = max(
-        kernel_config["max_dist"] // kernel_config["resolution"], largest_kernel
-    )
-
     return kernel_config
-
-
-def load_dense_matrix():
-    # TODO: add support for loading dense tsv matrices assuming single chrom
-    ...
-    # return mat, chrom_start, bins, binsize
 
 
 def dense2sparse(M, format="coo"):
@@ -269,9 +291,10 @@ def dense2sparse(M, format="coo"):
     return triu(sparse_mat)
 
 
-def write_results(patterns_to_plot, pattern_name, output):
+def write_patterns(coords, pattern_name, output):
+    """
+    Writes coordinates to a text file.
+    """
     file_name = pattern_name + ".txt"
-    file_path = output / file_name
-    with file_path.open("w") as outf:
-        for tup in sorted([tup for tup in patterns_to_plot if "NA" not in tup]):
-            outf.write(" ".join(map(str, tup)) + "\n")
+    file_path = join(output, file_name)
+    coords.to_csv(file_path, sep="\t", index=None)

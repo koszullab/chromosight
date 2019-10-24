@@ -6,15 +6,15 @@ Explore and detect patterns (loops, borders, centromeres, etc.) in Hi-C contact
 maps with pattern matching.
 
 Usage:
-    chromovision detect <contact_map> [<output>] [--kernel-config FILE]
+    chromosight detect <contact_map> [<output>] [--kernel-config FILE]
                         [--pattern=loops] [--precision=auto] [--iterations=auto]
-                        [--inter] [--max-dist=auto]
-    chromovision generate-config <prefix> [--preset loops]
+                        [--inter] [--max-dist=auto] [--threads 1]
+    chromosight generate-config <prefix> [--preset loops]
 
     detect: 
         performs pattern detection on a Hi-C contact map using kernel convolution
     generate-config:
-        Generate pre-filled config files to use for `chromovision detect`. 
+        Generate pre-filled config files to use for `chromosight detect`. 
         A config consists of a JSON file describing analysis parameters for the
         detection and path pointing to kernel matrices files. Those matrices
         files are tsv files with numeric values ordered in a square dense matrix
@@ -46,6 +46,7 @@ Arguments for detect:
                                 probability in the contact map. A lesser value
                                 leads to potentially more detections, but more
                                 false positives. [default: auto]
+    -t, --threads 1             Number of CPUs to use in parallel. [default: 1]
 
 Arguments for generate-config:
     prefix                      Path prefix for config files. If prefix is a/b,
@@ -57,15 +58,17 @@ Arguments for generate-config:
                                 "borders". [default: loops]
 """
 import numpy as np
+import pandas as pd
 import pathlib
 import sys
 import json
 import docopt
-from chromovision.version import __version__
-from chromovision.utils.contacts_map import ContactMap
-from chromovision.utils.io import write_results, load_kernel_config
-from chromovision.utils.plotting import pattern_plot, pileup_plot
-from chromovision.utils.detection import explore_patterns
+import multiprocessing as mp
+from chromosight.version import __version__
+from chromosight.utils.contacts_map import HicGenome
+from chromosight.utils.io import write_patterns, load_kernel_config
+from chromosight.utils.plotting import pattern_plot, pileup_plot
+from chromosight.utils.detection import pattern_detector, pileup_patterns, remove_smears
 
 
 def _override_kernel_config(param_name, param_value, param_type, config):
@@ -109,6 +112,19 @@ def cmd_generate_config(arguments):
         json.dump(kernel_config, config_handle, indent=4)
 
 
+def _detect_sub_mat(data):
+    sub = data[0][1]
+    config = data[1]
+    kernel = data[2]
+    chrom_patterns, chrom_windows = pattern_detector(sub.contact_map, config, kernel)
+    return {
+        "coords": chrom_patterns,
+        "windows": chrom_windows,
+        "chr1": sub.chr1,
+        "chr2": sub.chr2,
+    }
+
+
 def cmd_detect(arguments):
     # Parse command line arguments for detect
     kernel_config_path = arguments["--kernel-config"]
@@ -118,7 +134,7 @@ def cmd_detect(arguments):
     max_dist = arguments["--max-dist"]
     pattern = arguments["--pattern"]
     precision = arguments["--precision"]
-
+    threads = arguments["--threads"]
     output = arguments["<output>"]
     # If output is not specified, use current directory
     if not output:
@@ -141,6 +157,8 @@ def cmd_detect(arguments):
         custom = False
         # Will use a preset config file matching pattern name
         config_path = pattern
+
+    ### 0: LOAD INPUT
     kernel_config = load_kernel_config(config_path, custom)
 
     # User can override configuration for input pattern if desired
@@ -154,40 +172,66 @@ def cmd_detect(arguments):
 
     # kernel_config = _override_kernel_config("max_dist", max_dist, int, kernel_config)
     # Make shorten max distance in case matrix is noisy
+    hic_genome = HicGenome(mat_path, interchrom, kernel_config)
 
-    patterns_to_plot = dict()
-    contact_map = ContactMap(mat_path, interchrom, kernel_config["max_dist"])
+    all_pattern_coords = []
 
-    (all_patterns, pileup_patterns, list_current_pattern_count) = explore_patterns(
-        contact_map, kernel_config
-    )
-    patterns_to_plot = list(all_patterns)
+    ### 1: DETECTION ON EACH SUBMATRIX
 
-    write_results(patterns_to_plot, kernel_config["name"], output)
+    pool = mp.Pool(int(threads))
+    n_sub_mats = hic_genome.sub_mats.shape[0]
+    # Loop over the different kernel matrices for input pattern
+    for kernel_id, kernel_matrix in enumerate(kernel_config["kernels"]):
+
+        # Apply detection procedure to all sub matrices in parallel
+        sub_mat_data = zip(
+            hic_genome.sub_mats.iterrows(),
+            [kernel_config for i in range(n_sub_mats)],
+            [kernel_matrix for i in range(n_sub_mats)],
+        )
+        sub_mat_results = pool.map(_detect_sub_mat, sub_mat_data)
+
+        # Convert coordinates from chromosome to whole genome bins
+        kernel_coords = [
+            hic_genome.get_full_mat_pattern(d["chr1"], d["chr2"], d["coords"])
+            for d in sub_mat_results
+            if d["coords"] is not None
+        ]
+        try:
+            all_pattern_coords.append(
+                pd.concat(kernel_coords, axis=0).reset_index(drop=True)
+            )
+        # If no pattern was found with this kernel, skip directly to the next one
+        except ValueError:
+            continue
+        # Extract surrounding windows for each sub_matrix
+        kernel_windows = np.concatenate(
+            [w["windows"] for w in sub_mat_results if w["windows"] is not None], axis=2
+        )
+        # Compute and plot pileup
+        pileup_fname = ("pileup_of_{n}_{pattern}_kernel_{kernel}").format(
+            pattern=kernel_config["name"], n=kernel_windows.shape[2], kernel=kernel_id
+        )
+        kernel_pileup = pileup_patterns(kernel_windows)
+        pileup_plot(kernel_pileup, name=pileup_fname, output=output)
+
+    # If no pattern detected on any chromosome, exit gracefully
+    if len(all_pattern_coords) == 0:
+        sys.stderr.write("No pattern detected ! Exiting.\n")
+        sys.exit(0)
+
+    # Combine patterns of all kernel matrices into a single array
+    all_pattern_coords = pd.concat(all_pattern_coords, axis=0)
+    #
+
+    # Remove patterns with overlapping windows (smeared patterns)
+    good_patterns = remove_smears(all_pattern_coords, win_size=4)
+    all_pattern_coords = all_pattern_coords.loc[good_patterns, :]
+
+    ### 2: WRITE OUTPUT
+    print(f"{all_pattern_coords.shape[0]} patterns detected")
+    write_patterns(all_pattern_coords, kernel_config["name"], output)
     # base_names = pathlib.Path(map_path).name
-
-    # Iterate over each intra or inter sub-matrix
-    for k, matrix in enumerate(contact_map.sub_mats):
-        if isinstance(matrix, np.ndarray):
-            pattern_plot(
-                patterns_to_plot,
-                matrix,
-                output=output,
-                name=contact_map.sub_mats_labels[k],
-            )
-
-    for iteration, pileup_kernels_iter in pileup_patterns.items():
-        # pileup_iteration = [np.array() (kernel at iteration i)]
-        for kernel_id, pileup_matrix in enumerate(pileup_kernels_iter):
-            # pileup_matrix = np.array()
-            my_name = ("pileup_{}_{}_patterns_iteration_{}_kernel_{}").format(
-                kernel_config["name"],
-                list_current_pattern_count[iteration - 1],
-                iteration,
-                kernel_id,
-            )
-            pileup_plot(pileup_matrix, name=my_name, output=output)
-    write_results(patterns_to_plot, kernel_config["name"], output)
 
 
 def main():

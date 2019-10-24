@@ -1,4 +1,4 @@
-# chromovision
+# Chromosight
 
 [![PyPI version](https://badge.fury.io/py/chromovision.svg)](https://badge.fury.io/py/chromovision)
 ![PyPI - Python Version](https://img.shields.io/pypi/pyversions/chromovision.svg)
@@ -12,18 +12,18 @@ Detect chromatin loops (and other patterns) in Hi-C contact maps.
 ## Installation
 
 ```sh
-    pip3 install -U chromovision
+    pip3 install -U chromosight
 ```
 
 or, if you want to get the very latest version:
 
 ```sh
-   sudo pip3 install -e git+https://github.com/koszullab/chromovision.git@master#egg=chromovision
+   sudo pip3 install -e git+https://github.com/koszullab/chromosight.git@master#egg=chromosight
 ```
 
 ## Usage
 
-    chromovision.py detect <contact_maps> [<output>] [--kernels=None] [--loops]
+    chromosight detect <contact_maps> [<output>] [--kernels=None] [--loops]
                            [--borders] [--precision=4] [--iterations=auto]
                            [--output]
 

@@ -1,4 +1,6 @@
 import pathlib
+import functools
+import numpy as np
 from matplotlib import pyplot as plt
 
 
@@ -10,7 +12,7 @@ def pattern_plot(contact_map, patterns, output=None, name=None):
 
     Parameters
     ----------
-    contact_map : chromovision.utils.contact_map.ContactMap
+    contact_map : chromosight.utils.contact_map.ContactMap
         Object containing all information related to a Hi-C contact map.
     patterns : dict
         Dictionary object storing all patterns to be plotted. Structured as :
@@ -43,7 +45,7 @@ def pattern_plot(contact_map, patterns, output=None, name=None):
                     _, pos1, pos2, _ = loop
                     plt.scatter(pos1, pos2, s=15, facecolors="none", edgecolors="blue")
 
-    emplacement = output / pathlib.Path(str(name + 1) + ".pdf2")
+    emplacement = output / pathlib.Path(str(name + 1) + ".2.pdf")
     plt.savefig(emplacement, dpi=100, format="pdf")
     plt.close("all")
 
@@ -94,4 +96,70 @@ def pileup_plot(pileup_pattern, name="pileup patterns", output=None):
     emplacement = output / pathlib.Path(name + ".pdf")
     plt.savefig(emplacement, dpi=100, format="pdf")
     plt.close("all")
+
+
+def _check_datashader(fun):
+    """Decorates function `fun` to check if cooler is available.."""
+
+    @functools.wraps(fun)
+    def wrapped(*args, **kwargs):
+        try:
+            import datashader
+
+            fun.__globals__["ds"] = datashader
+        except ImportError:
+            print(
+                "The datashader package is required to use {0}, please install it first".format(
+                    fun.__name__
+                )
+            )
+            raise
+        return fun(*args, **kwargs)
+
+    return wrapped
+
+
+@_check_datashader
+def plot_whole_matrix(mat, patterns, out, region=None, region2=None):
+    """
+    Visualise the input matrix with a set of patterns overlaid on top.
+    Can optionally restrict the visualisation to a region.
+
+    Parameters
+    ----------
+    mat : scipy.sparse.csr_matrix
+        The whole genome Hi-C matrix to be visualized.
+    patterns : pandas.DataFrame
+        The set of patterns to be plotted on top of the matrix. One pattern per
+        row, 3 columns: bin1, bin2 and score of types int, int and float, respectively.
+    region : tuple of ints
+        The range of rows to be plotted in the matrix. If not given, the whole
+        matrix is used. It only region is given, but not region2, the matrix is
+        subsetted on rows and columns to show a region on the diagonal.
+    region2 : tuple of ints
+        The range of columns to be plotted in the matrix. Region must also be
+        provided, or this will be ignored.
+
+    """
+    err_msg = "{var} must be a tuple of indices indicating the range of {dim}."
+    if region is not None and region2 is None:
+        s1, e1 = region
+        s2, e2 = s1, e1
+    elif region is not None and region2 is not None:
+        s1, e1 = region
+        s2, e2 = region2
+    else:
+        s1, e1 = 0, mat.shape[0]
+        s2, e2 = 0, mat.shape[1]
+
+    pat = patterns.copy()
+    pat = pat.loc[
+        (pat.bin1 > s1) & (pat.bin1 < e1) & (pat.bin2 > s2) & (pat.bin2 < e2), :
+    ]
+    plt.imshow(np.log(mat.tocsr()[s1:e1, s2:e2].todense()), cmap="Reds")
+    plt.scatter(pat.bin1 - s1, pat.bin2 - s2, facecolors="none", edgecolors="blue")
+    plt.show()
+    # cvs = ds.Canvas(plot_width=1000, plot_height=1000)
+    # agg = cvs.points(df, "bin1", "bin2", ds.sum("contacts"))
+    # img = tf.shade(agg, cmap=["white", "darkred"], how="log")
 

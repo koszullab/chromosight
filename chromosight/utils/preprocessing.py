@@ -6,6 +6,7 @@ Operations to perform on Hi-C matrices before analyses
 """
 import numpy as np
 from scipy.signal import savgol_filter
+from scipy.sparse import dia_matrix
 
 
 def normalize(B, good_bins=None, iterations=100):
@@ -53,7 +54,34 @@ def normalize(B, good_bins=None, iterations=100):
     return r
 
 
-def distance_law(matrix, detectable_bins, fun=np.mean):
+def diag_trim(mat, n):
+    """
+    Trim an upper triangle sparse matrix so that only the first n diagonals are kept.
+
+    Parameters
+    ----------
+
+    mat : scipy.sparse.dia_matrix
+        The sparse matrix to be trimmed
+    n : int
+        The number of diagonals from the center to keep (0-based).
+
+    Returns
+    -------
+    scipy.sparse.dia_matrix :
+        The diagonally trimmed upper triangle matrix with only the first n diagonal.
+    """
+    # Create a new matrix from the diagonals below max dist (faster than removing them)
+
+    keep_offsets = np.where((mat.offsets <= n) & (mat.offsets > 0))[0]
+    trimmed = dia_matrix(
+        (mat.data[keep_offsets], mat.offsets[keep_offsets]), shape=mat.shape
+    )
+
+    return trimmed
+
+
+def distance_law(matrix, detectable_bins=None, fun=np.nanmedian):
     """
     Computes genomic distance law by averaging over each diagonal in
     the upper triangle matrix.
@@ -156,11 +184,11 @@ def mad(arr):
     float :
         The MAD of the input array.
     """
-    mads = np.nanmedian(abs(arr - np.median(arr)), 0)
+    mads = np.nanmedian(abs(arr - np.nanmedian(arr)), 0)
     return mads
 
 
-def get_detectable_bins(matrix):
+def get_detectable_bins(matrix, inter=False):
     """
     Returns lists of detectable indices after excluding low interacting bin
     based on the distribution of pixel values in the matrix.
@@ -169,19 +197,33 @@ def get_detectable_bins(matrix):
     ----------
     matrix : array_like
         A Hi-C matrix in tihe form of a 2D numpy array or coo matrix
+    inter : bool
+        Whether the matrix is interchromosomal. Default is to consider the matrix
+        is intrachromosomal (i.e. upper symmetric).
 
     Returns
     -------
     numpy array :
-        1D array containing indices of low interacting bins.
+        tuple of 2 1D arrays containing indices of low interacting rows and
+        columns, respectively.
     -------
     """
-    sum_bins = sum_mat_bins(matrix)
-    sum_mad = mad(sum_bins)
-    # Find poor interacting rows and columns
-    detect_threshold = np.median(sum_bins) - 2.0 * sum_mad
-    # Removal of poor interacting rows and columns
-    good_bins = np.where(sum_bins > detect_threshold)[0]
+    if not inter:
+        sum_bins = sum_mat_bins(matrix)
+        sum_mad = mad(sum_bins)
+        # Find poor interacting rows and columns
+        detect_threshold = np.median(sum_bins) - 2.0 * sum_mad
+        # Removal of poor interacting rows and columns
+        good_bins = np.where(sum_bins > detect_threshold)[0]
+        good_bins = (good_bins, good_bins)
+    else:
+        sum_rows, sum_cols = matrix.sum(axis=0), matrix.sum(axis=1)
+        mad_rows, mad_cols = mad(sum_rows), mad(sum_cols)
+        detect_thresh_rows = np.median(sum_rows) - 2.0 * mad_rows
+        detect_thresh_cols = np.median(sum_cols) - 2.0 * mad_cols
+        good_rows = np.where(sum_rows > detect_thresh_rows)[0]
+        good_cols = np.where(sum_cols > detect_thresh_cols)[0]
+        good_bins = (good_rows, good_cols)
     return good_bins
 
 
@@ -207,11 +249,15 @@ def detrend(matrix, detectable_bins=None):
     matrix = matrix.tocsr()
     y = distance_law(matrix, detectable_bins)
     y[np.isnan(y)] = 0.0
-    y_savgol = savgol_filter(y, window_length=17, polyorder=5)
+    if len(y) > 17:
+        y_savgol = savgol_filter(y, window_length=17, polyorder=5)
+    else:
+        y_savgol = y
 
     # Detrending by the distance law
     clean_mat = matrix.tocoo()
-    clean_mat.data /= y_savgol[abs(clean_mat.row - clean_mat.col)]
+    # clean_mat.data /= y_savgol[abs(clean_mat.row - clean_mat.col)]
+    clean_mat.data /= y[abs(clean_mat.row - clean_mat.col)]
     clean_mat = clean_mat.tocsr()
     # Set values in bad bins to 0
     miss_bin_mask = np.ones(matrix.shape[0], dtype=bool)
@@ -275,9 +321,12 @@ def signal_to_noise_threshold(matrix, detectable_bins, smooth=True):
     # Values below 1 are considered too noisy
     threshold_noise = 1.0
     snr[np.isnan(snr)] = 0.0
-    if smooth:
-        snr = savgol_filter(snr, window_length=17, polyorder=5)
-    max_dist = min(np.where(snr < threshold_noise)[0])
+    try:
+        if smooth:
+            snr = savgol_filter(snr, window_length=17, polyorder=5)
+        max_dist = min(np.where(snr < threshold_noise)[0])
+    except ValueError:
+        max_dist = matrix.shape[0]
     return max_dist
 
 
