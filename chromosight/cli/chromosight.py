@@ -46,7 +46,7 @@ Arguments for detect:
                                 probability in the contact map. A lesser value
                                 leads to potentially more detections, but more
                                 false positives. [default: auto]
-    -t, --threads 1             Number of CPUs to use in parallel. [default 1]
+    -t, --threads 1             Number of CPUs to use in parallel. [default: 1]
 
 Arguments for generate-config:
     prefix                      Path prefix for config files. If prefix is a/b,
@@ -135,7 +135,6 @@ def cmd_detect(arguments):
     pattern = arguments["--pattern"]
     precision = arguments["--precision"]
     threads = arguments["--threads"]
-
     output = arguments["<output>"]
     # If output is not specified, use current directory
     if not output:
@@ -179,7 +178,7 @@ def cmd_detect(arguments):
 
     ### 1: DETECTION ON EACH SUBMATRIX
 
-    pool = mp.Pool(threads)
+    pool = mp.Pool(int(threads))
     n_sub_mats = hic_genome.sub_mats.shape[0]
     # Loop over the different kernel matrices for input pattern
     for kernel_id, kernel_matrix in enumerate(kernel_config["kernels"]):
