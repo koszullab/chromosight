@@ -184,7 +184,7 @@ def mad(arr):
     float :
         The MAD of the input array.
     """
-    mads = np.nanmedian(abs(arr - np.median(arr)), 0)
+    mads = np.nanmedian(abs(arr - np.nanmedian(arr)), 0)
     return mads
 
 
