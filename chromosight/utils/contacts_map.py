@@ -44,7 +44,7 @@ class HicGenome:
         self.inter = inter
         # Convert maximum scanning distance to bins using resolution
         try:
-            self.max_dist = self.kernel_config["max_dist"] // self.resolution
+            self.max_dist = max(self.kernel_config["max_dist"] // self.resolution, 1)
             # Get the size of the largest convolution kernel
             self.largest_kernel = max(
                 [s.shape[0] for s in self.kernel_config["kernels"]]
@@ -168,7 +168,7 @@ class HicGenome:
         # Shift index by start bin of chromosomes
         full_patterns.bin1 += startA
         full_patterns.bin2 += startB
-        return full_spatterns
+        return full_patterns
 
     def bin_to_coords(self, bin_idx):
         """
@@ -251,7 +251,7 @@ class ContactMap:
         if self.max_dist is None:
             sub_mat_max_dist = snr_dist
         else:
-            sub_mat_max_dist = max(self.max_dist, snr_dist)
+            sub_mat_max_dist = min(self.max_dist, snr_dist)
         # If we scan until a given distance, data values in a margin must be kept as well
         keep_distance = sub_mat_max_dist + (self.largest_kernel)
         # Detrend matrix for power law
