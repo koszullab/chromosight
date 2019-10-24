@@ -83,6 +83,7 @@ def validate_patterns(
             )
             # Subset window from chrom matrix
             pattern_window = matrix[np.ix_(win_rows, win_cols)].todense()
+
             n_rows, n_cols = pattern_window.shape
             tot_pixels = n_rows * n_cols
             # Compute number of missing rows and cols
@@ -90,13 +91,17 @@ def validate_patterns(
             n_bad_cols = n_cols - len(set(win_cols).intersection(detectable_cols))
 
             # Number of undetected pixels is "bad rows area" + "bad cols area" - "bad rows x bad cols intersection"
-            tot_undetected = (
+            tot_undetected_pixels = (
                 n_bad_rows * n_cols + n_bad_cols * n_rows - n_bad_rows * n_bad_cols
             )
-            # The pattern should not contain more undetectable bins that the max
-            # value defined in kernel config
-            if tot_undetected / tot_pixels < max_undetected_perc / 100.0:
+            # Number of uncovered pixels
+            tot_zero_pixels = len(pattern_window[pattern_window == 0].A1)
+            tot_missing_pixels = max(tot_undetected_pixels, tot_zero_pixels)
+            # The pattern should not contain more missing pixels that the max
+            # value defined in kernel config. This includes both pixels from
+            # undetectable bins and zero valued pixels in detectable bins.
 
+            if tot_missing_pixels / tot_pixels < max_undetected_perc / 100.0:
                 validated_coords.score[i] = conv_mat[l[0], l[1]]
                 pattern_windows[:, :, i] = pattern_window
             else:
@@ -158,8 +163,13 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix, area=3):
     # Pattern matching operate here
     mat_conv = corrcoef2d(contact_map.matrix, kernel_matrix, kernel_config["max_dist"])
     mat_conv = mat_conv.tocoo()
+    # Clean potential missing values
     mat_conv.data[np.isnan(mat_conv.data)] = 0
+    # Only keep corrcoeff in scannable range
+    mat_conv = preproc.diag_trim(mat_conv.todia(), contact_map.max_dist)
+    mat_conv = mat_conv.tocoo()
     mat_conv.eliminate_zeros()
+
     # Find foci of highly correlated pixels
     chrom_pattern_coords = picker(
         mat_conv, contact_map.matrix, kernel_config["precision"]
@@ -331,14 +341,17 @@ def picker(mat_conv, matrix, precision=None):
     candidate_mat = mat_conv.copy()
     candidate_mat = candidate_mat.tocoo()
     # Compute a threshold from precision arg and set all pixels below to 0
-    thres = np.median(mat_conv.data) + precision * np.std(mat_conv.data)
+    thres = np.median(mat_conv.data) + precision * preproc.mad(mat_conv.data)
+    bak1 = candidate_mat.copy()
     candidate_mat.data[candidate_mat.data < thres] = 0
+    bak2 = candidate_mat.copy()
     candidate_mat.data[candidate_mat.data != 0] = 1
     candidate_mat.eliminate_zeros()
 
     # Check if at least one candidate pixel was found
     if len(candidate_mat.data) > 0:
         num_foci, labelled_mat = label_connected_pixels_sparse(candidate_mat)
+
         mat_conv = mat_conv.tocsr()
         # Will hold the coordinates of the best pixel for each focus
         foci_coords = np.zeros([num_foci, 2], int)
