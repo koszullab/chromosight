@@ -3,7 +3,7 @@
 """
 Created on Thu Oct  3 13:23:09 2019
 @author: axel
-convert bg2 to sparse objects, [1 million lines in ~1.5 sec]
+convert bg2 to sparse objects, [1 million lines in ~1.5 sec ]
 """
 import numpy as np
 import time
@@ -55,19 +55,14 @@ for chunk in pd.read_csv(filename1, chunksize=chunksize,
                          header=None, delimiter="\t",usecols=[0,1,3,4,6]):
     for c1 in  chunk[0].unique():
         for c2 in  chunk[3].unique():
-            if [c1, c2] != sorted((c1,c2)):  # if we found lines with wrong chrom order 
-                chunk_temp = chunk.loc[ ( (chunk[0] == c1) & (chunk[3] == c2) )]
-                x_binned = [ int(x/bin_size) for x in  chunk_temp[4]]
-                y_binned = [ int(x/bin_size) for x in  chunk_temp[1]]
-                mat_chro[c2,c1] = mat_chro[c2,c1] + coo_matrix(
-                        (chunk_temp[6],(x_binned, y_binned)) , shape=(N, N) )
-            else :
+            if f_num[c1] <= f_num[c2] :
+                # We subset in the dataframe the lines belonging to chrm c1 and c2:
                 chunk_temp = chunk.loc[ ( (chunk[0] == c1) & (chunk[3] == c2) )]
                 x_binned = [ int(x/bin_size) for x in  chunk_temp[1]]
                 y_binned = [ int(x/bin_size) for x in  chunk_temp[4]]
                 mat_chro[c1,c2] = mat_chro[c1,c2] + coo_matrix(
                         (chunk_temp[6],(x_binned, y_binned)) , shape=(N, N) )
-                
+
 end = time.time()
 print(end-start)
 
@@ -94,8 +89,7 @@ for c1, c2 in mat_chro.keys():
         list_chr1.append(c1)
         list_chr2.append(c2)
         list_path.append(path)
-       
-           
+        
 # dataframe with the paths:         
 df = pd.DataFrame(
     {'chr1': list_chr1,
