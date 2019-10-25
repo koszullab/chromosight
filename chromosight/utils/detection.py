@@ -43,7 +43,7 @@ def validate_patterns(
         columns: bin1 (rows), bin2 (col) and score (the correlation coefficient).
     filtered_windows : numpy.array
         3D numpy array of signal windows around detected patterns. Each window
-        spans axes 0 and 1, and they are stacked along axis 2.
+        spans axes 1 and 2, and they are stacked along axis 0.
     """
     matrix = matrix.tocsr()
     # Pre-compute height, width and half (radius)
@@ -62,7 +62,7 @@ def validate_patterns(
     # Initialize structure to store pattern windows
 
     pattern_windows = np.zeros(
-        (win_h, win_w, coords.shape[0])
+        (coords.shape[0], win_h, win_w)
     )  # list containing all pannel of detected patterns
     for i, l in enumerate(coords):
         p1 = int(l[0])
@@ -103,7 +103,7 @@ def validate_patterns(
 
             if tot_missing_pixels / tot_pixels < max_undetected_perc / 100.0:
                 validated_coords.score[i] = conv_mat[l[0], l[1]]
-                pattern_windows[:, :, i] = pattern_window
+                pattern_windows[i, :, :] = pattern_window
             else:
                 # Current pattern will be dropped due to undetectable bins
                 blacklist.append(i)
@@ -116,7 +116,7 @@ def validate_patterns(
     if len(blacklist):
         blacklist_mask[blacklist] = True
     filtered_coords = validated_coords.loc[~blacklist_mask, :]
-    filtered_windows = pattern_windows[:, :, ~blacklist_mask]
+    filtered_windows = pattern_windows[~blacklist_mask, :, :]
 
     # from matplotlib import pyplot as plt
 
@@ -130,7 +130,8 @@ def validate_patterns(
 
 def pileup_patterns(pattern_windows):
     """Generate a pileup from an input list of pattern coords and a Hi-C matrix"""
-    return np.apply_along_axis(np.median, 2, pattern_windows)
+    np.save('test_windows.npy',pattern_windows)
+    return np.apply_along_axis(np.median, 0, pattern_windows)
 
 
 def pattern_detector(contact_map, kernel_config, kernel_matrix, area=3):

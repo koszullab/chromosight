@@ -206,11 +206,11 @@ def cmd_detect(arguments):
             continue
         # Extract surrounding windows for each sub_matrix
         kernel_windows = np.concatenate(
-            [w["windows"] for w in sub_mat_results if w["windows"] is not None], axis=2
+            [w["windows"] for w in sub_mat_results if w["windows"] is not None], axis=0
         )
         # Compute and plot pileup
         pileup_fname = ("pileup_of_{n}_{pattern}_kernel_{kernel}").format(
-            pattern=kernel_config["name"], n=kernel_windows.shape[2], kernel=kernel_id
+            pattern=kernel_config["name"], n=kernel_windows.shape[0], kernel=kernel_id
         )
         kernel_pileup = pileup_patterns(kernel_windows)
         pileup_plot(kernel_pileup, name=pileup_fname, output=output)
