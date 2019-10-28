@@ -264,7 +264,7 @@ class ContactMap:
         sub_mat = preproc.diag_trim(sub_mat.todia(), keep_distance)
         sub_mat = sub_mat.tocoo()
         # Fill diagonals of the lower triangle that might overlap the kernel
-        for i in range(1, self.largest_kernel):
+        for i in range(1, min(sub_mat.shape[0], self.largest_kernel)):
             sub_mat.setdiag(sub_mat.diagonal(i), -i)
 
         return sub_mat

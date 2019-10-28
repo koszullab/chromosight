@@ -161,6 +161,10 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix, area=3):
         A 3D array containing the pile of windows around detected patterns.
     """
 
+    # Do not attempt pattern detection unless matrix is larger than the kernel
+    if kernel_matrix.shape[0] >= contact_map.matrix.shape[0]:
+        return None, None
+
     # Pattern matching operate here
     mat_conv = corrcoef2d(contact_map.matrix, kernel_matrix, kernel_config["max_dist"])
     mat_conv = mat_conv.tocoo()

@@ -8,7 +8,7 @@ maps with pattern matching.
 Usage:
     chromosight detect <contact_map> [<output>] [--kernel-config FILE]
                         [--pattern=loops] [--precision=auto] [--iterations=auto]
-                        [--inter] [--max-dist=auto] [--threads 1]
+                        [--inter] [--max-dist=auto] [--no-plotting] [--threads 1]
     chromosight generate-config <prefix> [--preset loops]
 
     detect: 
@@ -39,6 +39,7 @@ Arguments for detect:
                                 at which pattern detection should operate. Auto
                                 sets a value based on the kernel configuration
                                 file and the signal to noise ratio. [default: auto]
+    -n, --no-plotting           Disable generation of pileup plots.
     -P, --pattern loops         Which pattern to detect. This will use preset
                                 configurations for the given pattern. Possible
                                 values are: loops, borders, hairpin. [default: loops]
@@ -136,6 +137,7 @@ def cmd_detect(arguments):
     precision = arguments["--precision"]
     threads = arguments["--threads"]
     output = arguments["<output>"]
+    plotting_enabled = False if arguments["--no-plotting"] else True
     # If output is not specified, use current directory
     if not output:
         output = pathlib.Path()
@@ -213,7 +215,10 @@ def cmd_detect(arguments):
             pattern=kernel_config["name"], n=kernel_windows.shape[0], kernel=kernel_id
         )
         kernel_pileup = pileup_patterns(kernel_windows)
-        pileup_plot(kernel_pileup, name=pileup_fname, output=output)
+
+        # Generate pileup visualisations if requested
+        if plotting_enabled:
+            pileup_plot(kernel_pileup, name=pileup_fname, output=output)
 
     # If no pattern detected on any chromosome, exit gracefully
     if len(all_pattern_coords) == 0:
@@ -222,11 +227,18 @@ def cmd_detect(arguments):
 
     # Combine patterns of all kernel matrices into a single array
     all_pattern_coords = pd.concat(all_pattern_coords, axis=0)
-    #
 
     # Remove patterns with overlapping windows (smeared patterns)
     good_patterns = remove_smears(all_pattern_coords, win_size=4)
     all_pattern_coords = all_pattern_coords.loc[good_patterns, :]
+    
+    # Get from bins into basepair coordinates
+    coords_1 = hic_genome.bin_to_coords(all_pattern_coords.bin1).reset_index(drop=True)
+    coords_1.columns = [str(col) + '1' for col in coords_1.columns]
+    coords_2 = hic_genome.bin_to_coords(all_pattern_coords.bin2).reset_index(drop=True)
+    coords_2.columns = [str(col) + '2' for col in coords_2.columns]
+    all_pattern_coords = pd.concat([all_pattern_coords, coords_1, coords_2], axis=1)
+    all_pattern_coords = all_pattern_coords.loc[:, ['chrom1', 'start1', 'end1', 'chrom2', 'start2', 'end2', 'bin1', 'bin2', 'score']]
 
     ### 2: WRITE OUTPUT
     print(f"{all_pattern_coords.shape[0]} patterns detected")
