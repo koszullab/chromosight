@@ -3,6 +3,7 @@ from __future__ import absolute_import
 from . import io as cio
 from . import preprocessing as preproc
 import os
+import re
 from time import time
 import sys
 import numpy as np
@@ -68,6 +69,8 @@ class HicGenome:
         format_loader = {"bg2": cio.load_bedgraph2d, "cool": cio.load_cool}
         # Guess file format fron file name
         extension = os.path.splitext(mat_path)[-1].lstrip(".")
+        if not len(extension) and re.search(r'mcool::', mat_path):
+                extension = 'cool'
         print("loading: ", mat_path)
 
         # Load contact map and chromosome start bins coords
@@ -261,7 +264,7 @@ class ContactMap:
         sub_mat = preproc.diag_trim(sub_mat.todia(), keep_distance)
         sub_mat = sub_mat.tocoo()
         # Fill diagonals of the lower triangle that might overlap the kernel
-        for i in range(1, self.largest_kernel):
+        for i in range(1, min(sub_mat.shape[0], self.largest_kernel)):
             sub_mat.setdiag(sub_mat.diagonal(i), -i)
 
         return sub_mat
