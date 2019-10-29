@@ -291,10 +291,41 @@ def dense2sparse(M, format="coo"):
     return triu(sparse_mat)
 
 
-def write_patterns(coords, pattern_name, output):
+def write_patterns(coords, pattern_name, output_dir):
     """
     Writes coordinates to a text file.
+
+    Parameters
+    ----------
+    coords : pandas.DataFrame
+        Pandas dataframe containing the coordinates and score of
+        one detected pattern per row.
+    pattern_name : str
+        Name of the pattern. Will be the basename of the output
+        file.
+    output_dir : str
+        Output path where the file will be saved.
     """
     file_name = pattern_name + ".txt"
-    file_path = join(output, file_name)
+    file_path = join(output_dir, file_name)
     coords.to_csv(file_path, sep="\t", index=None)
+
+def save_windows(windows, pattern_name, output_dir):
+    """
+    Write windows surrounding detected patterns to a npy file.
+    The file contains a 3D array where windows are piled on
+    axis 0, matrix rows are on axis 1 and columns on axis 2.
+
+    Parameters
+    ----------
+    windows : numpy.array of floats
+        3D numpy array with axes (windows, rows, columns).
+    pattern_name : str
+        Name of the pattern. Will be the basename of the output
+        file.
+    output_dir : str
+        Output path where the file will be saved.
+    """
+    file_name = pattern_name + ".npy"
+    file_path = join(output_dir, file_name)
+    np.save(file_path, windows)

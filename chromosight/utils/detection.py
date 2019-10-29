@@ -130,7 +130,6 @@ def validate_patterns(
 
 def pileup_patterns(pattern_windows):
     """Generate a pileup from an input list of pattern coords and a Hi-C matrix"""
-    np.save('test_windows.npy',pattern_windows)
     return np.apply_along_axis(np.median, 0, pattern_windows)
 
 
