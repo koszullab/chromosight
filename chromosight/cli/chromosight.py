@@ -54,13 +54,14 @@ Arguments for generate-config:
                                 files a/b.json and a/b.1.txt will be generated.
                                 If a given pattern has N kernel matrices, N txt
                                 files are created they will be named a/b.[1-N].txt.
-    -p, --preset loops         Generate a preset config for the given pattern.
+    -p, --preset loops          Generate a preset config for the given pattern.
                                 Preset configs available are "loops" and 
                                 "borders". [default: loops]
 """
 import numpy as np
 import pandas as pd
 import pathlib
+import os
 import sys
 import json
 import docopt
@@ -100,6 +101,10 @@ def cmd_generate_config(arguments):
     arguments = docopt.docopt(__doc__, version=__version__)
 
     kernel_config = load_kernel_config(pattern, False)
+    
+    # If prefix involves a directory, create it
+    if os.path.dirname(prefix):
+        os.makedirs(os.path.dirname(prefix))
 
     # Write kernel matrices to files with input prefix and replace kernels
     # by their path in config
