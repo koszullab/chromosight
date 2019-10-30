@@ -156,7 +156,8 @@ def plot_whole_matrix(mat, patterns, out, region=None, region2=None):
     pat = pat.loc[
         (pat.bin1 > s1) & (pat.bin1 < e1) & (pat.bin2 > s2) & (pat.bin2 < e2), :
     ]
-    plt.imshow(np.log(mat.tocsr()[s1:e1, s2:e2].todense()), cmap="Reds")
+    sub_mat = mat.tocsr()[s1:e1, s2:e2]
+    plt.imshow(np.log(sub_mat.todense()), cmap="Reds")
     plt.scatter(pat.bin1 - s1, pat.bin2 - s2, facecolors="none", edgecolors="blue")
     plt.show()
     # cvs = ds.Canvas(plot_width=1000, plot_height=1000)
