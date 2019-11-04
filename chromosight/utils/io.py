@@ -310,7 +310,7 @@ def write_patterns(coords, pattern_name, output_dir):
     file_path = join(output_dir, file_name)
     coords.to_csv(file_path, sep="\t", index=None)
 
-def save_windows(windows, pattern_name, output_dir):
+def save_windows(windows, pattern_name, output_dir, format='json'):
     """
     Write windows surrounding detected patterns to a npy file.
     The file contains a 3D array where windows are piled on
@@ -325,7 +325,19 @@ def save_windows(windows, pattern_name, output_dir):
         file.
     output_dir : str
         Output path where the file will be saved.
+    format : str
+        Format in which to save windows. Can be either npy for
+        numpy's binary format, or json for a general purpose text
+        format.
     """
-    file_name = pattern_name + ".npy"
-    file_path = join(output_dir, file_name)
-    np.save(file_path, windows)
+    if format == 'npy':
+        file_name = pattern_name + ".npy"
+        file_path = join(output_dir, file_name)
+        np.save(file_path, windows)
+    elif format == 'json':
+        import json
+        file_name = pattern_name + ".json"
+        file_path = join(output_dir, file_name)
+        json_wins = {idx: win.tolist() for idx, win in enumerate(windows)}
+        with open(file_path, 'w') as handle:
+            json.dump(json_wins, handle, indent=4)

@@ -6,7 +6,7 @@ Explore and detect patterns (loops, borders, centromeres, etc.) in Hi-C contact
 maps with pattern matching.
 
 Usage:
-    chromosight detect <contact_map> [<output>] [--kernel-config FILE]
+    chromosight detect <contact_map> [<output>] [--kernel-config FILE] [--win-fmt={json,npy}]
                         [--pattern=loops] [--precision=auto] [--iterations=auto]
                         [--inter] [--max-dist=auto] [--no-plotting] [--threads 1]
     chromosight generate-config <prefix> [--preset loops]
@@ -48,6 +48,10 @@ Arguments for detect:
                                 leads to potentially more detections, but more
                                 false positives. [default: auto]
     -t, --threads 1             Number of CPUs to use in parallel. [default: 1]
+    -w, --win-fmt={json,npy}    File format used to store individual windows
+                                around each pattern. Window order match
+                                patterns inside the associated text file.
+                                Possible formats are json and npy. [default: json]
 
 Arguments for generate-config:
     prefix                      Path prefix for config files. If prefix is a/b,
@@ -142,6 +146,7 @@ def cmd_detect(arguments):
     precision = arguments["--precision"]
     threads = arguments["--threads"]
     output = arguments["<output>"]
+    win_fmt = arguments["--win-fmt"]
     plotting_enabled = False if arguments["--no-plotting"] else True
     # If output is not specified, use current directory
     if not output:
@@ -149,7 +154,10 @@ def cmd_detect(arguments):
     else:
         output = pathlib.Path(output)
     output.mkdir(exist_ok=True)
-
+    
+    if win_fmt not in ["npy", "json"]:
+        sys.stderr.write('Error: --win-fmt must be either json or npy.\n')
+        sys.exit(1)
     # Read a user-provided kernel config if custom is true
     # Else, load a preset kernel config for input pattern
     # Configs are JSON files containing all parameter associated with the pattern
@@ -255,7 +263,7 @@ def cmd_detect(arguments):
     # Save patterns and their coordinates in a tsv file
     write_patterns(all_pattern_coords, kernel_config["name"], output)
     # Save windows as an array in an npy file
-    save_windows(all_pattern_windows, kernel_config["name"], output)
+    save_windows(all_pattern_windows, kernel_config["name"], output, format=win_fmt)
 
 
 def main():
