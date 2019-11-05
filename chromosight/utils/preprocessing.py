@@ -357,14 +357,14 @@ def subsample_contacts(M, n_contacts):
 
     Parameters
     ----------
-    M : scipy.sparse.csr_matrix
+    M : scipy.sparse.coo_matrix
         The input Hi-C contact map in sparse format.
     n_contacts : int 
         The number of contacts to sample.
 
     Returns
     -------
-    scipy.sparse.csr_matrix
+    scipy.sparse.coo_matrix
         A new matrix with a fraction of the original contacts.
     """
 
