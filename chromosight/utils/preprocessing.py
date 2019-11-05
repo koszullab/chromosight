@@ -376,8 +376,8 @@ def subsample_contacts(M, n_contacts):
     
     # Sample desired number of contacts from the range(0, n_contacts) array
     sampled_contacts = np.random.choice(
-        tot_contacts,
-        size=n_contacts,
+        int(tot_contacts),
+        size=(n_contacts),
         replace=False
     )
     
