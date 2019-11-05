@@ -38,6 +38,7 @@ Two files are generated in the output directory (replace pattern by the pattern 
 
 ## Options
 
+```
 Pattern exploration and detection
 
 Explore and detect patterns (loops, borders, centromeres, etc.) in Hi-C contact
@@ -103,3 +104,5 @@ Arguments for generate-config:
     -p, --preset loops          Generate a preset config for the given pattern.
                                 Preset configs available are "loops" and 
                                 "borders". [default: loops]
+                                
+```
