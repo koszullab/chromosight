@@ -45,7 +45,14 @@ class HicGenome:
         self.inter = inter
         if subsample is not None:
             try:
-                if int(subsample) < self.matrix.sum():
+                subsample = float(subsample)
+                if subsample < 0:
+                    sys.stderr.write("Error: Subsample must be strictly positive.\n")
+                    sys.exit(1)
+                if subsample < 1:
+                    subsample *= self.matrix.sum()
+                if subsample < self.matrix.sum():
+                    subsample = int(subsample)
                     print(f"Subsampling {subsample} contacts from matrix")
                     self.matrix = preproc.subsample_contacts(self.matrix, int(subsample))
                 else:

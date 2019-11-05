@@ -48,8 +48,10 @@ Arguments for detect:
                                 probability in the contact map. A lesser value
                                 leads to potentially more detections, but more
                                 false positives. [default: auto]
-    -s, --subsample=INT         Subsample contacts from the matrix to INT contacts.
-                                This is useful when comparing matrices with different
+    -s, --subsample=INT         If greater than 1, subsample contacts from the 
+                                matrix to INT contacts. If between 0 and 1, subsample
+                                a proportion of contacts instead. This is useful
+                                when comparing matrices with different
                                 coverages. [default: no]
     -t, --threads 1             Number of CPUs to use in parallel. [default: 1]
     -w, --win-fmt={json,npy}    File format used to store individual windows
