@@ -120,7 +120,7 @@ def _check_datashader(fun):
 
 
 @_check_datashader
-def plot_whole_matrix(mat, patterns, out, region=None, region2=None):
+def plot_whole_matrix(mat, patterns, out=None, region=None, region2=None):
     """
     Visualise the input matrix with a set of patterns overlaid on top.
     Can optionally restrict the visualisation to a region.
@@ -159,7 +159,10 @@ def plot_whole_matrix(mat, patterns, out, region=None, region2=None):
     sub_mat = mat.tocsr()[s1:e1, s2:e2]
     plt.imshow(np.log(sub_mat.todense()), cmap="Reds")
     plt.scatter(pat.bin1 - s1, pat.bin2 - s2, facecolors="none", edgecolors="blue")
-    plt.show()
+    if out is None:
+        plt.show()
+    else:
+        plt.savefig(out)
     # cvs = ds.Canvas(plot_width=1000, plot_height=1000)
     # agg = cvs.points(df, "bin1", "bin2", ds.sum("contacts"))
     # img = tf.shade(agg, cmap=["white", "darkred"], how="log")

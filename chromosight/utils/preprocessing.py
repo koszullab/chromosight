@@ -6,7 +6,7 @@ Operations to perform on Hi-C matrices before analyses
 """
 import numpy as np
 from scipy.signal import savgol_filter
-from scipy.sparse import dia_matrix
+from scipy.sparse import dia_matrix, csr_matrix
 
 
 def normalize(B, good_bins=None, iterations=100):
@@ -350,3 +350,44 @@ def sum_mat_bins(mat):
     # Note: mat.sum returns a 'matrix' object. A1 extracts the 1D flat array
     # from the matrix
     return mat.sum(axis=0).A1 + mat.sum(axis=1).A1 - mat.diagonal(0)
+
+
+def subsample_contacts(M, n_contacts):
+    """Bootstrap sampling of contacts in a sparse Hi-C map.
+
+    Parameters
+    ----------
+    M : scipy.sparse.csr_matrix
+        The input Hi-C contact map in sparse format.
+    n_contacts : int 
+        The number of contacts to sample.
+
+    Returns
+    -------
+    scipy.sparse.csr_matrix
+        A new matrix with a fraction of the original contacts.
+    """
+    # NOTE: RAM usage vs speed could be balanced by flushing
+    # dictionary and recomputing cumsum a given number of times.
+
+    # Only work with non-zero data of matrices
+    O = csr_matrix(M).data
+    S = O.copy()
+    # Match cell idx to cumulative number of contacts
+    cum_sum = np.cumsum(O)
+    # Total number of contacts to remove
+    tot_contacts = int(max(cum_sum))
+    n_remove = tot_contacts - n_contacts
+    # Store contacts that have already been removed
+    removed = {}
+
+    for _ in range(n_remove):
+        to_remove = np.random.randint(tot_contacts)
+        while to_remove in removed:
+            to_remove = np.random.randint(tot_contacts)
+        # Find idx of cell to deplete and deplete it
+        removed[to_remove] = np.searchsorted(cum_sum, to_remove)
+        S[removed[to_remove]] -= 1
+
+    return csr_matrix((S, (M.row, M.col)), shape=(M.shape[0], M.shape[1]))
+

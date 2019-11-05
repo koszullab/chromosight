@@ -38,11 +38,21 @@ class HicGenome:
         Maximum scanning distance for convolution during pattern detection.
     """
 
-    def __init__(self, path, inter=False, kernel_config={}):
+    def __init__(self, path, inter=False, kernel_config={}, subsample=None):
         # Load Hi-C matrix and associated metadata
         self.matrix, self.chroms, self.bins, self.resolution = self.load_data(path)
         self.kernel_config = kernel_config
         self.inter = inter
+        if subsample is not None:
+            try:
+                if int(subsample) < self.matrix.sum():
+                    print(f"Subsampling {subsample} contacts from matrix")
+                    self.matrix = preproc.subsample_contacts(self.matrix, int(subsample))
+                else:
+                    print("Skipping subsampling: Value is higher than the number of contacts in the matrix.")
+            except ValueError:
+                sys.stderr.write("Error: Subsample must be a number of reads.\n")
+                sys.exit(1)
         # Convert maximum scanning distance to bins using resolution
         try:
             self.max_dist = max(self.kernel_config["max_dist"] // self.resolution, 1)

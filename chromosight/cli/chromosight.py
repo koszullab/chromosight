@@ -6,8 +6,9 @@ Explore and detect patterns (loops, borders, centromeres, etc.) in Hi-C contact
 maps with pattern matching.
 
 Usage:
-    chromosight detect <contact_map> [<output>] [--kernel-config FILE] [--win-fmt={json,npy}]
+    chromosight detect <contact_map> [<output>] [--kernel-config FILE]
                         [--pattern=loops] [--precision=auto] [--iterations=auto]
+                        [--win-fmt={json,npy}] [--subsample=no]
                         [--inter] [--max-dist=auto] [--no-plotting] [--threads 1]
     chromosight generate-config <prefix> [--preset loops]
 
@@ -47,6 +48,9 @@ Arguments for detect:
                                 probability in the contact map. A lesser value
                                 leads to potentially more detections, but more
                                 false positives. [default: auto]
+    -s, --subsample=INT         Subsample contacts from the matrix to INT contacts.
+                                This is useful when comparing matrices with different
+                                coverages. [default: no]
     -t, --threads 1             Number of CPUs to use in parallel. [default: 1]
     -w, --win-fmt={json,npy}    File format used to store individual windows
                                 around each pattern. Window order match
@@ -147,6 +151,9 @@ def cmd_detect(arguments):
     threads = arguments["--threads"]
     output = arguments["<output>"]
     win_fmt = arguments["--win-fmt"]
+    subsample = arguments['--subsample']
+    if subsample == 'no':
+        subsample = None
     plotting_enabled = False if arguments["--no-plotting"] else True
     # If output is not specified, use current directory
     if not output:
@@ -187,7 +194,7 @@ def cmd_detect(arguments):
 
     # kernel_config = _override_kernel_config("max_dist", max_dist, int, kernel_config)
     # Make shorten max distance in case matrix is noisy
-    hic_genome = HicGenome(mat_path, interchrom, kernel_config)
+    hic_genome = HicGenome(mat_path, interchrom, kernel_config, subsample)
 
     all_pattern_coords = []
     all_pattern_windows = []
