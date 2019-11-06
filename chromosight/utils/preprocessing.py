@@ -6,7 +6,7 @@ Operations to perform on Hi-C matrices before analyses
 """
 import numpy as np
 from scipy.signal import savgol_filter
-from scipy.sparse import dia_matrix
+from scipy.sparse import dia_matrix, csr_matrix, coo_matrix
 
 
 def normalize(B, good_bins=None, iterations=100):
@@ -350,3 +350,48 @@ def sum_mat_bins(mat):
     # Note: mat.sum returns a 'matrix' object. A1 extracts the 1D flat array
     # from the matrix
     return mat.sum(axis=0).A1 + mat.sum(axis=1).A1 - mat.diagonal(0)
+
+
+def subsample_contacts(M, n_contacts):
+    """Bootstrap sampling of contacts in a sparse Hi-C map.
+
+    Parameters
+    ----------
+    M : scipy.sparse.coo_matrix
+        The input Hi-C contact map in sparse format.
+    n_contacts : int 
+        The number of contacts to sample.
+
+    Returns
+    -------
+    scipy.sparse.coo_matrix
+        A new matrix with a fraction of the original contacts.
+    """
+
+    S = M.data.copy()
+    # Match cell idx to cumulative number of contacts
+    cum_counts = np.cumsum(S)
+    # Total number of contacts to sample
+    tot_contacts = int(cum_counts[-1])
+    
+    # Sample desired number of contacts from the range(0, n_contacts) array
+    sampled_contacts = np.random.choice(
+        int(tot_contacts),
+        size=(n_contacts),
+        replace=False
+    )
+    
+    # Get indices of sampled contacts in the cum_counts array
+    idx = np.searchsorted(cum_counts, sampled_contacts, side='right')
+
+    # Bin those indices to the same dimensions as matrix data to get counts
+    sampled_counts = np.bincount(idx, minlength=S.shape[0])
+
+    # Get nonzero values to build new sparse matrix
+    nnz_mask = sampled_counts > 0
+    sampled_counts = sampled_counts[nnz_mask].astype(np.float64)
+    sampled_rows = M.row[nnz_mask]
+    sampled_cols = M.col[nnz_mask]
+
+    return coo_matrix((sampled_counts, (sampled_rows, sampled_cols)), shape=(M.shape[0], M.shape[1]))
+

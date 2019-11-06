@@ -1,0 +1,11 @@
+{
+    "name": "hairpins",
+    "kernels": [
+        "hairpins.1.txt"
+    ],
+    "max_dist": 1,
+    "max_iterations": 3,
+    "max_perc_undetected": 30.0,
+    "precision": 3,
+    "resolution": 10000
+}

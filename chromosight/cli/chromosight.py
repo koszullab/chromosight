@@ -8,6 +8,7 @@ maps with pattern matching.
 Usage:
     chromosight detect <contact_map> [<output>] [--kernel-config FILE]
                         [--pattern=loops] [--precision=auto] [--iterations=auto]
+                        [--win-fmt={json,npy}] [--subsample=no]
                         [--inter] [--max-dist=auto] [--no-plotting] [--threads 1]
     chromosight generate-config <prefix> [--preset loops]
 
@@ -47,27 +48,37 @@ Arguments for detect:
                                 probability in the contact map. A lesser value
                                 leads to potentially more detections, but more
                                 false positives. [default: auto]
+    -s, --subsample=INT         If greater than 1, subsample contacts from the 
+                                matrix to INT contacts. If between 0 and 1, subsample
+                                a proportion of contacts instead. This is useful
+                                when comparing matrices with different
+                                coverages. [default: no]
     -t, --threads 1             Number of CPUs to use in parallel. [default: 1]
+    -w, --win-fmt={json,npy}    File format used to store individual windows
+                                around each pattern. Window order match
+                                patterns inside the associated text file.
+                                Possible formats are json and npy. [default: json]
 
 Arguments for generate-config:
     prefix                      Path prefix for config files. If prefix is a/b,
                                 files a/b.json and a/b.1.txt will be generated.
                                 If a given pattern has N kernel matrices, N txt
                                 files are created they will be named a/b.[1-N].txt.
-    -p, --preset loops         Generate a preset config for the given pattern.
+    -p, --preset loops          Generate a preset config for the given pattern.
                                 Preset configs available are "loops" and 
                                 "borders". [default: loops]
 """
 import numpy as np
 import pandas as pd
 import pathlib
+import os
 import sys
 import json
 import docopt
 import multiprocessing as mp
 from chromosight.version import __version__
 from chromosight.utils.contacts_map import HicGenome
-from chromosight.utils.io import write_patterns, load_kernel_config
+from chromosight.utils.io import write_patterns, save_windows, load_kernel_config
 from chromosight.utils.plotting import pattern_plot, pileup_plot
 from chromosight.utils.detection import pattern_detector, pileup_patterns, remove_smears
 
@@ -100,6 +111,10 @@ def cmd_generate_config(arguments):
     arguments = docopt.docopt(__doc__, version=__version__)
 
     kernel_config = load_kernel_config(pattern, False)
+    
+    # If prefix involves a directory, create it
+    if os.path.dirname(prefix):
+        os.makedirs(os.path.dirname(prefix))
 
     # Write kernel matrices to files with input prefix and replace kernels
     # by their path in config
@@ -137,6 +152,10 @@ def cmd_detect(arguments):
     precision = arguments["--precision"]
     threads = arguments["--threads"]
     output = arguments["<output>"]
+    win_fmt = arguments["--win-fmt"]
+    subsample = arguments['--subsample']
+    if subsample == 'no':
+        subsample = None
     plotting_enabled = False if arguments["--no-plotting"] else True
     # If output is not specified, use current directory
     if not output:
@@ -144,7 +163,10 @@ def cmd_detect(arguments):
     else:
         output = pathlib.Path(output)
     output.mkdir(exist_ok=True)
-
+    
+    if win_fmt not in ["npy", "json"]:
+        sys.stderr.write('Error: --win-fmt must be either json or npy.\n')
+        sys.exit(1)
     # Read a user-provided kernel config if custom is true
     # Else, load a preset kernel config for input pattern
     # Configs are JSON files containing all parameter associated with the pattern
@@ -174,9 +196,10 @@ def cmd_detect(arguments):
 
     # kernel_config = _override_kernel_config("max_dist", max_dist, int, kernel_config)
     # Make shorten max distance in case matrix is noisy
-    hic_genome = HicGenome(mat_path, interchrom, kernel_config)
+    hic_genome = HicGenome(mat_path, interchrom, kernel_config, subsample)
 
     all_pattern_coords = []
+    all_pattern_windows = []
 
     ### 1: DETECTION ON EACH SUBMATRIX
 
@@ -199,17 +222,18 @@ def cmd_detect(arguments):
             for d in sub_mat_results
             if d["coords"] is not None
         ]
-        try:
-            all_pattern_coords.append(
-                pd.concat(kernel_coords, axis=0).reset_index(drop=True)
-            )
-        # If no pattern was found with this kernel, skip directly to the next one
-        except ValueError:
-            continue
         # Extract surrounding windows for each sub_matrix
         kernel_windows = np.concatenate(
             [w["windows"] for w in sub_mat_results if w["windows"] is not None], axis=0
         )
+        try:
+            all_pattern_coords.append(
+                pd.concat(kernel_coords, axis=0).reset_index(drop=True)
+            )
+            all_pattern_windows.append(kernel_windows)
+        # If no pattern was found with this kernel, skip directly to the next one
+        except ValueError:
+            continue
         # Compute and plot pileup
         pileup_fname = ("pileup_of_{n}_{pattern}_kernel_{kernel}").format(
             pattern=kernel_config["name"], n=kernel_windows.shape[0], kernel=kernel_id
@@ -227,10 +251,13 @@ def cmd_detect(arguments):
 
     # Combine patterns of all kernel matrices into a single array
     all_pattern_coords = pd.concat(all_pattern_coords, axis=0)
+    # Combine all windows from different kernels into a single pile of windows
+    all_pattern_windows = np.concatenate(all_pattern_windows, axis=0)
 
     # Remove patterns with overlapping windows (smeared patterns)
     good_patterns = remove_smears(all_pattern_coords, win_size=4)
     all_pattern_coords = all_pattern_coords.loc[good_patterns, :]
+    all_pattern_windows = all_pattern_windows[good_patterns, :, :]
     
     # Get from bins into basepair coordinates
     coords_1 = hic_genome.bin_to_coords(all_pattern_coords.bin1).reset_index(drop=True)
@@ -241,9 +268,11 @@ def cmd_detect(arguments):
     all_pattern_coords = all_pattern_coords.loc[:, ['chrom1', 'start1', 'end1', 'chrom2', 'start2', 'end2', 'bin1', 'bin2', 'score']]
 
     ### 2: WRITE OUTPUT
-    print(f"{all_pattern_coords.shape[0]} patterns detected")
+    sys.stderr.write(f"{all_pattern_coords.shape[0]} patterns detected\n")
+    # Save patterns and their coordinates in a tsv file
     write_patterns(all_pattern_coords, kernel_config["name"], output)
-    # base_names = pathlib.Path(map_path).name
+    # Save windows as an array in an npy file
+    save_windows(all_pattern_windows, kernel_config["name"], output, format=win_fmt)
 
 
 def main():
