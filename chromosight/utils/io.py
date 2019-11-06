@@ -40,7 +40,7 @@ def load_bedgraph2d(mat_path):
     # estimate bin size from file
     bin_size = np.median(bg2.end1 - bg2.start1).astype(int)
     # Throw error if bins are not equally sized (e.g. restriction fragments)
-    if bin_size != bg2.end1[0] - bg2.start[0]:
+    if bin_size != bg2.end1[0] - bg2.start1[0]:
         sys.stderr.write("Error: Bins are not of equal size.")
         sys.exit(1)
 
@@ -94,10 +94,19 @@ def load_bedgraph2d(mat_path):
 
     # Get chroms into a 1D array of bin starts
     chrom_start = np.array(chrom_start["cumsum"])
+    chrom_end = np.append(chrom_start[1:], chrom_start[-1] + chromsizes[-1])
+    chroms = pd.DataFrame(
+            {
+                'name': chromsizes.index,
+                'length': chromsizes.values,
+                'start_bin': chrom_start,
+                'end_bin': chrom_end,
+            }
+    )
     # Only keep upper triangle
     mat = triu(mat)
     bins = bins[["chrom", "start", "end"]]
-    return mat, chrom_start, bins, bin_size
+    return mat, chroms, bins, bin_size
 
 
 def save_sub_matrices(mat, input_fmt="cool", inter=False, tmpdir=None):
@@ -291,7 +300,7 @@ def dense2sparse(M, format="coo"):
     return triu(sparse_mat)
 
 
-def write_patterns(coords, pattern_name, output_dir):
+def write_patterns(coords, pattern_name, output_dir, dec=5):
     """
     Writes coordinates to a text file.
 
@@ -305,9 +314,12 @@ def write_patterns(coords, pattern_name, output_dir):
         file.
     output_dir : str
         Output path where the file will be saved.
+    dec : int
+        Number of decimals to keep in correlation scores.
     """
     file_name = pattern_name + ".txt"
     file_path = join(output_dir, file_name)
+    coords.score = np.round(coords.score, dec)
     coords.to_csv(file_path, sep="\t", index=None)
 
 def save_windows(windows, pattern_name, output_dir, format='json'):
