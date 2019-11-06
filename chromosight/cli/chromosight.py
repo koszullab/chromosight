@@ -6,10 +6,11 @@ Explore and detect patterns (loops, borders, centromeres, etc.) in Hi-C contact
 maps with pattern matching.
 
 Usage:
-    chromosight detect <contact_map> [<output>] [--kernel-config FILE]
+    chromosight detect <contact_map> [<output>] [--kernel-config=FILE]
                         [--pattern=loops] [--precision=auto] [--iterations=auto]
                         [--win-fmt={json,npy}] [--subsample=no] [--no-zscore]
-                        [--inter] [--max-dist=auto] [--no-plotting] [--threads 1]
+                        [--inter] [--min-dist=0] [--max-dist=auto]
+                        [--no-plotting] [--threads=1]
     chromosight generate-config <prefix> [--preset loops]
 
     detect: 
@@ -28,23 +29,25 @@ Arguments for detect:
                                 bedgraph2d or cool format. 
     output                      name of the output directory
     -I, --inter                 Enable to consider interchromosomal contacts.
-    -i, --iterations auto       How many iterations to perform after the first
+    -i, --iterations=auto       How many iterations to perform after the first
                                 template-based pass. Auto sets an appropriate
                                 value loaded from the kernel configuration
                                 file. [default: auto]
-    -k, --kernel-config FILE    Optionally give a path to a custom JSON kernel
+    -k, --kernel-config=FILE    Optionally give a path to a custom JSON kernel
                                 config path. Use this to override pattern if 
                                 you do not want to use one of the preset 
                                 patterns.
-    -m, --max-dist auto         Maximum distance from the diagonal (in base pairs)
+    -m, --min-dist=0            Filter out patterns closer than a target base
+                                pair distance from the diagonal. [default: 0]
+    -M, --max-dist=auto         Maximum distance from the diagonal (in base pairs)
                                 at which pattern detection should operate. Auto
                                 sets a value based on the kernel configuration
                                 file and the signal to noise ratio. [default: auto]
     -n, --no-plotting           Disable generation of pileup plots.
-    -P, --pattern loops         Which pattern to detect. This will use preset
+    -P, --pattern=loops         Which pattern to detect. This will use preset
                                 configurations for the given pattern. Possible
                                 values are: loops, borders, hairpin. [default: loops]
-    -p, --precision auto        Precision threshold when assessing pattern
+    -p, --precision=auto        Precision threshold when assessing pattern
                                 probability in the contact map. A lesser value
                                 leads to potentially more detections, but more
                                 false positives. [default: auto]
@@ -53,7 +56,7 @@ Arguments for detect:
                                 a proportion of contacts instead. This is useful
                                 when comparing matrices with different
                                 coverages. [default: no]
-    -t, --threads 1             Number of CPUs to use in parallel. [default: 1]
+    -t, --threads=1             Number of CPUs to use in parallel. [default: 1]
     -w, --win-fmt={json,npy}    File format used to store individual windows
                                 around each pattern. Window order match
                                 patterns inside the associated text file.
@@ -66,7 +69,7 @@ Arguments for generate-config:
                                 files a/b.json and a/b.1.txt will be generated.
                                 If a given pattern has N kernel matrices, N txt
                                 files are created they will be named a/b.[1-N].txt.
-    -p, --preset loops          Generate a preset config for the given pattern.
+    -p, --preset=loops          Generate a preset config for the given pattern.
                                 Preset configs available are "loops" and 
                                 "borders". [default: loops]
 """
@@ -150,6 +153,7 @@ def cmd_detect(arguments):
     iterations = arguments["--iterations"]
     mat_path = arguments["<contact_map>"]
     max_dist = arguments["--max-dist"]
+    min_dist = arguments["--min-dist"]
     pattern = arguments["--pattern"]
     precision = arguments["--precision"]
     threads = arguments["--threads"]
@@ -281,9 +285,11 @@ def cmd_detect(arguments):
     all_pattern_windows = np.concatenate(all_pattern_windows, axis=0)
 
     # Remove patterns with overlapping windows (smeared patterns)
-    good_patterns = remove_smears(all_pattern_coords, win_size=4)
-    all_pattern_coords = all_pattern_coords.loc[good_patterns, :]
-    all_pattern_windows = all_pattern_windows[good_patterns, :, :]
+    distinct_patterns = remove_smears(all_pattern_coords, win_size=4)
+
+    # Drop patterns that are too close to each other
+    all_pattern_coords = all_pattern_coords.loc[distinct_patterns, :]
+    all_pattern_windows = all_pattern_windows[distinct_patterns, :, :]
 
     # Get from bins into basepair coordinates
     coords_1 = hic_genome.bin_to_coords(all_pattern_coords.bin1).reset_index(drop=True)
@@ -294,9 +300,14 @@ def cmd_detect(arguments):
     all_pattern_coords = pd.concat(
         [all_pattern_coords.reset_index(drop=True), coords_1, coords_2], axis=1
     )
-    # Reorder columns
+
+    # Filter patterns closer than minimum distance from the diagonal if any
+    min_dist_drop_mask = (all_pattern_coords.chrom1 == all_pattern_coords.chrom2) & (
+        np.abs(all_pattern_coords.start2 - all_pattern_coords.start1) < int(min_dist)
+    )
+    # Reorder columns at the same time
     all_pattern_coords = all_pattern_coords.loc[
-        :,
+        ~min_dist_drop_mask,
         [
             "chrom1",
             "start1",
@@ -311,6 +322,7 @@ def cmd_detect(arguments):
             "score",
         ],
     ]
+    all_pattern_windows = all_pattern_windows[~min_dist_drop_mask, :, :]
 
     ### 2: WRITE OUTPUT
     sys.stderr.write(f"{all_pattern_coords.shape[0]} patterns detected\n")
