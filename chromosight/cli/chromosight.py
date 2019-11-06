@@ -111,7 +111,7 @@ def cmd_generate_config(arguments):
     arguments = docopt.docopt(__doc__, version=__version__)
 
     kernel_config = load_kernel_config(pattern, False)
-    
+
     # If prefix involves a directory, create it
     if os.path.dirname(prefix):
         os.makedirs(os.path.dirname(prefix))
@@ -153,8 +153,8 @@ def cmd_detect(arguments):
     threads = arguments["--threads"]
     output = arguments["<output>"]
     win_fmt = arguments["--win-fmt"]
-    subsample = arguments['--subsample']
-    if subsample == 'no':
+    subsample = arguments["--subsample"]
+    if subsample == "no":
         subsample = None
     plotting_enabled = False if arguments["--no-plotting"] else True
     # If output is not specified, use current directory
@@ -163,9 +163,9 @@ def cmd_detect(arguments):
     else:
         output = pathlib.Path(output)
     output.mkdir(exist_ok=True)
-    
+
     if win_fmt not in ["npy", "json"]:
-        sys.stderr.write('Error: --win-fmt must be either json or npy.\n')
+        sys.stderr.write("Error: --win-fmt must be either json or npy.\n")
         sys.exit(1)
     # Read a user-provided kernel config if custom is true
     # Else, load a preset kernel config for input pattern
@@ -207,50 +207,67 @@ def cmd_detect(arguments):
     n_sub_mats = hic_genome.sub_mats.shape[0]
     # Loop over the different kernel matrices for input pattern
     for kernel_id, kernel_matrix in enumerate(kernel_config["kernels"]):
+        # Adjust kernel iteratively
+        for i in range(kernel_config["max_iterations"]):
+            sys.stderr.write(f"Detection: kernel {kernel_id}, iteration {i}\n")
 
-        # Apply detection procedure to all sub matrices in parallel
-        sub_mat_data = zip(
-            hic_genome.sub_mats.iterrows(),
-            [kernel_config for i in range(n_sub_mats)],
-            [kernel_matrix for i in range(n_sub_mats)],
-        )
-        sub_mat_results = pool.map(_detect_sub_mat, sub_mat_data)
-
-        # Convert coordinates from chromosome to whole genome bins
-        kernel_coords = [
-            hic_genome.get_full_mat_pattern(d["chr1"], d["chr2"], d["coords"])
-            for d in sub_mat_results
-            if d["coords"] is not None
-        ]
-        # Extract surrounding windows for each sub_matrix
-        kernel_windows = np.concatenate(
-            [w["windows"] for w in sub_mat_results if w["windows"] is not None], axis=0
-        )
-        try:
-            all_pattern_coords.append(
-                pd.concat(kernel_coords, axis=0).reset_index(drop=True)
+            # Apply detection procedure to all sub matrices in parallel
+            sub_mat_data = zip(
+                hic_genome.sub_mats.iterrows(),
+                [kernel_config for i in range(n_sub_mats)],
+                [kernel_matrix for i in range(n_sub_mats)],
             )
-            all_pattern_windows.append(kernel_windows)
-        # If no pattern was found with this kernel, skip directly to the next one
-        except ValueError:
-            continue
-        # Compute and plot pileup
-        pileup_fname = ("pileup_of_{n}_{pattern}_kernel_{kernel}").format(
-            pattern=kernel_config["name"], n=kernel_windows.shape[0], kernel=kernel_id
-        )
-        kernel_pileup = pileup_patterns(kernel_windows)
+            sub_mat_results = pool.map(_detect_sub_mat, sub_mat_data)
 
-        # Generate pileup visualisations if requested
-        if plotting_enabled:
-            pileup_plot(kernel_pileup, name=pileup_fname, output=output)
+            # Convert coordinates from chromosome to whole genome bins
+            kernel_coords = [
+                hic_genome.get_full_mat_pattern(d["chr1"], d["chr2"], d["coords"])
+                for d in sub_mat_results
+                if d["coords"] is not None
+            ]
 
-    # If no pattern detected on any chromosome, exit gracefully
+            # Extract surrounding windows for each sub_matrix
+            kernel_windows = np.concatenate(
+                [w["windows"] for w in sub_mat_results if w["windows"] is not None],
+                axis=0,
+            )
+            # Gather newly detected pattern coordinates
+            try:
+                all_pattern_coords.append(
+                    pd.concat(kernel_coords, axis=0).reset_index(drop=True)
+                )
+                # Add info about kernel and iteration which detected these patterns
+                all_pattern_coords[-1]["kernel_id"] = kernel_id
+                all_pattern_coords[-1]["iteration"] = i
+                all_pattern_windows.append(kernel_windows)
+
+            # If no pattern was found with this kernel, skip directly to the next one
+            except ValueError:
+                continue
+            # Compute and plot pileup
+            pileup_fname = (
+                "pileup_of_{n}_{pattern}_kernel_{kernel}_iteration_{iter}"
+            ).format(
+                pattern=kernel_config["name"],
+                n=kernel_windows.shape[0],
+                kernel=kernel_id,
+                iter=i,
+            )
+            kernel_pileup = pileup_patterns(kernel_windows)
+
+            # Update kernel with patterns detected at current iteration
+            kernel_matrix = kernel_pileup
+            # Generate pileup visualisations if requested
+            if plotting_enabled:
+                pileup_plot(kernel_pileup, name=pileup_fname, output=output)
+
+    # If no pattern detected on any chromosome, with any kernel, exit gracefully
     if len(all_pattern_coords) == 0:
         sys.stderr.write("No pattern detected ! Exiting.\n")
         sys.exit(0)
 
     # Combine patterns of all kernel matrices into a single array
-    all_pattern_coords = pd.concat(all_pattern_coords, axis=0)
+    all_pattern_coords = pd.concat(all_pattern_coords, axis=0).reset_index(drop=True)
     # Combine all windows from different kernels into a single pile of windows
     all_pattern_windows = np.concatenate(all_pattern_windows, axis=0)
 
@@ -258,14 +275,33 @@ def cmd_detect(arguments):
     good_patterns = remove_smears(all_pattern_coords, win_size=4)
     all_pattern_coords = all_pattern_coords.loc[good_patterns, :]
     all_pattern_windows = all_pattern_windows[good_patterns, :, :]
-    
+
     # Get from bins into basepair coordinates
     coords_1 = hic_genome.bin_to_coords(all_pattern_coords.bin1).reset_index(drop=True)
-    coords_1.columns = [str(col) + '1' for col in coords_1.columns]
+    coords_1.columns = [str(col) + "1" for col in coords_1.columns]
     coords_2 = hic_genome.bin_to_coords(all_pattern_coords.bin2).reset_index(drop=True)
-    coords_2.columns = [str(col) + '2' for col in coords_2.columns]
-    all_pattern_coords = pd.concat([all_pattern_coords, coords_1, coords_2], axis=1)
-    all_pattern_coords = all_pattern_coords.loc[:, ['chrom1', 'start1', 'end1', 'chrom2', 'start2', 'end2', 'bin1', 'bin2', 'score']]
+    coords_2.columns = [str(col) + "2" for col in coords_2.columns]
+
+    all_pattern_coords = pd.concat(
+        [all_pattern_coords.reset_index(drop=True), coords_1, coords_2], axis=1
+    )
+    # Reorder columns
+    all_pattern_coords = all_pattern_coords.loc[
+        :,
+        [
+            "chrom1",
+            "start1",
+            "end1",
+            "chrom2",
+            "start2",
+            "end2",
+            "bin1",
+            "bin2",
+            "kernel_id",
+            "iteration",
+            "score",
+        ],
+    ]
 
     ### 2: WRITE OUTPUT
     sys.stderr.write(f"{all_pattern_coords.shape[0]} patterns detected\n")
