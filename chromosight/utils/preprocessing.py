@@ -373,16 +373,14 @@ def subsample_contacts(M, n_contacts):
     cum_counts = np.cumsum(S)
     # Total number of contacts to sample
     tot_contacts = int(cum_counts[-1])
-    
+
     # Sample desired number of contacts from the range(0, n_contacts) array
     sampled_contacts = np.random.choice(
-        int(tot_contacts),
-        size=(n_contacts),
-        replace=False
+        int(tot_contacts), size=(n_contacts), replace=False
     )
-    
+
     # Get indices of sampled contacts in the cum_counts array
-    idx = np.searchsorted(cum_counts, sampled_contacts, side='right')
+    idx = np.searchsorted(cum_counts, sampled_contacts, side="right")
 
     # Bin those indices to the same dimensions as matrix data to get counts
     sampled_counts = np.bincount(idx, minlength=S.shape[0])
@@ -393,5 +391,7 @@ def subsample_contacts(M, n_contacts):
     sampled_rows = M.row[nnz_mask]
     sampled_cols = M.col[nnz_mask]
 
-    return coo_matrix((sampled_counts, (sampled_rows, sampled_cols)), shape=(M.shape[0], M.shape[1]))
+    return coo_matrix(
+        (sampled_counts, (sampled_rows, sampled_cols)), shape=(M.shape[0], M.shape[1])
+    )
 

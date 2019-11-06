@@ -10,6 +10,7 @@ import pathlib
 import sys
 import json
 from os.path import join
+import scipy.stats as ss
 from scipy.sparse import coo_matrix, lil_matrix, csc_matrix, csr_matrix, triu
 
 
@@ -96,12 +97,12 @@ def load_bedgraph2d(mat_path):
     chrom_start = np.array(chrom_start["cumsum"])
     chrom_end = np.append(chrom_start[1:], chrom_start[-1] + chromsizes[-1])
     chroms = pd.DataFrame(
-            {
-                'name': chromsizes.index,
-                'length': chromsizes.values,
-                'start_bin': chrom_start,
-                'end_bin': chrom_end,
-            }
+        {
+            "name": chromsizes.index,
+            "length": chromsizes.values,
+            "start_bin": chrom_start,
+            "end_bin": chrom_end,
+        }
     )
     # Only keep upper triangle
     mat = triu(mat)
@@ -190,7 +191,7 @@ def load_cool(cool_path):
     return mat, chroms, bins, c.binsize
 
 
-def load_kernel_config(kernel, custom=False):
+def load_kernel_config(kernel, custom=False, zscore=True):
     """
     Load a kernel configuration from input JSON file.
 
@@ -236,6 +237,8 @@ def load_kernel_config(kernel, custom=False):
     custom : bool
         Determines if a custom JSON configuration file must be loaded, or if a
         preset configuration is used.
+    zscore : bool
+        If enabled, values of kernel matrices are converted into zscores upon loading.
     Returns
     -------
     pattern_kernels : list
@@ -273,7 +276,11 @@ def load_kernel_config(kernel, custom=False):
     largest_kernel = 0
     for i, kernel_path in enumerate(kernel_config["kernels"]):
         kernel_path = join(pathlib.Path(config_path).parent, kernel_path)
-        kernel_matrices[i] = np.loadtxt(kernel_path)
+        mat = np.loadtxt(kernel_path)
+        # Convert to zscore if requested
+        if zscore:
+            mat = ss.zscore(mat, axis=None)
+        kernel_matrices[i] = mat
         if kernel_matrices[i].shape[0] > largest_kernel:
             largest_kernel = kernel_matrices[i].shape[0]
     # Replace matrices path by their content in the config dictionary
@@ -322,7 +329,8 @@ def write_patterns(coords, pattern_name, output_dir, dec=5):
     coords.score = np.round(coords.score, dec)
     coords.to_csv(file_path, sep="\t", index=None)
 
-def save_windows(windows, pattern_name, output_dir, format='json'):
+
+def save_windows(windows, pattern_name, output_dir, format="json"):
     """
     Write windows surrounding detected patterns to a npy file.
     The file contains a 3D array where windows are piled on
@@ -342,14 +350,15 @@ def save_windows(windows, pattern_name, output_dir, format='json'):
         numpy's binary format, or json for a general purpose text
         format.
     """
-    if format == 'npy':
+    if format == "npy":
         file_name = pattern_name + ".npy"
         file_path = join(output_dir, file_name)
         np.save(file_path, windows)
-    elif format == 'json':
+    elif format == "json":
         import json
+
         file_name = pattern_name + ".json"
         file_path = join(output_dir, file_name)
         json_wins = {idx: win.tolist() for idx, win in enumerate(windows)}
-        with open(file_path, 'w') as handle:
+        with open(file_path, "w") as handle:
             json.dump(json_wins, handle, indent=4)
