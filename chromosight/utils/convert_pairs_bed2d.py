@@ -27,7 +27,7 @@ bin_size = 2000  # size of the bin for the sparse matrices
 N=120000     # maximal size of sparse matrice 
 chunksize = 1000000 # number of lines put into dict, to adapt for RAM consumption 
 option_inter = 1  #  option to choose or not to computer inter-chrm sparse matrices 
-
+ 
 # To determine list of chromosomes
 i=0
 j=0
