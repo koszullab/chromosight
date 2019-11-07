@@ -1,3 +1,5 @@
+![Chromosight logo](docs/chromosight.gif)
+
 # Chromosight
 
 [![PyPI version](https://badge.fury.io/py/chromovision.svg)](https://badge.fury.io/py/chromovision)

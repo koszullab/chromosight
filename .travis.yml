@@ -13,12 +13,11 @@ os:
 - linux
 
 install:
-- pip install -Ur requirements.txt
-- pip install pytest-pylint
+- pip install -v -Ur requirements.txt
+- pip install codecov
 
 script:
-- pytest --pylint --pylint-error-types=EF --pylint-rcfile=.pylintrc --doctest-modules --doctest-modules chromosight
-- pytest --cov=chromosight
+- nosetests --with-coverage tests/test_tinycov.py
 after_success:
 - codecov
 deploy:

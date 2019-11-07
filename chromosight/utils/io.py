@@ -110,34 +110,6 @@ def load_bedgraph2d(mat_path):
     return mat, chroms, bins, bin_size
 
 
-def save_sub_matrices(mat, input_fmt="cool", inter=False, tmpdir=None):
-    """
-    Given an input cooler object save each sub matrix (intra- and optionally
-    inter-chromosomal) as a npz file in a temporary folder.
-
-    Parameters:
-    ----------
-    mat : cooler.Cooler or pandas.DataFrame
-        The input data to store into files. Can be a cooler object or a dataframe,
-        if a 2D bedgraph file is used as input.
-    input_fmt : str
-        The input format, either cool or bg2 depending if a cool file or a 2D
-        bedgraph file is used as input.
-    inter : bool
-        Whether to consider interchromosomal matrices. If True, files are saved
-        for interchromosomal contacts, otherwise only intra-chromosomal matrices
-        are saved.
-    tmpdir : str
-        The directory where temporary files are stored. Will be generated automatically
-        if None.
-    
-    Returns:
-    -------
-    dict :
-        A dictionary of the form {(chr1, chr2): path, ...} where chr1 is the
-        chromosome corresponding to the rows of the submatrix, chr2 corresponds
-        to columns, and path is the path to the npz file containing the submatrix
-    """
 
 
 def load_cool(cool_path):
@@ -330,7 +302,7 @@ def write_patterns(coords, pattern_name, output_dir, dec=5):
     coords.to_csv(file_path, sep="\t", index=None)
 
 
-def save_windows(windows, pattern_name, output_dir, format="json"):
+def save_windows(windows, pattern_name, output_dir=".", format="json"):
     """
     Write windows surrounding detected patterns to a npy file.
     The file contains a 3D array where windows are piled on
@@ -362,3 +334,5 @@ def save_windows(windows, pattern_name, output_dir, format="json"):
         json_wins = {idx: win.tolist() for idx, win in enumerate(windows)}
         with open(file_path, "w") as handle:
             json.dump(json_wins, handle, indent=4)
+    else:
+        raise ValueError("window format must be either npy or json.")
