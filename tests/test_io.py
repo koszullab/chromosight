@@ -7,7 +7,6 @@ from nose.tools import with_setup, assert_raises
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
-import scipy.stats as ss
 import cooler
 import chromosight.utils.io as cio
 
@@ -134,18 +133,13 @@ class TestIO:
         with open(self.tmp_path, 'w') as f:
             json.dump(exp_config, f)
         # Load kernel configs and check if values are correct 
-        obs_config_raw = cio.load_kernel_config(self.tmp_path, custom=True, zscore=False)
+        obs_config_raw = cio.load_kernel_config(self.tmp_path, custom=True)
         obs_kernel_raw = obs_config_raw['kernels'][0]
         for param in exp_config.keys():
             if param != 'kernels':
                 assert exp_config[param] == obs_config_raw[param]
-
-        # check if matrix is preserved with and without zscore transformation
+        # check if matrix is preserved 
         assert np.all(obs_kernel_raw == m)
-
-        obs_config_zscore = cio.load_kernel_config(self.tmp_path, custom=True, zscore=True)
-        obs_kernel_zscore = obs_config_zscore['kernels'][0]
-        assert np.all(obs_kernel_zscore == ss.zscore(m, axis=None))
         os.unlink(kernel_mat_path)
 
 
