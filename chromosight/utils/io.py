@@ -40,6 +40,7 @@ def load_bedgraph2d(mat_path):
 
     # estimate bin size from file
     bin_size = np.median(bg2.end1 - bg2.start1).astype(int)
+
     # Throw error if bins are not equally sized (e.g. restriction fragments)
     if bin_size != bg2.end1[0] - bg2.start1[0]:
         sys.stderr.write("Error: Bins are not of equal size.")
@@ -259,24 +260,6 @@ def load_kernel_config(kernel, custom=False, zscore=True):
     kernel_config["kernels"] = kernel_matrices
 
     return kernel_config
-
-
-def dense2sparse(M, format="coo"):
-    format_dict = {
-        "coo": lambda x: x,
-        "csr": csr_matrix,
-        "csc": csc_matrix,
-        "lil": lil_matrix,
-    }
-    N = np.triu(M)
-    shape = N.shape
-    nonzeros = N.nonzero()
-    rows, cols = nonzeros
-    data = M[nonzeros]
-    S = coo_matrix((data, (rows, cols)), shape=shape)
-    matrix_format = format_dict[format]
-    sparse_mat = matrix_format(S)
-    return triu(sparse_mat)
 
 
 def write_patterns(coords, pattern_name, output_dir, dec=5):

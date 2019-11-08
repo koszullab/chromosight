@@ -30,40 +30,48 @@ class TestIO:
         # Remove previously created tmp file
         os.unlink(self.tmp_path)
 
-    #@with_setup(gen_tmp, rm_tmp)
     def test_load_bedgraph2d(self):
         """Test loading of matrices in bedgraph2 format"""
 
         # Write a dummy bedgraph2 (basically a diagonal)
-        res, n_bins = 5000, 100000
+        res, n_bins = 5000, 100
         chrom_names = ['c1', 'c2', 'c3']
         bins_per_chrom = [n_bins // 3, n_bins // 3, n_bins // 3 + n_bins % 3]
+        # Initialize a dataframe containing the right number of bins
         df = pd.DataFrame(
                 {
                     'chrom1': np.repeat(chrom_names, bins_per_chrom),
-                    'start1': range(0, res*(n_bins), res),
-                    'end1': range(res, res*(n_bins+1), res),
-                    'chrom2': np.repeat(chrom_names, bins_per_chrom),
-                    'start2': range(0, res*(n_bins), res),
-                    'end2': range(res, res*(n_bins+1), res),
                     'contacts': np.random.randint(0, 100, n_bins)
                     }
         )
-        df.to_csv(tmp_path, sep='\t', header=None, index=False)
+        # Group bins per chromosome
+        chr_groups = df.groupby('chrom1')
+        # Compute the number of bins in each chromosome and make a range (0 -> nbins)
+        start_per_chrom = chr_groups.apply(lambda g:np.array(range(g.shape[0])))
+        # Concatenate ranges to have start values from 0 to n bins
+        start_array = np.hstack(start_per_chrom)
+        # Multiply start values by resolution to get base pair values
+        df['start1'] = start_array * res
+        # Add binsize to get the end positions
+        df['end1'] = df.start1 + res
+        # Make the same bins for second pairs (just a diagonal matrix then)
+        df[['chrom2', 'start2', 'end2']] = df[['chrom1', 'start1', 'end1']]
+        # Reorder columns
+        df = df[['chrom1', 'start1', 'end1', 'chrom2', 'start2', 'end2', 'contacts']]
+        df.to_csv(self.tmp_path, sep='\t', header=None, index=False)
 
         # Load bedraph and check whether it was parsed correctly
-        mat, chroms, bins, bin_size = cio.load_bedgraph2d(tmp_path)
+        mat, chroms, bins, bin_size = cio.load_bedgraph2d(self.tmp_path)
         
         # Median should work to estimate resolution id nbins >> nchroms
-        assert res == np.nanmedian(bins.start.shift(1) - bins.start)
+        assert res,  np.nanmedian(bins.start.shift(1) - bins.start)
         assert res == bin_size
         assert n_bins == bins.shape[0]
-        assert bins.columns == BIN_COLS
-        assert chroms.columns == CHR_COLS
+        assert np.all(bins.columns == BIN_COLS)
+        assert np.all(chroms.columns == CHR_COLS)
         assert mat.sum() == df.contacts.sum()
                     
 
-    #@with_setup(gen_tmp, rm_tmp)
     def test_load_cool(self):
         """Test loading of matrices in cool format"""
 
@@ -71,32 +79,36 @@ class TestIO:
         res, n_bins = 5000, 100000
         chrom_names = ['c1', 'c2', 'c3']
         bins_per_chrom = [n_bins // 3, n_bins // 3, n_bins // 3 + n_bins % 3]
-        df = pd.DataFrame(
+        bins = pd.DataFrame(
                 {
-                    'chr1': np.repeat(chrom_names, bins_per_chrom),
-                    'start1': range(0, res*(n_bins), res),
-                    'end1': range(res, res*(n_bins+1), res),
-                    'chr2': np.repeat(chrom_names, bins_per_chrom),
-                    'start2': range(0, res*(n_bins), res),
-                    'end2': range(res, res*(n_bins+1), res),
-                    'contacts': np.random.randint(0, 100, n_bins)
-                    }
+                    'chrom': np.repeat(chrom_names, bins_per_chrom),
+                    'start': range(0, res*(n_bins), res),
+                    'end': range(res, res*(n_bins+1), res),
+                }
         )
-        df.to_csv(tmp_path, sep='\t', header=None, index=False)
+        pixels = pd.DataFrame(
+                {
+                    'bin1_id': range(n_bins),
+                    'bin2_id': range(n_bins),
+                    'count': np.random.randint(0, 100, n_bins)
+                }
+        )
 
-        # Load bedraph and check whether it was parsed correctly
-        mat, chroms, bins, bin_size = cio.load_cool(tmp_path)
+        # Save dataframes into a cool file using cool API
+        cooler.create_cooler(self.tmp_path, bins, pixels) 
+
+        # Load cool and check whether it was parsed correctly
+        mat, chroms, bins, bin_size = cio.load_cool(self.tmp_path)
         
         # Median should work to estimate resolution id nbins >> nchroms
-        assert res == np.nanmedian(bins.start.shift(1) - bins.start)
+        assert res == abs(int(np.nanmedian(bins.start.shift(1) - bins.start)))
         assert res == bin_size
         assert n_bins == bins.shape[0]
-        assert bins.columns == BIN_COLS
-        assert chroms.columns == CHR_COLS
-        assert mat.sum() == df.contacts.sum()
+        assert np.all(bins.columns == BIN_COLS)
+        assert np.all(chroms.columns == CHR_COLS)
+        assert mat.sum() == pixels['count'].sum()
 
 
-    #@with_setup(gen_tmp, rm_tmp)
     def test_load_kernel_config(self):
         """Check that json config files can be parsed properly"""
         # Generate dummy kernel
@@ -122,36 +134,21 @@ class TestIO:
         with open(self.tmp_path, 'w') as f:
             json.dump(exp_config, f)
         # Load kernel configs and check if values are correct 
-        obs_config_raw = cio.load_kernel_config(self.tmp_path, custom=False, zscore=False)
+        obs_config_raw = cio.load_kernel_config(self.tmp_path, custom=True, zscore=False)
         obs_kernel_raw = obs_config_raw['kernels'][0]
         for param in exp_config.keys():
             if param != 'kernels':
                 assert exp_config[param] == obs_config_raw[param]
 
         # check if matrix is preserved with and without zscore transformation
-        assert obs_kernel_raw == m
+        assert np.all(obs_kernel_raw == m)
 
-        obs_config_zscore = cio.load_kernel_config(tmp_config, custom=False, zscore=False)
+        obs_config_zscore = cio.load_kernel_config(self.tmp_path, custom=True, zscore=True)
         obs_kernel_zscore = obs_config_zscore['kernels'][0]
-        assert obs_kernel_zscore == ss.zscore(m, axis=None)
+        assert np.all(obs_kernel_zscore == ss.zscore(m, axis=None))
         os.unlink(kernel_mat_path)
 
 
-
-    def test_dense2sparse(self):
-        """Check results of dense to sparse matrix converter"""
-        # Generate a random sparse matrix (with fixed seed)
-        s = sp.random(1000, 1000, density=0.01, format='coo', dtype=np.float, random_state=1)
-        # Make corresponding dense mat and get upper triangle
-        m = s.todense()
-        s_exp = coo_matrix(np.triu(m))
-        # Check if function returns the same data as computed on dense matrix for each format
-        for fmt in ['coo', 'csr', 'csc', 'lil']:
-            s_obs = cio.dense2sparse(m, format=fmt)
-            assert m_exp == m_obs.tocoo()
-
-
-    #@with_setup(gen_tmp, rm_tmp)
     def test_write_patterns(self):
         """Test if pattern coordinates are saved to disk as expected."""
         # Generate dummy pattern list
@@ -175,24 +172,31 @@ class TestIO:
         )
         for dec in range(1,5):
             cio.write_patterns(tmp_coords, self.tmp_file, self.tmp_dir, dec=dec)
-            obs_coords = pd.read_csv(self.tmp_path, sep='\t')
+            obs_coords = pd.read_csv(self.tmp_path + ".txt", sep='\t')
             assert obs_coords.shape == tmp_coords.shape
-            assert np.all(np.close(obs_coords.score, np.round(tmp_coords.score, dec)))
+            assert np.all(np.isclose(obs_coords.score, np.round(tmp_coords.score, dec)))
+            os.unlink(self.tmp_path + ".txt")
 
 
-    #@with_setup(gen_tmp, rm_tmp)
     def test_save_windows(self):
+        """Check that windows around detected patterns can be saved to disk in JSON and npy."""
         tmp_wins = np.random.random((100, 9, 9))
         # Check whether legit windows can be saved and loaded in both formats
         cio.save_windows(tmp_wins, self.tmp_file, self.tmp_dir, format="json")
         with open(self.tmp_path + ".json", 'r') as jwin:
             w = json.load(jwin)
-            assert w.shape == (100, 9, 9)
+            # Loaded as a dict, check number of keys
+            assert len(w.keys()) == 100
+            # Check dim of first value
+            assert np.array(w['0']).shape == (9, 9)
+        # Remove json windows file
+        os.unlink(self.tmp_path + ".json")
 
         cio.save_windows(tmp_wins, self.tmp_file, self.tmp_dir, format="npy")
-        with open(self.tmp_path + ".npy", 'r') as nwin:
-            w = np.load(nwin)
-            assert w.shape == (100, 9, 9)
+        w = np.load(self.tmp_path + ".npy")
+        assert w.shape == (100, 9, 9)
+        # Remove npy windows file
+        os.unlink(self.tmp_path + ".npy")
 
         # Check if an inappropriate format raises appropriate exception.
         with assert_raises(ValueError):

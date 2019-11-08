@@ -17,7 +17,7 @@ install:
 - pip install codecov
 
 script:
-- nosetests --with-coverage tests/test_tinycov.py
+- nosetests --with-coverage tests/test_io.py
 after_success:
 - codecov
 deploy:
