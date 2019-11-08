@@ -2,7 +2,7 @@ from __future__ import absolute_import
 import sys
 import numpy as np
 import pandas as pd
-from scipy.sparse import lil_matrix, coo_matrix, csr_matrix, triu, csc_matrix
+from scipy.sparse import lil_matrix, coo_matrix, csr_matrix, triu, csc_matrix, diags
 from scipy.sparse.csgraph import connected_components
 import warnings
 import chromosight.utils.preprocessing as preproc
@@ -515,7 +515,7 @@ def label_connected_pixels_sparse(matrix, min_focus_size=2):
     return num_foci, foci_mat
 
 
-def xcorr2(signal, kernel, max_scan_distance=None, threshold=1e-4):
+def xcorr2(signal, kernel, max_scan_distance=None, threshold=1e-4, sym=False):
     """Signal-kernel 2D convolution
 
     Convolution of a 2-dimensional signal (the contact map) with a kernel
@@ -529,7 +529,8 @@ def xcorr2(signal, kernel, max_scan_distance=None, threshold=1e-4):
         A 2-dimensional numpy array Mk x Nk acting as the pattern template.
     max_scan_distance : int or None, optional
         Limits the range of computations beyond the diagonal. Default is None
-
+    sym : bool
+        Whether the al
     Returns
     -------
     out: scipy.sparse.coo_matrix
@@ -543,6 +544,11 @@ def xcorr2(signal, kernel, max_scan_distance=None, threshold=1e-4):
     kh = (km - 1) // 2
     kw = (kn - 1) // 2
 
+    # Check of kernel is constant
+    constant_kernel = np.nan
+    if np.allclose(kernel, np.tile(kernel[0, 0], kernel.shape), rtol=1e-08):
+        constant_kernel = kernel[0, 0]
+
     if (km > sm) or (sn > sn):
         raise ValueError("cannot have kernel bigger than signal")
 
@@ -550,10 +556,26 @@ def xcorr2(signal, kernel, max_scan_distance=None, threshold=1e-4):
         max_scan_distance = max(sm, sn)
     out = csc_matrix((sm - km + 1, sn - kn + 1), dtype=np.float64)
 
-    signal = signal.tocsc()
-    for ki in range(km):
-        for kj in range(kn):
-            out += kernel[ki, kj] * signal[ki : sm - km + 1 + ki, kj : sn - kn + 1 + kj]
+    if np.isfinite(constant_kernel):
+        l_subkernel_sp = diags(
+            np.ones(km), np.arange(km), shape=(sn - km + 1, sm), format="csr"
+        )
+        r_subkernel_sp = diags(
+            np.ones(kn), -np.arange(kn), shape=(sn, sm - kn + 1), format="csr"
+        )
+        out = (l_subkernel_sp @ signal) @ r_subkernel_sp
+        out *= constant_kernel
+    else:
+        for kj in range(nk):
+            subkernel_sp = diags(
+                kernel[:, kj], np.arange(mk), shape=(ns - mk + 1, ms), format="csr"
+            )
+            out += subkernel_sp.dot(signal[:, kj : ns - nk + 1 + kj])
+
+    # signal = signal.tocsc()
+    # for ki in range(km):
+    #   for kj in range(kn):
+    #       out += kernel[ki, kj] * signal[ki : sm - km + 1 + ki, kj : sn - kn + 1 + kj]
 
     # Set very low pixels to 0
     out.data[out.data < threshold] = 0
