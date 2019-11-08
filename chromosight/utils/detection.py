@@ -2,8 +2,7 @@ from __future__ import absolute_import
 import sys
 import numpy as np
 import pandas as pd
-from scipy.sparse import lil_matrix, coo_matrix, csr_matrix, triu, csc_matrix, diags
-from scipy.sparse.csgraph import connected_components
+import scipy.sparse as sp
 import warnings
 import chromosight.utils.preprocessing as preproc
 
@@ -473,7 +472,7 @@ def label_connected_pixels_sparse(matrix, min_focus_size=2):
     # value in transpose was the second (1) in original matrix
     # stay_foci_verti = stay_foci_verti[trans_ids.data]
     # Initialize adjacency matrix between candidate pixels
-    adj_mat = lil_matrix((n_candidates, n_candidates))
+    adj_mat = sp.lil_matrix((n_candidates, n_candidates))
     # Fill adjacency matrix using a stay_foci array
 
     def fill_adjacency_1d(adj, stay_foci, verti=False):
@@ -496,7 +495,7 @@ def label_connected_pixels_sparse(matrix, min_focus_size=2):
     # Add vertical-adjacency info.
     adj_mat = fill_adjacency_1d(adj_mat, stay_foci_verti, verti=True)
     # Now label foci by finding connected components
-    num_foci, foci = connected_components(adj_mat)
+    num_foci, foci = sp.csgraph.connected_components(adj_mat)
     foci += 1  # We add 1 so that first spot is not 0
     foci = foci.astype(np.int64)
     # Remove foci with a single pixel
@@ -507,7 +506,7 @@ def label_connected_pixels_sparse(matrix, min_focus_size=2):
     good_foci = foci > 0
     # generate a new matrix, similar to the input, but where pixel values
     # are the foci ID of the pixel.
-    foci_mat = coo_matrix(
+    foci_mat = sp.coo_matrix(
         (foci[good_foci], (candidates.row[good_foci], candidates.col[good_foci])),
         shape=candidates.shape,
         dtype=np.int64,
@@ -515,7 +514,7 @@ def label_connected_pixels_sparse(matrix, min_focus_size=2):
     return num_foci, foci_mat
 
 
-def xcorr2(signal, kernel, max_scan_distance=None, threshold=1e-4, sym=False):
+def xcorr2(signal, kernel, threshold=1e-4):
     """Signal-kernel 2D convolution
 
     Convolution of a 2-dimensional signal (the contact map) with a kernel
@@ -527,10 +526,9 @@ def xcorr2(signal, kernel, max_scan_distance=None, threshold=1e-4, sym=False):
         A 2-dimensional numpy array Ms x Ns acting as the detrended Hi-C map.
     kernel: array_like
         A 2-dimensional numpy array Mk x Nk acting as the pattern template.
-    max_scan_distance : int or None, optional
-        Limits the range of computations beyond the diagonal. Default is None
-    sym : bool
-        Whether the al
+    threshold : float
+        Convolution score below which pixels will be set back to zero to save
+        on time and memory.
     Returns
     -------
     out: scipy.sparse.coo_matrix
@@ -544,33 +542,38 @@ def xcorr2(signal, kernel, max_scan_distance=None, threshold=1e-4, sym=False):
     kh = (km - 1) // 2
     kw = (kn - 1) // 2
 
-    # Check of kernel is constant
+    # Sanity checks
+    if not sp.issparse(signal):
+        raise ValueError("cannot handle signal in dense format")
+    if sp.issparse(kernel):
+        raise ValueError("cannot handle kernel in sparse format")
+    if (km > sm) or (sn > sn):
+        raise ValueError("cannot have kernel bigger than signal")
+
+    # Check of kernel is constant (uniform)
     constant_kernel = np.nan
     if np.allclose(kernel, np.tile(kernel[0, 0], kernel.shape), rtol=1e-08):
         constant_kernel = kernel[0, 0]
 
-    if (km > sm) or (sn > sn):
-        raise ValueError("cannot have kernel bigger than signal")
-
-    if max_scan_distance is None:
-        max_scan_distance = max(sm, sn)
-    out = csc_matrix((sm - km + 1, sn - kn + 1), dtype=np.float64)
-
+    out = sp.csc_matrix((sm - km + 1, sn - kn + 1), dtype=np.float64)
+    signal = signal.tocsr()
+    # Simplified convolution for the particular case where kernel is constant:
     if np.isfinite(constant_kernel):
-        l_subkernel_sp = diags(
+        l_subkernel_sp = sp.diags(
             np.ones(km), np.arange(km), shape=(sn - km + 1, sm), format="csr"
         )
-        r_subkernel_sp = diags(
+        r_subkernel_sp = sp.diags(
             np.ones(kn), -np.arange(kn), shape=(sn, sm - kn + 1), format="csr"
         )
         out = (l_subkernel_sp @ signal) @ r_subkernel_sp
         out *= constant_kernel
+    # Convolution code for general case
     else:
-        for kj in range(nk):
-            subkernel_sp = diags(
-                kernel[:, kj], np.arange(mk), shape=(ns - mk + 1, ms), format="csr"
+        for kj in range(kn):
+            subkernel_sp = sp.diags(
+                kernel[:, kj], np.arange(km), shape=(sn - km + 1, sm), format="csr"
             )
-            out += subkernel_sp.dot(signal[:, kj : ns - nk + 1 + kj])
+            out += subkernel_sp.dot(signal[:, kj : sn - kn + 1 + kj])
 
     # signal = signal.tocsc()
     # for ki in range(km):
@@ -585,57 +588,78 @@ def xcorr2(signal, kernel, max_scan_distance=None, threshold=1e-4, sym=False):
     # matrix, effectively adding margins.
     out = out.tocoo()
     rows, cols = out.row + kh, out.col + kw
-    out = coo_matrix((out.data, (rows, cols)), shape=(sm, sn), dtype=np.float64)
-    # Trim diagonals further than max_scan_distance
-    out = preproc.diag_trim(out.todia(), max_scan_distance)
+    out = sp.coo_matrix((out.data, (rows, cols)), shape=(sm, sn), dtype=np.float64)
 
     return out
 
 
-def corrcoef2d(signal, kernel, max_dist):
+def corrcoef2d(signal, kernel, max_dist=None, sym_upper=False):
     """Signal-kernel 2D correlation
+    Pearson correlation coefficient between signal and sliding kernel. Convolutes
+    the input signal and kernel computes a cross correlation coefficient.
 
-    Pearson correlation coefficient between signal and sliding kernel.
+    Parameters
+    ----------
+    signal : scipy.sparse.csr_matrix
+        The input processed Hi-C matrix.
+    kernel : numpy.array
+        The pattern kernel to use for convolution.
+    max_dist : int
+        Maximum scan distance, in number of bins from the diagonal. If None, the whole
+        matrix is convoluted. Otherwise, pixels further than this distance from the
+        diagonal are set to 0 and ignored for performance. Only useful for 
+        intrachromosomal matrices.
+    sym_upper : False
+        Whether the matrix is symmetric and upper triangle. True for intrachromosomal
+        matrices.
+
+    Returns
+    -------
+    scipy.sparse.csr_matrix
+        The sparse matrix of correlation coefficients
     """
-    # Set diagonals that will overlap the kernel in the lower triangle to their
-    # opposite diagonal (in upper triangl)
-    signal = signal.tolil()
-    for i in range(1, kernel.shape[0]):
-        signal.setdiag(signal.diagonal(i), -i)
+    # sanity check
+    if not sp.issparse(signal):
+        ValueError("cannot handle signal in dense format.")
+    # If using only the upper triangle matrix, set diagonals that will
+    # overlap the kernel in the lower triangle to their opposite diagonal
+    # in the upper triangle
+    if sym_upper:
+        signal = signal.tolil()
+        for i in range(1, kernel.shape[0]):
+            signal.setdiag(signal.diagonal(i), -i)
 
-    # Kernel1 allows to compute the mean
-    kernel1 = np.ones(kernel.shape) / kernel.size
-    # Returns a matrix of means
-    mean_signal = xcorr2(signal, kernel1, max_scan_distance=max_dist)
-    std_signal = (
-        np.abs(
-            xcorr2(signal.power(2), kernel1, max_scan_distance=max_dist)
-            - mean_signal.power(2)
-        )
-    ).sqrt()
-    mean_kernel = np.mean(kernel)
-    std_kernel = np.std(kernel)
-    conv = xcorr2(signal, kernel / kernel.size, max_scan_distance=max_dist)
+    # Compute convolution product
+    conv = xcorr2(signal, kernel)
+    # Generate constant kernel
+    kernel1 = np.ones(kernel.shape)
+    # Convolute squared signal with constant kernel
+    signal2 = xcorr2(signal.power(2), kernel1)
+    kernel2 = float(np.sum(kernel ** 2))
+    denom = signal2 * kernel2
+    denom = denom.sqrt()
+    conv = xcorr2(signal, kernel / kernel.size)
 
     # Since elementwise sparse matrices division is not implemented, compute
     # numerator and denominator and perform division on the 1D array of nonzero
     # values.
-    numerator = conv - mean_signal * mean_kernel
-    denominator = std_signal * std_kernel
-    corrcoef = numerator.copy()
     # Get coords of non-zero (nz) values in the numerator
-    nz_vals = corrcoef.nonzero()
+    nz_vals = conv.nonzero()
     # Divide them by corresponding entries in the numerator
-    denominator = denominator.tocsr()
+    denom = denom.tocsr()
     try:
-        corrcoef.data /= denominator[nz_vals].A1
+        conv.data /= denom[nz_vals].A1
     # Case there are no nonzero corrcoef
     except AttributeError:
         pass
-    corrcoef.data[corrcoef.data < 0] = 0
+    conv.data[conv.data < 0] = 0
+
+    if max_dist is not None:
+        # Trim diagonals further than max_scan_distance
+        conv = preproc.diag_trim(conv.todia(), max_dist)
 
     # Only keep the upper triangle
-    corrcoef = triu(corrcoef)
+    conv = sp.triu(conv)
 
-    return corrcoef
+    return conv
 
