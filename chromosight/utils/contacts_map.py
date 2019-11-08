@@ -39,18 +39,13 @@ class HicGenome:
     subsample : float
         Proportion of contacts to subsample from the matrix if between 0 and 1.
         Number of contacts to keep if above 1. Keep all contacts if None.
-    zscore : bool
-        Whether matrix values should be converted to zscores during preprocessing.
     """
 
-    def __init__(
-        self, path, inter=False, kernel_config={}, subsample=None, zscore=True
-    ):
+    def __init__(self, path, inter=False, kernel_config={}, subsample=None):
         # Load Hi-C matrix and associated metadata
         self.matrix, self.chroms, self.bins, self.resolution = self.load_data(path)
         self.kernel_config = kernel_config
         self.inter = inter
-        self.zscore = zscore
         if subsample is not None:
             try:
                 subsample = float(subsample)
@@ -164,7 +159,6 @@ class HicGenome:
                             inter=False,
                             max_dist=self.max_dist,
                             largest_kernel=self.largest_kernel,
-                            zscore=self.zscore,
                         )
                     else:
                         sub_mats.contact_map[sub_mat_idx] = ContactMap(
@@ -255,14 +249,12 @@ class ContactMap:
         inter=False,
         max_dist=None,
         largest_kernel=0,
-        zscore=True,
     ):
         self.matrix = matrix
         self.resolution = resolution
         self.inter = inter
         self.max_dist = max_dist
         self.largest_kernel = largest_kernel
-        self.zscore = zscore
         # If detectable were not provided, compute them from the input matrix
         if detectable_bins is None:
             detectable_bins = preproc.get_detectable_bins(self.matrix, inter=self.inter)
@@ -295,8 +287,6 @@ class ContactMap:
         # Create a new matrix from the diagonals below max dist (faster than removing them)
         sub_mat = preproc.diag_trim(sub_mat.todia(), keep_distance)
         sub_mat = sub_mat.tocoo()
-        if self.zscore:
-            sub_mat = preproc.ztransform(sub_mat)
         # Fill diagonals of the lower triangle that might overlap the kernel
         for i in range(1, min(sub_mat.shape[0], self.largest_kernel)):
             sub_mat.setdiag(sub_mat.diagonal(i), -i)

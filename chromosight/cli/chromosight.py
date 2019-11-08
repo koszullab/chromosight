@@ -8,9 +8,9 @@ maps with pattern matching.
 Usage:
     chromosight detect <contact_map> [<output>] [--kernel-config=FILE]
                         [--pattern=loops] [--precision=auto] [--iterations=auto]
-                        [--win-fmt={json,npy}] [--subsample=no] [--no-zscore]
-                        [--inter] [--min-dist=0] [--max-dist=auto]
-                        [--no-plotting] [--threads=1]
+                        [--win-fmt={json,npy}] [--subsample=no] [--inter]
+                        [--min-dist=0] [--max-dist=auto] [--no-plotting]
+                        [--threads=1]
     chromosight generate-config <prefix> [--preset loops]
 
     detect: 
@@ -61,8 +61,6 @@ Arguments for detect:
                                 around each pattern. Window order match
                                 patterns inside the associated text file.
                                 Possible formats are json and npy. [default: json]
-    -z, --no-zscore             Contacts and kernel are converted to z-scores by
-                                default. This option disables the conversion.
 
 Arguments for generate-config:
     prefix                      Path prefix for config files. If prefix is a/b,
@@ -163,7 +161,6 @@ def cmd_detect(arguments):
     if subsample == "no":
         subsample = None
     plotting_enabled = False if arguments["--no-plotting"] else True
-    zscore = False if arguments["--no-zscore"] else True
     # If output is not specified, use current directory
     if not output:
         output = pathlib.Path()
@@ -190,7 +187,7 @@ def cmd_detect(arguments):
         config_path = pattern
 
     ### 0: LOAD INPUT
-    kernel_config = load_kernel_config(config_path, custom, zscore)
+    kernel_config = load_kernel_config(config_path, custom)
 
     # User can override configuration for input pattern if desired
     kernel_config = _override_kernel_config(
@@ -204,11 +201,7 @@ def cmd_detect(arguments):
     # kernel_config = _override_kernel_config("max_dist", max_dist, int, kernel_config)
     # Make shorten max distance in case matrix is noisy
     hic_genome = HicGenome(
-        mat_path,
-        inter=interchrom,
-        kernel_config=kernel_config,
-        subsample=subsample,
-        zscore=zscore,
+        mat_path, inter=interchrom, kernel_config=kernel_config, subsample=subsample
     )
 
     all_pattern_coords = []

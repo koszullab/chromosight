@@ -10,7 +10,6 @@ import pathlib
 import sys
 import json
 from os.path import join
-import scipy.stats as ss
 from scipy.sparse import coo_matrix, lil_matrix, csc_matrix, csr_matrix, triu
 
 
@@ -111,8 +110,6 @@ def load_bedgraph2d(mat_path):
     return mat, chroms, bins, bin_size
 
 
-
-
 def load_cool(cool_path):
     """
     Reads a cool file into memory and parses it into a COO sparse matrix
@@ -164,7 +161,7 @@ def load_cool(cool_path):
     return mat, chroms, bins, c.binsize
 
 
-def load_kernel_config(kernel, custom=False, zscore=True):
+def load_kernel_config(kernel, custom=False):
     """
     Load a kernel configuration from input JSON file.
 
@@ -210,8 +207,6 @@ def load_kernel_config(kernel, custom=False, zscore=True):
     custom : bool
         Determines if a custom JSON configuration file must be loaded, or if a
         preset configuration is used.
-    zscore : bool
-        If enabled, values of kernel matrices are converted into zscores upon loading.
     Returns
     -------
     pattern_kernels : list
@@ -249,11 +244,7 @@ def load_kernel_config(kernel, custom=False, zscore=True):
     largest_kernel = 0
     for i, kernel_path in enumerate(kernel_config["kernels"]):
         kernel_path = join(pathlib.Path(config_path).parent, kernel_path)
-        mat = np.loadtxt(kernel_path)
-        # Convert to zscore if requested
-        if zscore:
-            mat = ss.zscore(mat, axis=None)
-        kernel_matrices[i] = mat
+        kernel_matrices[i] = np.loadtxt(kernel_path)
         if kernel_matrices[i].shape[0] > largest_kernel:
             largest_kernel = kernel_matrices[i].shape[0]
     # Replace matrices path by their content in the config dictionary
