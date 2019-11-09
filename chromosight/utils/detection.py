@@ -190,104 +190,6 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix, area=3):
     return filtered_chrom_patterns, chrom_pattern_windows
 
 
-def explore_patterns(contact_map, kernel_config, window=4):
-    """
-    NOTE: Deprecated
-
-    Given a pattern type, attempt to detect that pattern in each matrix with
-    confidence determined by the precision parameter. The detection is done
-    in a multi-pass process:
-    - First, pattern matching is done with the initial supplied kernels.
-    - Then, an 'pileup' median pattern from all previously detected
-    patterns is generated, and detection is done using this pattern for
-    matching instead.
-    - Repeat as needed or until convergence.
-
-    Parameters
-    ----------
-    contact_map : ContactMap object
-        Object containing the Hi-C contact map and all intra- + inter-
-        chromosomal sub matrices as well as other attributes.
-    kernel_config : dict
-        Kernel configuration as documented in
-        chromosight.utils.io.load_kernel_config
-    window : int, optional
-        The pattern window area. When a pattern is discovered in a previous
-        pass, further detected patterns falling into that area are discarded.
-
-    Returns
-    -------
-    all_patterns : set
-        A set of patterns, each in the form (chrom, pos1, pos2, score).
-    kernels : dictionary of lists of arrays
-        A dictionary with one key per iteration where the values are lists of
-        pileup patterns after each pass used as kernels in the next one.
-        Takes the form: {1: [kernel1,...], 2: [kernel1,...], ...}
-    list_current_pattern_count : list
-        List of the number of patterns detected at each iteration.
-    """
-
-    # Dispatch detectors: the border detector has specificities while the
-    # loop detector is more generic, so we use the generic one by default if
-    # a pattern specific detector isn't implemented.
-
-    # Init parameters for the while loop:
-    #   - There's always at least one iteration (with the kernel)
-    #   - Loop stops when the same number of patterns are detected after an
-    #     iterations, or the max number of iterations has been specified and
-    #     reached.
-    #   - After the first pass, instead of the starting kernel the
-    #     'pileup pattern' is used for pattern matching.
-
-    all_patterns = set()
-    hashed_neighborhoods = set()
-    old_pattern_count, current_pattern_count = -1, 0
-    list_current_pattern_count = []
-
-    # Depending on matrix resolution, a pattern may be smeared over several
-    # pixels. This trimming function ensures that there won't be many patterns
-    # clustering around one location.
-    def neigh_hash(coords, window):
-        return (coords[0] // window, coords[1] // window)
-
-    # Original kernels are loaded from a file, but next kernel will be "learnt"
-    # from agglomerations at each iteration
-    kernels = {i: [] for i in range(1, kernel_config["max_iterations"] + 1)}
-    kernels["ori"] = kernel_config["kernels"]
-    # Detect patterns at each iteration:
-    # For iterations beyond the first, use pileup patterns
-    # from previous iteration as kernel.
-    for i in range(1, kernel_config["max_iterations"] + 1):
-        # Stop trying if fewer patterns are detected than in previous iteration
-        if old_pattern_count != current_pattern_count:
-            old_pattern_count = current_pattern_count
-            # Use 'original' kernels from files for the first iteration
-            current_kernels = kernels["ori"] if i == 1 else kernels[i - 1]
-            for kernel_matrix in current_kernels:
-                # After first iteration, kernel_matrix is a pileup from the
-                # previous iteration
-                detected_coords, pileup_pattern = pattern_detector(
-                    contact_map, kernel_config, kernel_matrix
-                )
-                for new_coords in detected_coords:
-                    if (
-                        neigh_hash(new_coords, window=window)
-                        not in hashed_neighborhoods
-                    ):
-                        pos1, pos2, score = new_coords
-                        pos1 = int(pos1)
-                        pos2 = int(pos2)
-                        all_patterns.add((pos1, pos2, score))
-                        hashed_neighborhoods.add(neigh_hash(new_coords, window=window))
-                # The pileup patterns of this iteration make up the kernel for the next one :)
-                kernels[i].append(pileup_pattern)
-            list_current_pattern_count.append(detected_coords.shape[0])
-
-    # Remove original kernels, as we are only interested by pileup ones
-    del kernels["ori"]
-    return all_patterns, kernels, list_current_pattern_count
-
-
 def remove_smears(patterns, win_size=8):
     """
     Identify patterns that are too close from each other to exclude them.
@@ -588,7 +490,7 @@ def xcorr2(signal, kernel, threshold=1e-4):
     return out
 
 
-def corrcoef2d(signal, kernel, max_dist=None, sym_upper=False, scaling="pearson"):
+def corrcoef2d(signal, kernel, max_dist=None, sym_upper=False, scaling="cross"):
     """Signal-kernel 2D correlation
     Pearson correlation coefficient between signal and sliding kernel. Convolutes
     the input signal and kernel computes a cross correlation coefficient.
@@ -627,14 +529,16 @@ def corrcoef2d(signal, kernel, max_dist=None, sym_upper=False, scaling="pearson"
         else:
             # Full matrix is stored for dense arrays anyway
             # -> make symmetric
+            sys.stderr.write('Making dense matrix symmetric.\n')
             signal = signal + np.transpose(signal) - np.diag(np.diag(signal))
 
+    kernel_size = kernel.shape[0] * kernel.shape[1]
 
     if scaling == "cross":
         # Compute convolution product
         conv = xcorr2(signal, kernel)
         # Generate constant kernel
-        kernel1 = np.ones(kernel.shape)
+        kernel1 = np.ones(kernel.shape) / kernel_size
         # Convolute squared signal with constant kernel
         if sp.issparse(signal):
             signal2 = xcorr2(signal.power(2), kernel1)
@@ -655,7 +559,6 @@ def corrcoef2d(signal, kernel, max_dist=None, sym_upper=False, scaling="pearson"
             )
 
         kernel1 = np.ones(kernel.shape)
-        kernel_size = kernel.shape[0] * kernel.shape[1]
         mean_signal = xcorr2(signal, kernel1 / kernel_size)
         if sp.issparse(signal):
             std_signal = xcorr2(
@@ -691,9 +594,5 @@ def corrcoef2d(signal, kernel, max_dist=None, sym_upper=False, scaling="pearson"
     # Only keep the upper triangle
     conv = sp.triu(conv)
 
-    import matplotlib.pyplot as plt
-
-    plt.hist(conv.data, 100)
-    plt.show()
     # plt.imshow(conv.todense()); plt.show()
     return conv

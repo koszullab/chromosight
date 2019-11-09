@@ -30,8 +30,14 @@ def load_bedgraph2d(mat_path):
     -------
     mat: scipy.sparse.coo_matrix
         Output sparse matrix in coordinate format
-    chrom_start : numpy.array
-        1D array of starting bins for each chromosome.
+    chroms : pandas.DataFrame
+        Table of chromosome information. Each row contains the name, length,
+        first and last bin of a chromosome.
+    bins : pandas.DataFrame
+        Table of genomic bins information. Each row contains the chromosome,
+        genomic start and end coordinates of a matrix bin.
+    bin_size : int
+        Matrix resolution. Corresponds to the number of base pairs per matrix bin.
     """
     bg2 = pd.read_csv(mat_path, delimiter="\t", header=None)
     bg2.head()
@@ -122,10 +128,16 @@ def load_cool(cool_path):
 
     Returns
     -------
-    mat : scipy coo_matrix
-        Hi-C contact map in COO format.
-    chrom_start : numpy.array
-        1D array of starting bins for each chromosome.
+    mat: scipy.sparse.coo_matrix
+        Output sparse matrix in coordinate format
+    chroms : pandas.DataFrame
+        Table of chromosome information. Each row contains the name, length,
+        first and last bin of a chromosome.
+    bins : pandas.DataFrame
+        Table of genomic bins information. Each row contains the chromosome,
+        genomic start and end coordinates of a matrix bin.
+    bin_size : int
+        Matrix resolution. Corresponds to the number of base pairs per matrix bin.
     """
     try:
         import cooler
@@ -209,8 +221,9 @@ def load_kernel_config(kernel, custom=False):
         preset configuration is used.
     Returns
     -------
-    pattern_kernels : list
-        A list of array_likes corresponding to the loaded patterns.
+    kernel_config : dict
+        A dictionary containing a key: value pair for each parameter as well as 
+        list of kernel matrices under key 'kernels'.
     """
 
     # Custom kernel: use litteral path as config path
