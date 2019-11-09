@@ -29,6 +29,9 @@ Arguments for detect:
                                 bedgraph2d or cool format. 
     output                      name of the output directory
     -I, --inter                 Enable to consider interchromosomal contacts.
+                                Warning: Experimental feature with very high
+                                memory consumption is very high, only use with
+                                small matrices.
     -i, --iterations=auto       How many iterations to perform after the first
                                 template-based pass. Auto sets an appropriate
                                 value loaded from the kernel configuration
@@ -200,6 +203,7 @@ def cmd_detect(arguments):
 
     # kernel_config = _override_kernel_config("max_dist", max_dist, int, kernel_config)
     # Make shorten max distance in case matrix is noisy
+
     hic_genome = HicGenome(
         mat_path, inter=interchrom, kernel_config=kernel_config, subsample=subsample
     )
@@ -208,7 +212,6 @@ def cmd_detect(arguments):
     all_pattern_windows = []
 
     ### 1: DETECTION ON EACH SUBMATRIX
-
     pool = mp.Pool(int(threads))
     n_sub_mats = hic_genome.sub_mats.shape[0]
     # Loop over the different kernel matrices for input pattern
@@ -224,7 +227,6 @@ def cmd_detect(arguments):
                 [kernel_matrix for i in range(n_sub_mats)],
             )
             sub_mat_results = pool.map(_detect_sub_mat, sub_mat_data)
-
             # Convert coordinates from chromosome to whole genome bins
             kernel_coords = [
                 hic_genome.get_full_mat_pattern(d["chr1"], d["chr2"], d["coords"])
@@ -232,13 +234,13 @@ def cmd_detect(arguments):
                 if d["coords"] is not None
             ]
 
-            # Extract surrounding windows for each sub_matrix
-            kernel_windows = np.concatenate(
-                [w["windows"] for w in sub_mat_results if w["windows"] is not None],
-                axis=0,
-            )
             # Gather newly detected pattern coordinates
             try:
+                # Extract surrounding windows for each sub_matrix
+                kernel_windows = np.concatenate(
+                    [w["windows"] for w in sub_mat_results if w["windows"] is not None],
+                    axis=0,
+                )
                 all_pattern_coords.append(
                     pd.concat(kernel_coords, axis=0).reset_index(drop=True)
                 )
@@ -247,9 +249,10 @@ def cmd_detect(arguments):
                 all_pattern_coords[-1]["iteration"] = i
                 all_pattern_windows.append(kernel_windows)
 
-            # If no pattern was found with this kernel, skip directly to the next one
+            # If no pattern was found with this kernel
+            # skip directly to the next one, skipping iterations
             except ValueError:
-                continue
+                break
             # Compute and plot pileup
             pileup_fname = (
                 "pileup_of_{n}_{pattern}_kernel_{kernel}_iteration_{iter}"
