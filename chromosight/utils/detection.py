@@ -490,7 +490,7 @@ def xcorr2(signal, kernel, threshold=1e-4):
     return out
 
 
-def corrcoef2d(signal, kernel, max_dist=None, sym_upper=False, scaling="cross"):
+def corrcoef2d(signal, kernel, max_dist=None, sym_upper=False, scaling="pearson"):
     """Signal-kernel 2D correlation
     Pearson correlation coefficient between signal and sliding kernel. Convolutes
     the input signal and kernel computes a cross correlation coefficient.
