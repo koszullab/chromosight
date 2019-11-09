@@ -73,7 +73,7 @@ def diag_trim(mat, n):
     """
     # Create a new matrix from the diagonals below max dist (faster than removing them)
 
-    keep_offsets = np.where((mat.offsets <= n) & (mat.offsets > 0))[0]
+    keep_offsets = np.where((mat.offsets <= n) & (mat.offsets >= 0))[0]
     trimmed = dia_matrix(
         (mat.data[keep_offsets], mat.offsets[keep_offsets]), shape=mat.shape
     )
