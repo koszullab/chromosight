@@ -529,7 +529,7 @@ def corrcoef2d(signal, kernel, max_dist=None, sym_upper=False, scaling="pearson"
         else:
             # Full matrix is stored for dense arrays anyway
             # -> make symmetric
-            sys.stderr.write('Making dense matrix symmetric.\n')
+            sys.stderr.write("Making dense matrix symmetric.\n")
             signal = signal + np.transpose(signal) - np.diag(np.diag(signal))
 
     kernel_size = kernel.shape[0] * kernel.shape[1]
@@ -543,7 +543,7 @@ def corrcoef2d(signal, kernel, max_dist=None, sym_upper=False, scaling="pearson"
         if sp.issparse(signal):
             signal2 = xcorr2(signal.power(2), kernel1)
         else:
-            signal2 = xcorr2(signal**2, kernel1)
+            signal2 = xcorr2(signal ** 2, kernel1)
         kernel2 = float(np.sum(kernel ** 2))
         denom = signal2 * kernel2
         if sp.issparse(signal):
@@ -586,7 +586,6 @@ def corrcoef2d(signal, kernel, max_dist=None, sym_upper=False, scaling="pearson"
     except AttributeError:
         pass
     conv.data[conv.data < 0] = 0
-
     if max_dist is not None:
         # Trim diagonals further than max_scan_distance
         conv = preproc.diag_trim(conv.todia(), max_dist)
@@ -594,5 +593,4 @@ def corrcoef2d(signal, kernel, max_dist=None, sym_upper=False, scaling="pearson"
     # Only keep the upper triangle
     conv = sp.triu(conv)
 
-    # plt.imshow(conv.todense()); plt.show()
     return conv

@@ -7,6 +7,7 @@ Operations to perform on Hi-C matrices before analyses
 import numpy as np
 from scipy.signal import savgol_filter
 from scipy.sparse import dia_matrix, csr_matrix, coo_matrix
+import scipy.ndimage as ndi
 
 
 def normalize(B, good_bins=None, iterations=100):
@@ -394,4 +395,54 @@ def subsample_contacts(M, n_contacts):
     return coo_matrix(
         (sampled_counts, (sampled_rows, sampled_cols)), shape=(M.shape[0], M.shape[1])
     )
+
+
+def resize_kernel(kernel, kernel_res, signal_res, min_size=5, max_size=101):
+    """
+    Resize a kernel matrix based on the resolution at which it was defined and
+    the signal resolution. E.g. if a kernel matrix was generated for 10kb and
+    the input signal is 20kb, kernel size will be divided by two. If the kernel
+    is enlarged, pixels are interpolated with a spline of degree 1.
+
+    Parameters
+    ----------
+    kernel : numpy.array
+        Kernel matrix.
+    kernel_res : int
+        Resolution for which the kernel was designed.
+    signal_res : int
+        Resolution of the signal matrix in basepair per matrix bin.
+    min_size : int
+        Lower bound, in number of rows/column allowed when resizing the kernel.
+    max_size : int
+        Upper bound, in number of rows/column allowed when resizing the kernel.
+    
+    Returns
+    -------
+    resized_kernel : numpy.array
+        The resized input kernel.
+    """
+    km, kn = kernel.shape
+
+    if km != kn:
+        ValueError("kernel must be square.")
+    if not (km % 2) or not (kn % 2):
+        ValueError("kernel size must be odd.")
+
+    # Define by how many times kernel must be enlarged for its pixels to match
+    # the signal's pixels
+    resize_factor = kernel_res / signal_res
+    if km * resize_factor > max_size:
+        resize_factor = max_size / km
+    elif km * resize_factor < min_size:
+        resize_factor = min_size / km
+
+    resized_kernel = ndi.zoom(kernel, resize_factor, order=1)
+
+    # TODO: Adjust resize factor to ensure odd dimensions before zooming
+    # instead of trimming afterwards
+    if not resized_kernel.shape[0] % 2:
+        resized_kernel = resized_kernel[:-1, :-1]
+
+    return resized_kernel
 
