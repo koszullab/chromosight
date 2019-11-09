@@ -543,21 +543,21 @@ def xcorr2(signal, kernel, threshold=1e-4):
     kw = (kn - 1) // 2
 
     # Sanity checks
-    if not sp.issparse(signal):
-        raise ValueError("cannot handle signal in dense format")
     if sp.issparse(kernel):
         raise ValueError("cannot handle kernel in sparse format")
     if (km > sm) or (sn > sn):
         raise ValueError("cannot have kernel bigger than signal")
 
+    if sp.issparse(signal):
+        signal = signal.tocsr()
     # Check of kernel is constant (uniform)
     constant_kernel = np.nan
     if np.allclose(kernel, np.tile(kernel[0, 0], kernel.shape), rtol=1e-08):
         constant_kernel = kernel[0, 0]
 
     out = sp.csc_matrix((sm - km + 1, sn - kn + 1), dtype=np.float64)
-    signal = signal.tocsr()
-    # Simplified convolution for the particular case where kernel is constant:
+
+    # Simplified convolution for the special case where kernel is constant:
     if np.isfinite(constant_kernel):
         l_subkernel_sp = sp.diags(
             np.ones(km), np.arange(km), shape=(sn - km + 1, sm), format="csr"
@@ -575,11 +575,6 @@ def xcorr2(signal, kernel, threshold=1e-4):
             )
             out += subkernel_sp.dot(signal[:, kj : sn - kn + 1 + kj])
 
-    # signal = signal.tocsc()
-    # for ki in range(km):
-    #   for kj in range(kn):
-    #       out += kernel[ki, kj] * signal[ki : sm - km + 1 + ki, kj : sn - kn + 1 + kj]
-
     # Set very low pixels to 0
     out.data[out.data < threshold] = 0
     out.eliminate_zeros()
@@ -593,7 +588,7 @@ def xcorr2(signal, kernel, threshold=1e-4):
     return out
 
 
-def corrcoef2d(signal, kernel, max_dist=None, sym_upper=False):
+def corrcoef2d(signal, kernel, max_dist=None, sym_upper=False, scaling="pearson"):
     """Signal-kernel 2D correlation
     Pearson correlation coefficient between signal and sliding kernel. Convolutes
     the input signal and kernel computes a cross correlation coefficient.
@@ -612,33 +607,68 @@ def corrcoef2d(signal, kernel, max_dist=None, sym_upper=False):
     sym_upper : False
         Whether the matrix is symmetric and upper triangle. True for intrachromosomal
         matrices.
+    scaling : str
+        Which metric to use when computing correlation coefficients. Either 'pearson'
+        for Pearson correlation, or 'cross' for cross correlation.
 
     Returns
     -------
     scipy.sparse.csr_matrix
         The sparse matrix of correlation coefficients
     """
-    # sanity check
-    if not sp.issparse(signal):
-        ValueError("cannot handle signal in dense format.")
     # If using only the upper triangle matrix, set diagonals that will
     # overlap the kernel in the lower triangle to their opposite diagonal
     # in the upper triangle
     if sym_upper:
-        signal = signal.tolil()
-        for i in range(1, kernel.shape[0]):
-            signal.setdiag(signal.diagonal(i), -i)
+        if sp.issparse(signal):
+            signal = signal.tolil()
+            for i in range(1, kernel.shape[0]):
+                signal.setdiag(signal.diagonal(i), -i)
+        else:
+            # Full matrix is stored for dense arrays anyway
+            # -> make symmetric
+            signal = signal + np.transpose(signal) - np.diag(np.diag(signal))
 
-    # Compute convolution product
-    conv = xcorr2(signal, kernel)
-    # Generate constant kernel
-    kernel1 = np.ones(kernel.shape)
-    # Convolute squared signal with constant kernel
-    signal2 = xcorr2(signal.power(2), kernel1)
-    kernel2 = float(np.sum(kernel ** 2))
-    denom = signal2 * kernel2
-    denom = denom.sqrt()
-    conv = xcorr2(signal, kernel / kernel.size)
+
+    if scaling == "cross":
+        # Compute convolution product
+        conv = xcorr2(signal, kernel)
+        # Generate constant kernel
+        kernel1 = np.ones(kernel.shape)
+        # Convolute squared signal with constant kernel
+        if sp.issparse(signal):
+            signal2 = xcorr2(signal.power(2), kernel1)
+        else:
+            signal2 = xcorr2(signal**2, kernel1)
+        kernel2 = float(np.sum(kernel ** 2))
+        denom = signal2 * kernel2
+        if sp.issparse(signal):
+            denom = denom.sqrt()
+        else:
+            denom = np.sqrt(denom)
+    elif scaling == "pearson":
+        mean_kernel = float(kernel.mean())
+        std_kernel = float(kernel.std())
+        if not (std_kernel > 0):
+            raise ValueError(
+                "Cannot have scaling=pearson when kernel" "is flat. Use scaling=cross."
+            )
+
+        kernel1 = np.ones(kernel.shape)
+        kernel_size = kernel.shape[0] * kernel.shape[1]
+        mean_signal = xcorr2(signal, kernel1 / kernel_size)
+        if sp.issparse(signal):
+            std_signal = xcorr2(
+                signal.power(2), kernel1 / kernel_size
+            ) - mean_signal.power(2)
+            std_signal = std_signal.sqrt()
+        else:
+            std_signal = np.sqrt(
+                xcorr2(signal ** 2, kernel1 / kernel_size) - mean_signal ** 2
+            )
+
+        conv = xcorr2(signal, kernel / kernel_size) - mean_signal * mean_kernel
+        denom = std_signal * std_kernel
 
     # Since elementwise sparse matrices division is not implemented, compute
     # numerator and denominator and perform division on the 1D array of nonzero
@@ -661,5 +691,9 @@ def corrcoef2d(signal, kernel, max_dist=None, sym_upper=False):
     # Only keep the upper triangle
     conv = sp.triu(conv)
 
-    return conv
+    import matplotlib.pyplot as plt
 
+    plt.hist(conv.data, 100)
+    plt.show()
+    # plt.imshow(conv.todense()); plt.show()
+    return conv
