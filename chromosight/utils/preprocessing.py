@@ -6,6 +6,7 @@ Operations to perform on Hi-C matrices before analyses
 """
 import numpy as np
 from scipy.signal import savgol_filter
+import scipy.stats as ss
 from scipy.sparse import dia_matrix, csr_matrix, coo_matrix, issparse
 import scipy.ndimage as ndi
 
@@ -155,11 +156,11 @@ def despeckle(matrix, th2=3):
     n1 = A.shape[0]
     # Extract all diagonals in the upper triangle
     dist = {u: A.diagonal(u) for u in range(n1)}
-    # Compute median and standard deviation for each diagonal
+    # Compute median and MAD for each diagonal
     medians, stds = {}, {}
     for u in dist:
         medians[u] = np.median(dist[u])
-        stds[u] = np.std(dist[u])
+        stds[u] = ss.median_absolute_deviation(dist[u], nan_policy="omit")
 
     # Loop over all nonzero pixels in the COO matrix and their coordinates
     for i, (row, col, val) in enumerate(zip(matrix.row, matrix.col, matrix.data)):
@@ -172,33 +173,18 @@ def despeckle(matrix, th2=3):
     return A
 
 
-def mad(arr):
-    """
-    Compute median absolute deviation of input data.
-    
-    Parameters
-    ----------
-    arr : np.array
-        The input data, consisting of floats or ints
-    
-    Returns
-    -------
-    float :
-        The MAD of the input array.
-    """
-    mads = np.nanmedian(abs(arr - np.nanmedian(arr)), 0)
-    return mads
-
-
-def get_detectable_bins(matrix, inter=False):
+def get_detectable_bins(matrix, n_mads=2, inter=False):
     """
     Returns lists of detectable indices after excluding low interacting bin
     based on the distribution of pixel values in the matrix.
 
     Parameters
     ----------
-    matrix : array_like
+    matrix : scipy.sparse.coo_matrix
         A Hi-C matrix in tihe form of a 2D numpy array or coo matrix
+    n_mads : int
+        Number of median absolute deviation below the median required to
+        consider bins non-detectable.
     inter : bool
         Whether the matrix is interchromosomal. Default is to consider the matrix
         is intrachromosomal (i.e. upper symmetric).
@@ -210,7 +196,10 @@ def get_detectable_bins(matrix, inter=False):
         columns, respectively.
     -------
     """
+    mad = lambda x: ss.median_absolute_deviation(x, nan_policy="omit")
     if not inter:
+        if matrix.shape[0] != matrix.shape[1]:
+            raise ValueError("intrachromosomal matrices must be symmetric")
         sum_bins = sum_mat_bins(matrix)
         sum_mad = mad(sum_bins)
         # Find poor interacting rows and columns
@@ -316,7 +305,11 @@ def signal_to_noise_threshold(matrix, detectable_bins, smooth=True):
     """
     # Using median and mad to reduce sensitivity to outlier
     dist_medians = distance_law(matrix, detectable_bins, np.median)
-    dist_mads = distance_law(matrix, detectable_bins, mad)
+    dist_mads = distance_law(
+        matrix,
+        detectable_bins,
+        lambda x: ss.median_absolute_deviation(x, nan_policy="omit"),
+    )
     snr = dist_medians / dist_mads
     # Values below 1 are considered too noisy
     threshold_noise = 1.0
@@ -337,7 +330,7 @@ def sum_mat_bins(mat):
 
     Parameters
     ----------
-    mat : scipy.sparse.csr_matrix
+    mat : scipy.sparse.coo_matrix
         Contact map in sparse format, either in upper triangle or
         full matrix.
     

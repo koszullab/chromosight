@@ -3,6 +3,7 @@ import sys
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
+import scipy.stats as ss
 import warnings
 import chromosight.utils.preprocessing as preproc
 
@@ -246,7 +247,9 @@ def picker(mat_conv, matrix, precision=None):
     candidate_mat = mat_conv.copy()
     candidate_mat = candidate_mat.tocoo()
     # Compute a threshold from precision arg and set all pixels below to 0
-    thres = np.median(mat_conv.data) + precision * preproc.mad(mat_conv.data)
+    thres = np.median(mat_conv.data) + precision * ss.median_absolute_deviation(
+        mat_conv.data, nan_policy="omit"
+    )
     bak1 = candidate_mat.copy()
     candidate_mat.data[candidate_mat.data < thres] = 0
     bak2 = candidate_mat.copy()
