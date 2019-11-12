@@ -6,7 +6,7 @@ Operations to perform on Hi-C matrices before analyses
 """
 import numpy as np
 from scipy.signal import savgol_filter
-from scipy.sparse import dia_matrix, csr_matrix, coo_matrix
+from scipy.sparse import dia_matrix, csr_matrix, coo_matrix, issparse
 import scipy.ndimage as ndi
 
 
@@ -72,8 +72,9 @@ def diag_trim(mat, n):
     scipy.sparse.dia_matrix :
         The diagonally trimmed upper triangle matrix with only the first n diagonal.
     """
+    if not issparse(mat) or mat.format != "dia":
+        raise ValueError("input type must be scipy.sparse.dia_matrix")
     # Create a new matrix from the diagonals below max dist (faster than removing them)
-
     keep_offsets = np.where((mat.offsets <= n) & (mat.offsets >= 0))[0]
     trimmed = dia_matrix(
         (mat.data[keep_offsets], mat.offsets[keep_offsets]), shape=mat.shape
@@ -275,15 +276,13 @@ def ztransform(matrix):
 
     Parameters
     ----------
-    matrix : array_like
-        A 2-dimensional numpy array Ms x Ns acting as a raw
-        interchromosomal Hi-C map.
+    matrix : numpy.array
+        A 1-dimensional numpy array of nonzero values from a sparse matrix.
 
     Returns
     -------
-    numpy.ndarray :
-        A 2-dimensional numpy array of the z-transformed interchromosomal
-        Hi-C map.
+    numpy.array :
+        A 1-dimensional numpy array of the z-transformed nonzero values.
     """
 
     data = matrix.data
