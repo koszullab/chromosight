@@ -5,6 +5,7 @@
 Operations to perform on Hi-C matrices before analyses
 """
 import numpy as np
+import sys
 from scipy.signal import savgol_filter
 import scipy.stats as ss
 from scipy.sparse import dia_matrix, csr_matrix, coo_matrix, issparse
@@ -199,7 +200,7 @@ def get_detectable_bins(matrix, n_mads=2, inter=False):
     mad = lambda x: ss.median_absolute_deviation(x, nan_policy="omit")
     if not inter:
         if matrix.shape[0] != matrix.shape[1]:
-            raise ValueError("intrachromosomal matrices must be symmetric")
+            raise ValueError("intrachromosomal matrices must be symmetric.")
         sum_bins = sum_mat_bins(matrix)
         sum_mad = mad(sum_bins)
         # Find poor interacting rows and columns
@@ -434,7 +435,12 @@ def resize_kernel(kernel, kernel_res, signal_res, min_size=5, max_size=101):
     # TODO: Adjust resize factor to ensure odd dimensions before zooming
     # instead of trimming afterwards
     if not resized_kernel.shape[0] % 2:
-        resized_kernel = resized_kernel[:-1, :-1]
+        # Compute the factor required to yield a dimension smaller by one
+        adj_resize_factor = (resized_kernel.shape[0] - 1) / km
+        sys.stderr.write(
+            f"Adjusting resize factor from {resize_factor} to {adj_resize_factor}.\n"
+        )
+        resized_kernel = ndi.zoom(kernel, adj_resize_factor, order=1)
 
     return resized_kernel
 
