@@ -541,7 +541,7 @@ def corrcoef2d(signal, kernel, max_dist=None, sym_upper=False, scaling="pearson"
         # Compute convolution product
         conv = xcorr2(signal, kernel)
         # Generate constant kernel
-        kernel1 = np.ones(kernel.shape) / kernel_size
+        kernel1 = np.ones(kernel.shape)
         # Convolute squared signal with constant kernel
         if sp.issparse(signal):
             signal2 = xcorr2(signal.power(2), kernel1)
