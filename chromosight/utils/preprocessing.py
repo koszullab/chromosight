@@ -12,7 +12,7 @@ from scipy.sparse import dia_matrix, csr_matrix, coo_matrix, issparse
 import scipy.ndimage as ndi
 
 
-def normalize(B, good_bins=None, iterations=100):
+def normalize(B, good_bins=None, iterations=10):
     """
     Iterative normalisation of a Hi-C matrix (ICE procedure, 
     Imakaev et al, doi: 10.1038/nmeth.2148)
@@ -35,10 +35,10 @@ def normalize(B, good_bins=None, iterations=100):
     r = B.copy()
     r = r.tocsr()
     # Make a boolean mask from good bins
-    good_mask = np.isin(good_bins, range(r.shape[0]))
+    good_mask = np.isin(range(r.shape[0]), good_bins)
     # Set all pixels in a nondetectable bin to 0
-    r[~good_mask, :] = 0.0
-    r[:, ~good_mask] = 0.0
+    r[~good_mask, :] = 0
+    r[:, ~good_mask] = 0
     r = r.tocoo()
     # Update sparsity and get coordinates of nonzero pixels
     r.eliminate_zeros()
@@ -174,14 +174,14 @@ def despeckle(matrix, th2=3):
     return A
 
 
-def get_detectable_bins(matrix, n_mads=2, inter=False):
+def get_detectable_bins(mat, n_mads=3, inter=False):
     """
     Returns lists of detectable indices after excluding low interacting bin
     based on the distribution of pixel values in the matrix.
 
     Parameters
     ----------
-    matrix : scipy.sparse.coo_matrix
+    mat : scipy.sparse.coo_matrix
         A Hi-C matrix in tihe form of a 2D numpy array or coo matrix
     n_mads : int
         Number of median absolute deviation below the median required to
@@ -197,29 +197,33 @@ def get_detectable_bins(matrix, n_mads=2, inter=False):
         columns, respectively.
     -------
     """
+    matrix = mat.copy()
     mad = lambda x: ss.median_absolute_deviation(x, nan_policy="omit")
     if not inter:
         if matrix.shape[0] != matrix.shape[1]:
             raise ValueError("intrachromosomal matrices must be symmetric.")
+        matrix.data = np.ones(matrix.data.shape)
         sum_bins = sum_mat_bins(matrix)
         sum_mad = mad(sum_bins)
         # Find poor interacting rows and columns
-        detect_threshold = np.median(sum_bins) - 2.0 * sum_mad
+        sum_med = np.median(sum_bins)
+        detect_threshold = max(1, sum_med - sum_mad * n_mads)
         # Removal of poor interacting rows and columns
         good_bins = np.where(sum_bins > detect_threshold)[0]
         good_bins = (good_bins, good_bins)
     else:
         sum_rows, sum_cols = matrix.sum(axis=0), matrix.sum(axis=1)
         mad_rows, mad_cols = mad(sum_rows), mad(sum_cols)
-        detect_thresh_rows = np.median(sum_rows) - 2.0 * mad_rows
-        detect_thresh_cols = np.median(sum_cols) - 2.0 * mad_cols
-        good_rows = np.where(sum_rows > detect_thresh_rows)[0]
-        good_cols = np.where(sum_cols > detect_thresh_cols)[0]
+        med_rows, med_cols = np.median(sum_rows), np.median(sum_cols)
+        detect_threshold_rows = max(1, med_rows - mad_rows * n_mads)
+        detect_threshold_cols = max(1, med_cols - mad_cols * n_mads)
+        good_rows = np.where(sum_rows > detect_threshold_rows)[0]
+        good_cols = np.where(sum_cols > detect_threshold_cols)[0]
         good_bins = (good_rows, good_cols)
     return good_bins
 
 
-def detrend(matrix, detectable_bins=None):
+def detrend(matrix, detectable_bins=None, fun=np.nanmedian):
     """
     Detrends a Hi-C matrix by the distance law.
     The input matrix should have been normalised beforehandand.
@@ -241,10 +245,6 @@ def detrend(matrix, detectable_bins=None):
     matrix = matrix.tocsr()
     y = distance_law(matrix, detectable_bins)
     y[np.isnan(y)] = 0.0
-    if len(y) > 17:
-        y_savgol = savgol_filter(y, window_length=17, polyorder=5)
-    else:
-        y_savgol = y
 
     # Detrending by the distance law
     clean_mat = matrix.tocoo()
