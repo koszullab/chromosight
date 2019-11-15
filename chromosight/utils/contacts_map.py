@@ -79,7 +79,7 @@ class HicGenome:
             self.largest_kernel = 3
 
         # Preprocess the full genome matrix
-        self.detectable_bins = preproc.get_detectable_bins(self.matrix)[0]
+        self.detectable_bins = preproc.get_detectable_bins(self.matrix, n_mads=5)[0]
         self.matrix = preproc.normalize(self.matrix, good_bins=self.detectable_bins)
         print("Whole genome matrix normalized")
         self.sub_mats = self.make_sub_matrices()

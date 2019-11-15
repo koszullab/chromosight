@@ -14,7 +14,7 @@ BIN_COLS = ['chrom', 'start', 'end', ]
 CHR_COLS = ['name', 'length', 'start_bin', 'end_bin']
 
 class TestIO:
-    def setup(self):
+    def __init__(self):
         """Setup function to generate a named tempfile"""
         # Create tmp temporary file for reading and writing
         tmp_out = tempfile.NamedTemporaryFile(delete=False)

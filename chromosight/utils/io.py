@@ -310,13 +310,13 @@ def save_windows(windows, pattern_name, output_dir=".", format="json"):
         format.
     """
     if format == "npy":
-        file_name = pattern_name + ".npy"
+        file_name = pattern_name + "_out.npy"
         file_path = join(output_dir, file_name)
         np.save(file_path, windows)
     elif format == "json":
         import json
 
-        file_name = pattern_name + ".json"
+        file_name = pattern_name + "_out.json"
         file_path = join(output_dir, file_name)
         json_wins = {idx: win.tolist() for idx, win in enumerate(windows)}
         with open(file_path, "w") as handle:

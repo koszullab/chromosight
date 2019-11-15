@@ -5,12 +5,14 @@
 Operations to perform on Hi-C matrices before analyses
 """
 import numpy as np
+import sys
 from scipy.signal import savgol_filter
-from scipy.sparse import dia_matrix, csr_matrix, coo_matrix
+import scipy.stats as ss
+from scipy.sparse import dia_matrix, csr_matrix, coo_matrix, issparse
 import scipy.ndimage as ndi
 
 
-def normalize(B, good_bins=None, iterations=100):
+def normalize(B, good_bins=None, iterations=10):
     """
     Iterative normalisation of a Hi-C matrix (ICE procedure, 
     Imakaev et al, doi: 10.1038/nmeth.2148)
@@ -33,10 +35,10 @@ def normalize(B, good_bins=None, iterations=100):
     r = B.copy()
     r = r.tocsr()
     # Make a boolean mask from good bins
-    good_mask = np.isin(good_bins, range(r.shape[0]))
+    good_mask = np.isin(range(r.shape[0]), good_bins)
     # Set all pixels in a nondetectable bin to 0
-    r[~good_mask, :] = 0.0
-    r[:, ~good_mask] = 0.0
+    r[~good_mask, :] = 0
+    r[:, ~good_mask] = 0
     r = r.tocoo()
     # Update sparsity and get coordinates of nonzero pixels
     r.eliminate_zeros()
@@ -72,8 +74,9 @@ def diag_trim(mat, n):
     scipy.sparse.dia_matrix :
         The diagonally trimmed upper triangle matrix with only the first n diagonal.
     """
+    if not issparse(mat) or mat.format != "dia":
+        raise ValueError("input type must be scipy.sparse.dia_matrix")
     # Create a new matrix from the diagonals below max dist (faster than removing them)
-
     keep_offsets = np.where((mat.offsets <= n) & (mat.offsets >= 0))[0]
     trimmed = dia_matrix(
         (mat.data[keep_offsets], mat.offsets[keep_offsets]), shape=mat.shape
@@ -154,11 +157,11 @@ def despeckle(matrix, th2=3):
     n1 = A.shape[0]
     # Extract all diagonals in the upper triangle
     dist = {u: A.diagonal(u) for u in range(n1)}
-    # Compute median and standard deviation for each diagonal
+    # Compute median and MAD for each diagonal
     medians, stds = {}, {}
     for u in dist:
         medians[u] = np.median(dist[u])
-        stds[u] = np.std(dist[u])
+        stds[u] = ss.median_absolute_deviation(dist[u], nan_policy="omit")
 
     # Loop over all nonzero pixels in the COO matrix and their coordinates
     for i, (row, col, val) in enumerate(zip(matrix.row, matrix.col, matrix.data)):
@@ -171,33 +174,18 @@ def despeckle(matrix, th2=3):
     return A
 
 
-def mad(arr):
-    """
-    Compute median absolute deviation of input data.
-    
-    Parameters
-    ----------
-    arr : np.array
-        The input data, consisting of floats or ints
-    
-    Returns
-    -------
-    float :
-        The MAD of the input array.
-    """
-    mads = np.nanmedian(abs(arr - np.nanmedian(arr)), 0)
-    return mads
-
-
-def get_detectable_bins(matrix, inter=False):
+def get_detectable_bins(mat, n_mads=3, inter=False):
     """
     Returns lists of detectable indices after excluding low interacting bin
     based on the distribution of pixel values in the matrix.
 
     Parameters
     ----------
-    matrix : array_like
+    mat : scipy.sparse.coo_matrix
         A Hi-C matrix in tihe form of a 2D numpy array or coo matrix
+    n_mads : int
+        Number of median absolute deviation below the median required to
+        consider bins non-detectable.
     inter : bool
         Whether the matrix is interchromosomal. Default is to consider the matrix
         is intrachromosomal (i.e. upper symmetric).
@@ -209,26 +197,33 @@ def get_detectable_bins(matrix, inter=False):
         columns, respectively.
     -------
     """
+    matrix = mat.copy()
+    mad = lambda x: ss.median_absolute_deviation(x, nan_policy="omit")
     if not inter:
+        if matrix.shape[0] != matrix.shape[1]:
+            raise ValueError("intrachromosomal matrices must be symmetric.")
+        matrix.data = np.ones(matrix.data.shape)
         sum_bins = sum_mat_bins(matrix)
         sum_mad = mad(sum_bins)
         # Find poor interacting rows and columns
-        detect_threshold = np.median(sum_bins) - 2.0 * sum_mad
+        sum_med = np.median(sum_bins)
+        detect_threshold = max(1, sum_med - sum_mad * n_mads)
         # Removal of poor interacting rows and columns
         good_bins = np.where(sum_bins > detect_threshold)[0]
         good_bins = (good_bins, good_bins)
     else:
         sum_rows, sum_cols = matrix.sum(axis=0), matrix.sum(axis=1)
         mad_rows, mad_cols = mad(sum_rows), mad(sum_cols)
-        detect_thresh_rows = np.median(sum_rows) - 2.0 * mad_rows
-        detect_thresh_cols = np.median(sum_cols) - 2.0 * mad_cols
-        good_rows = np.where(sum_rows > detect_thresh_rows)[0]
-        good_cols = np.where(sum_cols > detect_thresh_cols)[0]
+        med_rows, med_cols = np.median(sum_rows), np.median(sum_cols)
+        detect_threshold_rows = max(1, med_rows - mad_rows * n_mads)
+        detect_threshold_cols = max(1, med_cols - mad_cols * n_mads)
+        good_rows = np.where(sum_rows > detect_threshold_rows)[0]
+        good_cols = np.where(sum_cols > detect_threshold_cols)[0]
         good_bins = (good_rows, good_cols)
     return good_bins
 
 
-def detrend(matrix, detectable_bins=None):
+def detrend(matrix, detectable_bins=None, fun=np.nanmedian):
     """
     Detrends a Hi-C matrix by the distance law.
     The input matrix should have been normalised beforehandand.
@@ -250,10 +245,6 @@ def detrend(matrix, detectable_bins=None):
     matrix = matrix.tocsr()
     y = distance_law(matrix, detectable_bins)
     y[np.isnan(y)] = 0.0
-    if len(y) > 17:
-        y_savgol = savgol_filter(y, window_length=17, polyorder=5)
-    else:
-        y_savgol = y
 
     # Detrending by the distance law
     clean_mat = matrix.tocoo()
@@ -275,15 +266,13 @@ def ztransform(matrix):
 
     Parameters
     ----------
-    matrix : array_like
-        A 2-dimensional numpy array Ms x Ns acting as a raw
-        interchromosomal Hi-C map.
+    matrix : numpy.array
+        A 1-dimensional numpy array of nonzero values from a sparse matrix.
 
     Returns
     -------
-    numpy.ndarray :
-        A 2-dimensional numpy array of the z-transformed interchromosomal
-        Hi-C map.
+    numpy.array :
+        A 1-dimensional numpy array of the z-transformed nonzero values.
     """
 
     data = matrix.data
@@ -317,7 +306,11 @@ def signal_to_noise_threshold(matrix, detectable_bins, smooth=True):
     """
     # Using median and mad to reduce sensitivity to outlier
     dist_medians = distance_law(matrix, detectable_bins, np.median)
-    dist_mads = distance_law(matrix, detectable_bins, mad)
+    dist_mads = distance_law(
+        matrix,
+        detectable_bins,
+        lambda x: ss.median_absolute_deviation(x, nan_policy="omit"),
+    )
     snr = dist_medians / dist_mads
     # Values below 1 are considered too noisy
     threshold_noise = 1.0
@@ -338,7 +331,7 @@ def sum_mat_bins(mat):
 
     Parameters
     ----------
-    mat : scipy.sparse.csr_matrix
+    mat : scipy.sparse.coo_matrix
         Contact map in sparse format, either in upper triangle or
         full matrix.
     
@@ -442,7 +435,12 @@ def resize_kernel(kernel, kernel_res, signal_res, min_size=5, max_size=101):
     # TODO: Adjust resize factor to ensure odd dimensions before zooming
     # instead of trimming afterwards
     if not resized_kernel.shape[0] % 2:
-        resized_kernel = resized_kernel[:-1, :-1]
+        # Compute the factor required to yield a dimension smaller by one
+        adj_resize_factor = (resized_kernel.shape[0] - 1) / km
+        sys.stderr.write(
+            f"Adjusting resize factor from {resize_factor} to {adj_resize_factor}.\n"
+        )
+        resized_kernel = ndi.zoom(kernel, adj_resize_factor, order=1)
 
     return resized_kernel
 

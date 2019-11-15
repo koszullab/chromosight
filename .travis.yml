@@ -14,10 +14,10 @@ os:
 
 install:
 - pip install -v -Ur requirements.txt
-- pip install codecov
+- pip install codecov nose2
 
 script:
-- nosetests --with-coverage tests/test_io.py
+- nose2 --with-coverage -s tests/
 after_success:
 - codecov
 deploy:
