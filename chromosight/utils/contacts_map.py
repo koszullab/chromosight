@@ -206,7 +206,7 @@ class HicGenome:
         ----------
         bin_idx : int
             A bin number corresponding to a row or column of the whole genome matrix.
-        
+
         Returns
         -------
         tuple :
@@ -250,6 +250,8 @@ class ContactMap:
         max_dist=None,
         largest_kernel=0,
     ):
+        self.despeckle = False
+        self.snr = False
         self.matrix = matrix
         self.resolution = resolution
         self.inter = inter
@@ -271,9 +273,17 @@ class ContactMap:
 
     def preprocess_intra_matrix(self):
         # Remove speckles (outlier pixels)
-        sub_mat = preproc.despeckle(self.matrix, th2=3)
-        # Compute signal to noise ratio at all diagonals
-        snr_dist = preproc.signal_to_noise_threshold(sub_mat, self.detectable_bins[0])
+        if self.despeckle:
+            sub_mat = preproc.despeckle(self.matrix, th2=3)
+        else:
+            sub_mat = self.matrix
+        if self.snr:
+            # Compute signal to noise ratio at all diagonals
+            snr_dist = preproc.signal_to_noise_threshold(
+                sub_mat, detectable_bins=self.detectable_bins[0]
+            )
+        else:
+            snr_dist = sub_mat.shape[0]
         # Define max scanning dist based on snr and pattern config
         if self.max_dist is None:
             sub_mat_max_dist = snr_dist
@@ -282,7 +292,7 @@ class ContactMap:
         # If we scan until a given distance, data values in a margin must be kept as well
         keep_distance = sub_mat_max_dist + (self.largest_kernel)
         # Detrend matrix for power law
-        sub_mat = preproc.detrend(sub_mat, self.detectable_bins[0])
+        sub_mat = preproc.detrend(sub_mat, detectable_bins=self.detectable_bins[0])
 
         # Create a new matrix from the diagonals below max dist (faster than removing them)
         sub_mat = preproc.diag_trim(sub_mat.todia(), keep_distance)

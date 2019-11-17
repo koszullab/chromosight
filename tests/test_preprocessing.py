@@ -107,19 +107,29 @@ def test_resize_kernel():
             assert np.max(obs_kernel) == obs_kernel[obs_dim // 2, obs_dim // 2]
 
 
+def test_distance_law():
+    """Test if the distance law array has the right dimensions and expected values"""
+    m = np.ones((3, 3))
+    m += np.array([1, 2, 3])
+    dist_law = preproc.distance_law(sp.csr_matrix(m))
+    assert np.all(dist_law == np.array([3.0, 3.5, 4.0]))
+    assert dist_law.shape == (3,)
+
+
 @params(*intra_mats)
 def test_detrend(matrix):
     """Basic test: Check if detrended matrix pixels have lower standard deviation"""
     detrended = preproc.detrend(matrix)
-    assert matrix.data.std() > detrended.data.std()
+    for d in range(matrix.shape[0] // 10):
+        assert matrix.diagonal(d).std() > detrended.diagonal(d).std()
 
 
 @params(*intra_mats)
 def test_ztransform(matrix):
     """Check if z-transformation yields mean 0 and std 1"""
     ztr = preproc.ztransform(matrix)
-    assert np.isclose(np.mean(ztr), 0, rtol=0.1)
-    assert np.isclose(np.std(ztr), 1, rtol=0.1)
+    assert np.isclose(np.mean(ztr.data), 0, rtol=0.1)
+    assert np.isclose(np.std(ztr.data), 1, rtol=0.1)
 
 
 def test_signal_to_noise_threshold():
@@ -129,18 +139,22 @@ def test_signal_to_noise_threshold():
     # Set all values in 5th first diagonals to 10 (SNR = 10)
     for k in range(5):
         syn_mat.setdiag(10, k=k)
-    snr = preproc.signal_to_noise_threshold(mat, None)
+    snr_idx = preproc.signal_to_noise_threshold(syn_mat, detectable_bins=None)
     # Since the 5th first diagonals are good, the last scannable diagonal
     # should be 4
-    assert snr == 4
+    assert snr_idx == 5
 
 
-@params(intra_mats)
-def test_sum_mat_bins():
+@params(*intra_mats)
+def test_sum_mat_bins(mat):
     """Check if bin sum on upper triangle matrix yields expected results."""
-    sym_mat = mat + mat.T - mat.diagonal()
+    sym_mat = mat + mat.T
+    sym_mat.setdiag(sym_mat.diagonal() / 2)
     summed = preproc.sum_mat_bins(sym_mat)
-    assert np.all(np.isclose(sym_mat.sum(axis=1), summed, rtol=0.1))
+    print(np.mean(summed))
+    print(np.mean(sym_mat.sum(axis=1)))
+    exp_sum = 2 * sym_mat.sum(axis=1).A1 - sym_mat.diagonal()
+    assert np.all(np.isclose(exp_sum, summed, rtol=0.1))
 
 
 @params(0, 0.1, 0.5, 0.8, 1)
