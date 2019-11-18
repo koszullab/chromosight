@@ -7,25 +7,23 @@
 from setuptools import setup, find_packages
 
 CLASSIFIERS = [
-    "Development Status :: 1 - Planning",
+    "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: Artistic License",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3.6",
+    "Programming Language :: Python :: 3.7",
     "Topic :: Scientific/Engineering",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
     "Topic :: Scientific/Engineering :: Visualization",
-    "Operating System :: Microsoft :: Windows",
-    "Operating System :: POSIX",
-    "Operating System :: Unix",
-    "Operating System :: MacOS",
+    "Operating System :: OS Independent",
 ]
 
 name = "chromosight"
 
 MAJOR = 0
-MINOR = 1
-MAINTENANCE = 0
+MINOR = 0
+MAINTENANCE = 2
 VERSION = "{}.{}.{}".format(MAJOR, MINOR, MAINTENANCE)
 
 LICENSE = "GPLv3"

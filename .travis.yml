@@ -1,0 +1,32 @@
+language: python
+env:
+  global:
+  - PROJECT_NAME=chromosight
+  - GITHUB_REPO_NAME=koszullab/chromosight
+matrix:
+  include:
+  - python: '3.6'
+  - python: '3.7'
+    dist: xenial
+    sudo: true
+os:
+- linux
+
+install:
+- pip install -v -Ur requirements.txt
+- pip install codecov nose2
+
+script:
+- nose2 --with-coverage -s tests/
+after_success:
+- codecov
+deploy:
+  on: 
+    branch: master
+    tags: true
+  provider: pypi
+  skip_existing: true
+  user: cmdoret
+  password:
+    secure: gEc/Mf+t8lGlStSuCuQOIxLPXDaTzB42faB125+Sb9UMqIJr1slS9tKU7lqxRNgsH+40e9/lThSVVCggBUUzL6Gbhqa9IvI0IA9A71v9ohV5bbewDRoD+IJjNnCCj/Yj8H53rqticgtfb+QBHuyU7KHGxcTP8s55Yro/5WhwXl5XexvPYaafelv3ibZyvA0pXos48bD/emuedQhmOWLtkXhkH3CRVsyG3dqXIDK4h/4jqOE+VxclCBiYbCrRGbyuDeYLVQ82OyUL4QQQbnr7e2ejDRlgOiQODCU/ekU9pgDoSqVSvloehJffsBbqK4iKojDX2WrUu1KtXRuA8gSXcS3993wh1ppCEJZ05pgFnuht+PSc+SFca9HBP68iCowlGqmPmHumug62/QPtoUyqB83s/EYdoOI8TX8MhJK5bxnUnpT+PWLBey2CcFVZlYyWmNuFZgZBkkM07DNhfPqazgtx8NTQUZMYhmPjQYHszqfEjBanmAMCy8WbiflmkBRaXkhqPJH4h5GAVtbEbv1E1/B8J2CO6i9hPLWdohZ6vqzViubFlC69QUO1fnejReL21BduF6fkOhGXzOkaMA32NdhYGQACkNO9zKdOl6PnZl8xobusL0Hbkicz2mga+kozFAPChlTTln6GPgorRhmSv2DpJV7WrzRaGU0lVVy5PhA=
+  distributions: sdist bdist_wheel

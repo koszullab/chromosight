@@ -30,15 +30,30 @@ def load_bedgraph2d(mat_path):
     -------
     mat: scipy.sparse.coo_matrix
         Output sparse matrix in coordinate format
-    chrom_start : numpy.array
-        1D array of starting bins for each chromosome.
+    chroms : pandas.DataFrame
+        Table of chromosome information. Each row contains the name, length,
+        first and last bin of a chromosome.
+    bins : pandas.DataFrame
+        Table of genomic bins information. Each row contains the chromosome,
+        genomic start and end coordinates of a matrix bin.
+    bin_size : int
+        Matrix resolution. Corresponds to the number of base pairs per matrix bin.
     """
     bg2 = pd.read_csv(mat_path, delimiter="\t", header=None)
     bg2.head()
-    bg2.columns = ["chr1", "start1", "end1", "chr2", "start2", "end2", "contacts"]
+    bg2.columns = [
+        "chr1",
+        "start1",
+        "end1",
+        "chr2",
+        "start2",
+        "end2",
+        "contacts",
+    ]
 
     # estimate bin size from file
     bin_size = np.median(bg2.end1 - bg2.start1).astype(int)
+
     # Throw error if bins are not equally sized (e.g. restriction fragments)
     if bin_size != bg2.end1[0] - bg2.start1[0]:
         sys.stderr.write("Error: Bins are not of equal size.")
@@ -65,19 +80,25 @@ def load_bedgraph2d(mat_path):
     bins = pd.DataFrame(
         {
             "start": [
-                start for chromsize in chromsizes.values for start in range(chromsize)
+                start
+                for chromsize in chromsizes.values
+                for start in range(chromsize)
             ]
         }
     )
     bins["start"] *= bin_size
     bins["end"] = bins["start"] + bin_size
-    bins["chrom"] = np.repeat(np.array(chromsizes.index), np.array(chromsizes.values))
+    bins["chrom"] = np.repeat(
+        np.array(chromsizes.index), np.array(chromsizes.values)
+    )
 
     # Shift chromsizes by one to get starting bin, first one is zero
     chrom_start = chromsizes.shift(1)
     chrom_start[0] = 0
     # Make chromsize cumulative to get start bin of each chrom
-    chrom_start = pd.DataFrame(chrom_start.cumsum(), columns=["cumsum"], dtype=np.int)
+    chrom_start = pd.DataFrame(
+        chrom_start.cumsum(), columns=["cumsum"], dtype=np.int
+    )
 
     # Get frags indices
     bg2 = bg2.merge(chrom_start, left_on="chr1", right_index=True)
@@ -96,47 +117,17 @@ def load_bedgraph2d(mat_path):
     chrom_start = np.array(chrom_start["cumsum"])
     chrom_end = np.append(chrom_start[1:], chrom_start[-1] + chromsizes[-1])
     chroms = pd.DataFrame(
-            {
-                'name': chromsizes.index,
-                'length': chromsizes.values,
-                'start_bin': chrom_start,
-                'end_bin': chrom_end,
-            }
+        {
+            "name": chromsizes.index,
+            "length": chromsizes.values,
+            "start_bin": chrom_start,
+            "end_bin": chrom_end,
+        }
     )
     # Only keep upper triangle
     mat = triu(mat)
     bins = bins[["chrom", "start", "end"]]
     return mat, chroms, bins, bin_size
-
-
-def save_sub_matrices(mat, input_fmt="cool", inter=False, tmpdir=None):
-    """
-    Given an input cooler object save each sub matrix (intra- and optionally
-    inter-chromosomal) as a npz file in a temporary folder.
-
-    Parameters:
-    ----------
-    mat : cooler.Cooler or pandas.DataFrame
-        The input data to store into files. Can be a cooler object or a dataframe,
-        if a 2D bedgraph file is used as input.
-    input_fmt : str
-        The input format, either cool or bg2 depending if a cool file or a 2D
-        bedgraph file is used as input.
-    inter : bool
-        Whether to consider interchromosomal matrices. If True, files are saved
-        for interchromosomal contacts, otherwise only intra-chromosomal matrices
-        are saved.
-    tmpdir : str
-        The directory where temporary files are stored. Will be generated automatically
-        if None.
-    
-    Returns:
-    -------
-    dict :
-        A dictionary of the form {(chr1, chr2): path, ...} where chr1 is the
-        chromosome corresponding to the rows of the submatrix, chr2 corresponds
-        to columns, and path is the path to the npz file containing the submatrix
-    """
 
 
 def load_cool(cool_path):
@@ -151,10 +142,16 @@ def load_cool(cool_path):
 
     Returns
     -------
-    mat : scipy coo_matrix
-        Hi-C contact map in COO format.
-    chrom_start : numpy.array
-        1D array of starting bins for each chromosome.
+    mat: scipy.sparse.coo_matrix
+        Output sparse matrix in coordinate format
+    chroms : pandas.DataFrame
+        Table of chromosome information. Each row contains the name, length,
+        first and last bin of a chromosome.
+    bins : pandas.DataFrame
+        Table of genomic bins information. Each row contains the chromosome,
+        genomic start and end coordinates of a matrix bin.
+    bin_size : int
+        Matrix resolution. Corresponds to the number of base pairs per matrix bin.
     """
     try:
         import cooler
@@ -180,7 +177,9 @@ def load_cool(cool_path):
     n = int(max(np.amax(mat.bin1_id), np.amax(mat.bin2_id))) + 1
     shape = (n, n)
     mat = coo_matrix(
-        (mat["count"], (mat.bin1_id, mat.bin2_id)), shape=shape, dtype=np.float64
+        (mat["count"], (mat.bin1_id, mat.bin2_id)),
+        shape=shape,
+        dtype=np.float64,
     )
     # Only keep upper triangle
     mat = triu(mat)
@@ -238,8 +237,9 @@ def load_kernel_config(kernel, custom=False):
         preset configuration is used.
     Returns
     -------
-    pattern_kernels : list
-        A list of array_likes corresponding to the loaded patterns.
+    kernel_config : dict
+        A dictionary containing a key: value pair for each parameter as well as 
+        list of kernel matrices under key 'kernels'.
     """
 
     # Custom kernel: use litteral path as config path
@@ -282,24 +282,6 @@ def load_kernel_config(kernel, custom=False):
     return kernel_config
 
 
-def dense2sparse(M, format="coo"):
-    format_dict = {
-        "coo": lambda x: x,
-        "csr": csr_matrix,
-        "csc": csc_matrix,
-        "lil": lil_matrix,
-    }
-    N = np.triu(M)
-    shape = N.shape
-    nonzeros = N.nonzero()
-    rows, cols = nonzeros
-    data = M[nonzeros]
-    S = coo_matrix((data, (rows, cols)), shape=shape)
-    matrix_format = format_dict[format]
-    sparse_mat = matrix_format(S)
-    return triu(sparse_mat)
-
-
 def write_patterns(coords, pattern_name, output_dir, dec=5):
     """
     Writes coordinates to a text file.
@@ -317,12 +299,13 @@ def write_patterns(coords, pattern_name, output_dir, dec=5):
     dec : int
         Number of decimals to keep in correlation scores.
     """
-    file_name = pattern_name + ".txt"
+    file_name = pattern_name + "_out.txt"
     file_path = join(output_dir, file_name)
     coords.score = np.round(coords.score, dec)
     coords.to_csv(file_path, sep="\t", index=None)
 
-def save_windows(windows, pattern_name, output_dir, format='json'):
+
+def save_windows(windows, pattern_name, output_dir=".", format="json"):
     """
     Write windows surrounding detected patterns to a npy file.
     The file contains a 3D array where windows are piled on
@@ -342,14 +325,17 @@ def save_windows(windows, pattern_name, output_dir, format='json'):
         numpy's binary format, or json for a general purpose text
         format.
     """
-    if format == 'npy':
-        file_name = pattern_name + ".npy"
+    if format == "npy":
+        file_name = pattern_name + "_out.npy"
         file_path = join(output_dir, file_name)
         np.save(file_path, windows)
-    elif format == 'json':
+    elif format == "json":
         import json
-        file_name = pattern_name + ".json"
+
+        file_name = pattern_name + "_out.json"
         file_path = join(output_dir, file_name)
         json_wins = {idx: win.tolist() for idx, win in enumerate(windows)}
-        with open(file_path, 'w') as handle:
+        with open(file_path, "w") as handle:
             json.dump(json_wins, handle, indent=4)
+    else:
+        raise ValueError("window format must be either npy or json.")

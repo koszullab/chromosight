@@ -1,6 +1,8 @@
-![Chromosight logo](chromosight.gif)
 
-# chromosight
+![Chromosight logo](docs/chromosight.gif)
+
+# Chromosight
+
 
 [![PyPI version](https://badge.fury.io/py/chromosight.svg)](https://badge.fury.io/py/chromosight)
 ![PyPI - Python Version](https://img.shields.io/pypi/pyversions/chromosight.svg)
