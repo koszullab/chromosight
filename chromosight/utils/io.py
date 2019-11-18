@@ -299,7 +299,7 @@ def write_patterns(coords, pattern_name, output_dir, dec=5):
     dec : int
         Number of decimals to keep in correlation scores.
     """
-    file_name = pattern_name + ".txt"
+    file_name = pattern_name + "_out.txt"
     file_path = join(output_dir, file_name)
     coords.score = np.round(coords.score, dec)
     coords.to_csv(file_path, sep="\t", index=None)

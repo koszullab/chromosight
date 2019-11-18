@@ -246,11 +246,13 @@ def remove_smears(patterns, win_size=8):
     """
     p = patterns.copy()
     # Divide each row / col by the window size to serve as a "hash"
-    p.row = p.bin1 // win_size
-    p.col = p.bin2 // win_size
+    p["round_row"] = p.bin1 // win_size
+    p["round_col"] = p.bin2 // win_size
     # Group patterns by row-col combination and retrieve the index of the
     # pattern with the best score in each group
-    best_idx = p.groupby(["bin1", "bin2"], sort=False)["score"].idxmax().values
+    best_idx = (
+        p.groupby(["round_row", "round_col"], sort=False)["score"].idxmax().values
+    )
     good_patterns_mask = np.zeros(patterns.shape[0], dtype=bool)
     try:
         good_patterns_mask[best_idx] = True
@@ -287,9 +289,7 @@ def picker(mat_conv, matrix, precision=None):
     ) + precision * ss.median_absolute_deviation(
         mat_conv.data, nan_policy="omit"
     )
-    bak1 = candidate_mat.copy()
     candidate_mat.data[candidate_mat.data < thres] = 0
-    bak2 = candidate_mat.copy()
     candidate_mat.data[candidate_mat.data != 0] = 1
     candidate_mat.eliminate_zeros()
 

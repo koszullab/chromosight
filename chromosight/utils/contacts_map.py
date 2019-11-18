@@ -36,21 +36,69 @@ class HicGenome:
         Kernel configuration associated with the Hi-C genome
     max_dist : int
         Maximum scanning distance for convolution during pattern detection.
-    subsample : float
-        Proportion of contacts to subsample from the matrix if between 0 and 1.
-        Number of contacts to keep if above 1. Keep all contacts if None.
+
     """
 
-    def __init__(self, path, inter=False, kernel_config={}, subsample=None):
+    def __init__(self, path, inter=False, kernel_config=None):
         # Load Hi-C matrix and associated metadata
         self.matrix, self.chroms, self.bins, self.resolution = self.load_data(
             path
         )
         self.kernel_config = kernel_config
+        self.sub_mats = None
+        self.detectable_bins = None
         self.inter = inter
-        if subsample is not None:
+        self.compute_max_dist()
+
+    def compute_max_dist(self):
+        """Use the kernel config to compute max_dist"""
+        # Convert maximum scanning distance to bins using resolution
+        try:
+            self.max_dist = max(self.kernel_config["max_dist"] // self.resolution, 1)
+            # Get the size of the largest convolution kernel
+            self.largest_kernel = max(
+                [s.shape[0] for s in self.kernel_config["kernels"]]
+            )
+        except ValueError:
+
+            self.max_dist = None
+            self.largest_kernel = 3
+
+    def normalize(self, n_mads=5):
+        """
+        Finds detectable bins and applies ICE normalisation to the whole genome
+        matrix.
+
+        Parameters
+        ----------
+        n_mads : float
+            Maximum number of median absoluted deviations (MADs) below the
+            median of the distribution of logged bin sums to consider a bin
+            detectable.
+        """
+        # Preprocess the full genome matrix
+        self.detectable_bins = preproc.get_detectable_bins(self.matrix, n_mads=n_mads)[
+            0
+        ]
+        print(
+            f"Found {len(self.detectable_bins)} / {self.matrix.shape[0]} detectable bins"
+        )
+        self.matrix = preproc.normalize(self.matrix, good_bins=self.detectable_bins)
+        print("Whole genome matrix normalized")
+
+    def subsample(self, sub):
+        """
+        Subsample contacts from the Hi-C matrix.
+        
+        Parameters
+        ----------
+        sub : float
+            Proportion of contacts to subsample from the matrix if between 0 and 1.
+            Number of contacts to keep if above 1. Keep all contacts if None.
+        """
+        if sub is not None:
             try:
-                subsample = float(subsample)
+                subsample = float(sub)
                 if subsample < 0:
                     sys.stderr.write(
                         "Error: Subsample must be strictly positive.\n"
@@ -70,34 +118,10 @@ class HicGenome:
                     )
             except ValueError:
                 sys.stderr.write(
-                    "Error: Subsample must be a number of reads.\n"
+                    "Error: Subsample must be a number of reads or proportion.\n"
                 )
                 sys.exit(1)
-        # Convert maximum scanning distance to bins using resolution
-        try:
-            self.max_dist = max(
-                self.kernel_config["max_dist"] // self.resolution, 1
-            )
-            # Get the size of the largest convolution kernel
-            self.largest_kernel = max(
-                [s.shape[0] for s in self.kernel_config["kernels"]]
-            )
-        except KeyError:
-            self.max_dist = None
-            self.largest_kernel = 3
 
-        # Preprocess the full genome matrix
-        self.detectable_bins = preproc.get_detectable_bins(
-            self.matrix, n_mads=5
-        )[0]
-        self.matrix = preproc.normalize(
-            self.matrix, good_bins=self.detectable_bins
-        )
-        print("Whole genome matrix normalized")
-        self.sub_mats = self.make_sub_matrices()
-        print("Sub matrices extracted")
-
-        # Create sub matrices objects
 
     def load_data(self, mat_path):
         """Load contact, bin and chromosome informations from input path"""
@@ -186,7 +210,9 @@ class HicGenome:
                     sub_mats.chr1[sub_mat_idx] = r1["name"]
                     sub_mats.chr2[sub_mat_idx] = r2["name"]
                     sub_mat_idx += 1
-        return sub_mats
+                    print(f"Processed {r1['name']}-{r2['name']} sub matrix.")
+        self.sub_mats = sub_mats
+        print("Sub matrices extracted")
 
     def get_full_mat_pattern(self, chr1, chr2, patterns):
         """
@@ -226,7 +252,7 @@ class HicGenome:
         ----------
         bin_idx : int
             A bin number corresponding to a row or column of the whole genome matrix.
-        
+
         Returns
         -------
         tuple :
@@ -270,6 +296,8 @@ class ContactMap:
         max_dist=None,
         largest_kernel=0,
     ):
+        self.despeckle = False
+        self.snr = False
         self.matrix = matrix
         self.resolution = resolution
         self.inter = inter
@@ -293,11 +321,17 @@ class ContactMap:
 
     def preprocess_intra_matrix(self):
         # Remove speckles (outlier pixels)
-        sub_mat = preproc.despeckle(self.matrix, th2=3)
-        # Compute signal to noise ratio at all diagonals
-        snr_dist = preproc.signal_to_noise_threshold(
-            sub_mat, self.detectable_bins[0]
-        )
+        if self.despeckle:
+            sub_mat = preproc.despeckle(self.matrix, th2=3)
+        else:
+            sub_mat = self.matrix
+        if self.snr:
+            # Compute signal to noise ratio at all diagonals
+            snr_dist = preproc.signal_to_noise_threshold(
+                sub_mat, detectable_bins=self.detectable_bins[0]
+            )
+        else:
+            snr_dist = sub_mat.shape[0]
         # Define max scanning dist based on snr and pattern config
         if self.max_dist is None:
             sub_mat_max_dist = snr_dist
@@ -306,7 +340,9 @@ class ContactMap:
         # If we scan until a given distance, data values in a margin must be kept as well
         keep_distance = sub_mat_max_dist + (self.largest_kernel)
         # Detrend matrix for power law
-        sub_mat = preproc.detrend(sub_mat, self.detectable_bins[0])
+        sub_mat = preproc.detrend(
+            sub_mat, max_dist=self.max_dist, detectable_bins=self.detectable_bins[0]
+        )
 
         # Create a new matrix from the diagonals below max dist (faster than removing them)
         sub_mat = preproc.diag_trim(sub_mat.todia(), keep_distance)

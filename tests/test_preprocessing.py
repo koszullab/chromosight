@@ -19,27 +19,28 @@ class TestPreprocessing(unittest.TestCase):
     def test_get_detectable_bins(self):
         """Check if correct bin indices are reported as detectable."""
         # Make random matrix using uniform sample between 0 and 1
-        uniform_mat = sp.random(1000, 1000, 0.1, format="csr")
+        uniform_mat = sp.random(1000, 1000, density=0.1, format="csr")
         # introduce outlier bin
-        uniform_mat[10, :] = -10e6
-        det_bins = preproc.get_detectable_bins(
-            uniform_mat.tocoo(), inter=False
-        )
+        uniform_mat[10, :] = 0.0
+        uniform_mat[:, 10] = 0.0
+        uniform_mat = uniform_mat.tocoo()
+        uniform_mat.eliminate_zeros()
+        det_bins = preproc.get_detectable_bins(uniform_mat, inter=False, n_mads=1)
         # Check if symmetric mode return same detectable rows and cols
         assert np.all(det_bins[0] == det_bins[1])
         # Check if the right bin index is indetectable
         assert 10 not in det_bins[0]
         asym_mat = sp.random(100, 1000, 0.1, format="csr")
-        asym_mat[10, :] = -10e6
-        asym_mat[:, 6] = -10e6
-        det_bins = preproc.get_detectable_bins(asym_mat, inter=True)
-        assert len(det_bins[0]) < len(det_bins[1])
-        # Ensure right index was removed in both dimensions
+        asym_mat[10, :] = 0
+        asym_mat[:, 6] = 0
+        asym_mat = asym_mat.tocoo()
+        asym_mat.eliminate_zeros()
+        asym_mat.data *= 1000
+        det_bins = preproc.get_detectable_bins(asym_mat, inter=True, n_mads=1)
+        # Ensure correct index was removed in both dimensions
         assert 10 not in det_bins[0]
-        assert 6 in det_bins[0]
         assert 6 not in det_bins[1]
-        assert 10 in det_bins[1]
-        # Ensure asymmetric intrachromosomal matrix as input results in crash
+        # Ensure asymmetric interchromosomal matrix as input results in crash
         with self.assertRaises(ValueError):
             preproc.get_detectable_bins(asym_mat, inter=False)
 
@@ -53,25 +54,26 @@ class TestPreprocessing(unittest.TestCase):
 @params(*intra_mats)
 def test_normalize(matrix):
     """Check if normalization sets all bins sums to ~1 (0.5 for upper triangle)."""
-    norm = preproc.normalize(matrix, good_bins=None)
-    sym_norm = norm + norm.T - norm.diagonal(0)
-    bin_sums = sym_norm.sum(axis=1)
-    assert np.all(np.isclose(bin_sums, np.ones(matrix.shape[0], rtol=0.1)))
+    norm = preproc.normalize(matrix, good_bins=None, iterations=50)
+    sym_norm = norm + norm.T
+    sym_norm.setdiag(sym_norm.diagonal(0) / 2)
+    bin_sums = sym_norm.sum(axis=1).A1
+    # Replace missing bins by ones for the sake of testing
+    bin_sums[bin_sums == 0] = 1
+    assert np.all(np.isclose(bin_sums, np.ones(matrix.shape[0]), rtol=0.1))
 
 
 @params(*intra_mats)
 def test_diag_trim(matrix):
     """Check if trimming diagonals preserves shape and sets diagonals to zero."""
     for d in range(matrix.shape[0]):
-        trimmed = preproc.diag_trim(matrix, d)
-        diag_sums = [
-            trimmed.diagonal(d).sum() for d in range(trimmed.shape[0])
-        ]
+        trimmed = preproc.diag_trim(matrix.todia(), d)
+        diag_sums = [trimmed.diagonal(d).sum() for d in range(trimmed.shape[0])]
         assert trimmed.shape == matrix.shape
-        assert np.sum(diag_sums[d:]) == 0
+        assert np.sum(diag_sums[d + 1 :]) == 0
 
 
-def despeckle():
+def test_despeckle():
     """Check that artificially added outliers are removed"""
     # Make random matrix using uniform sample between 0 and 1
     uniform_mat = sp.random(1000, 1000, 0.1, format="csr")
@@ -117,19 +119,29 @@ def test_resize_kernel():
             assert np.max(obs_kernel) == obs_kernel[obs_dim // 2, obs_dim // 2]
 
 
+def test_distance_law():
+    """Test if the distance law array has the right dimensions and expected values"""
+    m = np.ones((3, 3))
+    m += np.array([1, 2, 3])
+    dist_law = preproc.distance_law(sp.csr_matrix(m))
+    assert np.all(dist_law == np.array([3.0, 3.5, 4.0]))
+    assert dist_law.shape == (3,)
+
+
 @params(*intra_mats)
 def test_detrend(matrix):
     """Basic test: Check if detrended matrix pixels have lower standard deviation"""
     detrended = preproc.detrend(matrix)
-    assert matrix.data.std() > detrended.data.std()
+    for d in range(matrix.shape[0] // 10):
+        assert matrix.diagonal(d).std() > detrended.diagonal(d).std()
 
 
 @params(*intra_mats)
 def test_ztransform(matrix):
     """Check if z-transformation yields mean 0 and std 1"""
     ztr = preproc.ztransform(matrix)
-    assert np.isclose(np.mean(ztr), 0, rtol=0.1)
-    assert np.isclose(np.std(ztr), 1, rtol=0.1)
+    assert np.isclose(np.mean(ztr.data), 0, rtol=0.1)
+    assert np.isclose(np.std(ztr.data), 1, rtol=0.1)
 
 
 def test_signal_to_noise_threshold():
@@ -139,29 +151,31 @@ def test_signal_to_noise_threshold():
     # Set all values in 5th first diagonals to 10 (SNR = 10)
     for k in range(5):
         syn_mat.setdiag(10, k=k)
-    snr = preproc.signal_to_noise_threshold(mat, None)
+    snr_idx = preproc.signal_to_noise_threshold(syn_mat, detectable_bins=None)
     # Since the 5th first diagonals are good, the last scannable diagonal
     # should be 4
-    assert snr == 4
+    assert snr_idx == 5
 
 
-@params(intra_mats)
-def test_sum_mat_bins():
+@params(*intra_mats)
+def test_sum_mat_bins(mat):
     """Check if bin sum on upper triangle matrix yields expected results."""
-    sym_mat = mat + mat.T - mat.diagonal()
+    sym_mat = mat + mat.T
+    sym_mat.setdiag(sym_mat.diagonal() / 2)
     summed = preproc.sum_mat_bins(sym_mat)
-    assert np.all(np.isclose(sym_mat.sum(axis=1), summed, rtol=0.1))
+    exp_sum = 2 * sym_mat.sum(axis=1).A1 - sym_mat.diagonal()
+    assert np.all(np.isclose(exp_sum, summed, rtol=0.1))
 
 
 @params(0, 0.1, 0.5, 0.8, 1)
 def test_subsample_contacts_prop(prop):
     """Test sampling proportions of contacts"""
-    sampled = preproc.subsample_contacts(mat, prop)
+    sampled = preproc.subsample_contacts(mat.tocoo(), int(prop * mat.data.sum()))
     assert np.isclose(sampled.data.sum(), mat.data.sum() * prop, rtol=0.1)
 
 
 @params(2, 100, 10000)
 def test_subsample_contacts_count(n_contacts):
     """Test sampling raw contact counts"""
-    sampled = preproc.subsample_contacts(mat, n_contacts)
+    sampled = preproc.subsample_contacts(mat.tocoo(), n_contacts)
     assert np.isclose(sampled.data.sum(), n_contacts, rtol=0.1)

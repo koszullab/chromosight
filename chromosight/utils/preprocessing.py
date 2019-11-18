@@ -8,6 +8,7 @@ import numpy as np
 import sys
 from scipy.signal import savgol_filter
 import scipy.stats as ss
+import scipy.sparse as sp
 from scipy.sparse import dia_matrix, csr_matrix, coo_matrix, issparse
 import scipy.ndimage as ndi
 
@@ -27,18 +28,24 @@ def normalize(B, good_bins=None, iterations=10):
         
     Returns
     -------
-    numpy.ndarray :
+    scipy.sparse.coo_matrix :
         The SCN normalised Hi-C matrix
     """
     if good_bins is None:
         good_bins = np.arange(B.shape[0])
     r = B.copy()
-    r = r.tocsr()
     # Make a boolean mask from good bins
     good_mask = np.isin(range(r.shape[0]), good_bins)
     # Set all pixels in a nondetectable bin to 0
-    r[~good_mask, :] = 0
-    r[:, ~good_mask] = 0
+    # For faster masking of bins, mask bins using dot product with an identity
+    # matrix where bad bins have been masked on the diagonal
+    # E.g. if removing the second bin (row and column):
+    # 1 0 0     9 6 5     1 0 0     9 0 5
+    # 0 0 0  X  6 8 7  X  0 0 0  =  0 0 0
+    # 0 0 1     6 7 8     0 0 1     6 0 8
+    mask_mat = sp.eye(r.shape[0])
+    mask_mat.data[0][~good_mask] = 0
+    r = mask_mat.dot(r).dot(mask_mat)
     r = r.tocoo()
     # Update sparsity and get coordinates of nonzero pixels
     r.eliminate_zeros()
@@ -53,7 +60,6 @@ def normalize(B, good_bins=None, iterations=10):
     # Scale to 1
     r.data = r.data * (1 / np.median(bin_sums))
     r.eliminate_zeros()
-
     return r
 
 
@@ -85,7 +91,7 @@ def diag_trim(mat, n):
     return trimmed
 
 
-def distance_law(matrix, detectable_bins=None, fun=np.nanmedian):
+def distance_law(matrix, detectable_bins=None, max_dist=None, fun=np.nanmedian):
     """
     Computes genomic distance law by averaging over each diagonal in
     the upper triangle matrix.
@@ -96,6 +102,8 @@ def distance_law(matrix, detectable_bins=None, fun=np.nanmedian):
         the input matrix to compute distance law from.
     detectable_bins : numpy.array of ints
         An array of detectable bins indices to consider when computing distance law.
+    max_dist : int
+        Maximum distance from diagonal, in number of bins in which to compute distance law
     fun : callable
         A function to apply on each diagonal. Defaults to mean.
 
@@ -116,16 +124,20 @@ def distance_law(matrix, detectable_bins=None, fun=np.nanmedian):
         array([3. , 3.5, 4. ])
 
     """
-    n = min(matrix.shape)
-    dist = np.zeros(n)
-
-    for diag in range(n):
+    mat_n = matrix.shape[0]
+    if max_dist is None:
+        max_dist = mat_n
+    n_diags = min(mat_n, max_dist)
+    dist = np.zeros(mat_n)
+    if detectable_bins is None:
+        detectable_bins = np.array(range(mat_n))
+    for diag in range(n_diags):
         # Find detectable which fall in diagonal
-        detect_mask = np.zeros(n, dtype=bool)
+        detect_mask = np.zeros(mat_n, dtype=bool)
         detect_mask[detectable_bins] = 1
         # Find bins which are detectable in the diagonal (intersect of hori and verti)
-        detect_mask_h = detect_mask[: (n - diag)]
-        detect_mask_v = detect_mask[n - (n - diag) :]
+        detect_mask_h = detect_mask[: (mat_n - diag)]
+        detect_mask_v = detect_mask[mat_n - (mat_n - diag) :]
         detect_mask_diag = detect_mask_h & detect_mask_v
         dist[diag] = fun(matrix.diagonal(diag)[detect_mask_diag])
     return dist
@@ -210,11 +222,13 @@ def get_detectable_bins(mat, n_mads=3, inter=False):
         # Find poor interacting rows and columns
         sum_med = np.median(sum_bins)
         detect_threshold = max(1, sum_med - sum_mad * n_mads)
+
         # Removal of poor interacting rows and columns
         good_bins = np.where(sum_bins > detect_threshold)[0]
         good_bins = (good_bins, good_bins)
     else:
-        sum_rows, sum_cols = matrix.sum(axis=0), matrix.sum(axis=1)
+        # Adapted for asymetric matrices (need to compute rows and columns)
+        sum_rows, sum_cols = matrix.sum(axis=1).A1, matrix.sum(axis=0).A1
         mad_rows, mad_cols = mad(sum_rows), mad(sum_cols)
         med_rows, med_cols = np.median(sum_rows), np.median(sum_cols)
         detect_threshold_rows = max(1, med_rows - mad_rows * n_mads)
@@ -225,7 +239,7 @@ def get_detectable_bins(mat, n_mads=3, inter=False):
     return good_bins
 
 
-def detrend(matrix, detectable_bins=None, fun=np.nanmedian):
+def detrend(matrix, detectable_bins=None, max_dist=None, fun=np.nanmedian):
     """
     Detrends a Hi-C matrix by the distance law.
     The input matrix should have been normalised beforehandand.
@@ -238,6 +252,8 @@ def detrend(matrix, detectable_bins=None, fun=np.nanmedian):
         Tuple containing a list of detectable rows and a list of columns on
         which to perform detrending. Poorly interacting indices have been
         excluded.
+    max_dist : int
+        Maximum number of bins from the diagonal at which to compute trend.
 
     Returns
     -------
@@ -245,7 +261,7 @@ def detrend(matrix, detectable_bins=None, fun=np.nanmedian):
         The detrended Hi-C matrix.
     """
     matrix = matrix.tocsr()
-    y = distance_law(matrix, detectable_bins)
+    y = distance_law(matrix, detectable_bins=detectable_bins, max_dist=max_dist)
     y[np.isnan(y)] = 0.0
 
     # Detrending by the distance law
@@ -268,26 +284,25 @@ def ztransform(matrix):
 
     Parameters
     ----------
-    matrix : numpy.array
-        A 1-dimensional numpy array of nonzero values from a sparse matrix.
+    matrix : scipy.sparse.coo_matrix
+        A Hi-C matrix in sparse format.
 
     Returns
     -------
-    numpy.array :
-        A 1-dimensional numpy array of the z-transformed nonzero values.
+    scipy.sparse.coo_matrix:
+        The detrended Hi-C matrix
     """
 
-    data = matrix.data
-    mu = np.mean(data)
-    sd = np.std(data)
-    N = matrix.copy()
-    N.data -= mu
-    N.data /= sd
+    mat = matrix.copy()
+    mu = np.mean(mat.data)
+    sd = np.std(mat.data)
+    mat.data -= mu
+    mat.data /= sd
 
-    return N
+    return mat
 
 
-def signal_to_noise_threshold(matrix, detectable_bins, smooth=True):
+def signal_to_noise_threshold(matrix, detectable_bins):
     """
     Compute signal to noise ratio (SNR) at each diagonal of the matrix to determine
     the maximum scanning distance from the diagonal. The SNR is smoothed using
@@ -299,27 +314,19 @@ def signal_to_noise_threshold(matrix, detectable_bins, smooth=True):
         The Hi-C contact map in sparse format.
     detectable_bins : numpy.array
         Array containing indices of detectable bins.
-    smooth : bool
-        Whether the SNR values should be smoothed using the savgol filter.
     Returns
     -------
     int :
         The maximum distance from the diagonal at which the matrix should be scanned
     """
     # Using median and mad to reduce sensitivity to outlier
-    dist_medians = distance_law(matrix, detectable_bins, np.median)
-    dist_mads = distance_law(
-        matrix,
-        detectable_bins,
-        lambda x: ss.median_absolute_deviation(x, nan_policy="omit"),
-    )
-    snr = dist_medians / dist_mads
+    dist_means = distance_law(matrix, detectable_bins=detectable_bins, fun=np.nanmean)
+    dist_stds = distance_law(matrix, detectable_bins=detectable_bins, fun=np.nanstd)
+    snr = dist_means / dist_stds
     # Values below 1 are considered too noisy
     threshold_noise = 1.0
     snr[np.isnan(snr)] = 0.0
     try:
-        if smooth:
-            snr = savgol_filter(snr, window_length=17, polyorder=5)
         max_dist = min(np.where(snr < threshold_noise)[0])
     except ValueError:
         max_dist = matrix.shape[0]
@@ -412,7 +419,7 @@ def resize_kernel(kernel, kernel_res, signal_res, min_size=5, max_size=101):
         Lower bound, in number of rows/column allowed when resizing the kernel.
     max_size : int
         Upper bound, in number of rows/column allowed when resizing the kernel.
-    
+
     Returns
     -------
     resized_kernel : numpy.array

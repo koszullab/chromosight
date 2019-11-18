@@ -47,9 +47,8 @@ class TestIO:
         # Group bins per chromosome
         chr_groups = df.groupby("chrom1")
         # Compute the number of bins in each chromosome and make a range (0 -> nbins)
-        start_per_chrom = chr_groups.apply(
-            lambda g: np.array(range(g.shape[0]))
-        )
+        start_per_chrom = chr_groups.apply(lambda g: np.array(range(g.shape[0])))
+
         # Concatenate ranges to have start values from 0 to n bins
         start_array = np.hstack(start_per_chrom)
         # Multiply start values by resolution to get base pair values
@@ -59,17 +58,7 @@ class TestIO:
         # Make the same bins for second pairs (just a diagonal matrix then)
         df[["chrom2", "start2", "end2"]] = df[["chrom1", "start1", "end1"]]
         # Reorder columns
-        df = df[
-            [
-                "chrom1",
-                "start1",
-                "end1",
-                "chrom2",
-                "start2",
-                "end2",
-                "contacts",
-            ]
-        ]
+        df = df[["chrom1", "start1", "end1", "chrom2", "start2", "end2", "contacts"]]
         df.to_csv(self.tmp_path, sep="\t", header=None, index=False)
 
         # Load bedraph and check whether it was parsed correctly
@@ -177,35 +166,31 @@ class TestIO:
             }
         )
         for dec in range(1, 5):
-            cio.write_patterns(
-                tmp_coords, self.tmp_file, self.tmp_dir, dec=dec
-            )
-            obs_coords = pd.read_csv(self.tmp_path + ".txt", sep="\t")
+            cio.write_patterns(tmp_coords, self.tmp_file, self.tmp_dir, dec=dec)
+            obs_coords = pd.read_csv(self.tmp_path + "_out.txt", sep="\t")
             assert obs_coords.shape == tmp_coords.shape
-            assert np.all(
-                np.isclose(obs_coords.score, np.round(tmp_coords.score, dec))
-            )
-            os.unlink(self.tmp_path + ".txt")
+            assert np.all(np.isclose(obs_coords.score, np.round(tmp_coords.score, dec)))
+            os.unlink(self.tmp_path + "_out.txt")
 
     def test_save_windows(self):
         """Check that windows around detected patterns can be saved to disk in JSON and npy."""
         tmp_wins = np.random.random((100, 9, 9))
         # Check whether legit windows can be saved and loaded in both formats
         cio.save_windows(tmp_wins, self.tmp_file, self.tmp_dir, format="json")
-        with open(self.tmp_path + ".json", "r") as jwin:
+        with open(self.tmp_path + "_out.json", "r") as jwin:
             w = json.load(jwin)
             # Loaded as a dict, check number of keys
             assert len(w.keys()) == 100
             # Check dim of first value
             assert np.array(w["0"]).shape == (9, 9)
         # Remove json windows file
-        os.unlink(self.tmp_path + ".json")
+        os.unlink(self.tmp_path + "_out.json")
 
         cio.save_windows(tmp_wins, self.tmp_file, self.tmp_dir, format="npy")
-        w = np.load(self.tmp_path + ".npy")
+        w = np.load(self.tmp_path + "_out.npy")
         assert w.shape == (100, 9, 9)
         # Remove npy windows file
-        os.unlink(self.tmp_path + ".npy")
+        os.unlink(self.tmp_path + "_out.npy")
 
         # Check if an inappropriate format raises appropriate exception.
         with assert_raises(ValueError):
