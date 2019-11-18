@@ -34,10 +34,14 @@ with open("requirements.txt", "r") as f:
 with open("chromosight/version.py", "w") as f:
     f.write("__version__ = '{}'\n".format(VERSION))
 
+with codecs.open("README.md", encoding="utf-8") as f:
+    LONG_DESCRIPTION = f.read()
+
 setup(
     name=name,
     author="axel.cournac@pasteur.fr",
     description=__doc__,
+    long_description=LONG_DESCRIPTION,
     version=VERSION,
     license=LICENSE,
     classifiers=CLASSIFIERS,
