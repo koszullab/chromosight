@@ -8,6 +8,7 @@ import numpy as np
 import sys
 from scipy.signal import savgol_filter
 import scipy.stats as ss
+import scipy.sparse as sp
 from scipy.sparse import dia_matrix, csr_matrix, coo_matrix, issparse
 import scipy.ndimage as ndi
 
@@ -27,18 +28,24 @@ def normalize(B, good_bins=None, iterations=10):
         
     Returns
     -------
-    numpy.ndarray :
+    scipy.sparse.coo_matrix :
         The SCN normalised Hi-C matrix
     """
     if good_bins is None:
         good_bins = np.arange(B.shape[0])
     r = B.copy()
-    r = r.tocsr()
     # Make a boolean mask from good bins
     good_mask = np.isin(range(r.shape[0]), good_bins)
     # Set all pixels in a nondetectable bin to 0
-    r[~good_mask, :] = 0
-    r[:, ~good_mask] = 0
+    # For faster masking of bins, mask bins using dot product with an identity
+    # matrix where bad bins have been masked on the diagonal
+    # E.g. if removing the second bin (row and column):
+    # 1 0 0     9 6 5     1 0 0     9 0 5
+    # 0 0 0  X  6 8 7  X  0 0 0  =  0 0 0
+    # 0 0 1     6 7 8     0 0 1     6 0 8
+    mask_mat = sp.eye(r.shape[0])
+    mask_mat.data[0][~good_mask] = 0
+    r = mask_mat.dot(r).dot(mask_mat)
     r = r.tocoo()
     # Update sparsity and get coordinates of nonzero pixels
     r.eliminate_zeros()
@@ -53,7 +60,6 @@ def normalize(B, good_bins=None, iterations=10):
     # Scale to 1
     r.data = r.data * (1 / np.median(bin_sums))
     r.eliminate_zeros()
-
     return r
 
 
@@ -127,11 +133,11 @@ def distance_law(matrix, detectable_bins=None, max_dist=None, fun=np.nanmedian):
         detectable_bins = np.array(range(mat_n))
     for diag in range(n_diags):
         # Find detectable which fall in diagonal
-        detect_mask = np.zeros(n_diags, dtype=bool)
+        detect_mask = np.zeros(mat_n, dtype=bool)
         detect_mask[detectable_bins] = 1
         # Find bins which are detectable in the diagonal (intersect of hori and verti)
-        detect_mask_h = detect_mask[: (n_diags - diag)]
-        detect_mask_v = detect_mask[n_diags - (n_diags - diag) :]
+        detect_mask_h = detect_mask[: (mat_n - diag)]
+        detect_mask_v = detect_mask[mat_n - (mat_n - diag) :]
         detect_mask_diag = detect_mask_h & detect_mask_v
         dist[diag] = fun(matrix.diagonal(diag)[detect_mask_diag])
     return dist
