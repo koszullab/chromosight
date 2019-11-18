@@ -219,7 +219,7 @@ def cmd_detect(arguments):
                 mat, kernel_config["resolution"], hic_genome.resolution
             )
     hic_genome.kernel_config = kernel_config
-    # Normaliza (balance) matrix using ICE
+    # Normalize (balance) matrix using ICE
     hic_genome.normalize(n_mads)
     # Subsample Hi-C contacts from the matrix, if requersted
     hic_genome.subsample(subsample)

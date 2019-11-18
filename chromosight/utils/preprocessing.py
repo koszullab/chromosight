@@ -220,12 +220,13 @@ def get_detectable_bins(mat, n_mads=3, inter=False):
         # Find poor interacting rows and columns
         sum_med = np.median(sum_bins)
         detect_threshold = max(1, sum_med - sum_mad * n_mads)
+
         # Removal of poor interacting rows and columns
         good_bins = np.where(sum_bins > detect_threshold)[0]
         good_bins = (good_bins, good_bins)
     else:
         # Adapted for asymetric matrices (need to compute rows and columns)
-        sum_rows, sum_cols = matrix.sum(axis=0), matrix.sum(axis=1)
+        sum_rows, sum_cols = matrix.sum(axis=1).A1, matrix.sum(axis=0).A1
         mad_rows, mad_cols = mad(sum_rows), mad(sum_cols)
         med_rows, med_cols = np.median(sum_rows), np.median(sum_cols)
         detect_threshold_rows = max(1, med_rows - mad_rows * n_mads)
