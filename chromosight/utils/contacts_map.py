@@ -80,6 +80,9 @@ class HicGenome:
 
         # Preprocess the full genome matrix
         self.detectable_bins = preproc.get_detectable_bins(self.matrix, n_mads=5)[0]
+        print(
+            f"Found {len(self.detectable_bins)} / {self.matrix.shape[0]} detectable bins"
+        )
         self.matrix = preproc.normalize(self.matrix, good_bins=self.detectable_bins)
         print("Whole genome matrix normalized")
         self.sub_mats = self.make_sub_matrices()
@@ -292,7 +295,9 @@ class ContactMap:
         # If we scan until a given distance, data values in a margin must be kept as well
         keep_distance = sub_mat_max_dist + (self.largest_kernel)
         # Detrend matrix for power law
-        sub_mat = preproc.detrend(sub_mat, detectable_bins=self.detectable_bins[0])
+        sub_mat = preproc.detrend(
+            sub_mat, max_dist=self.max_dist, detectable_bins=self.detectable_bins[0]
+        )
 
         # Create a new matrix from the diagonals below max dist (faster than removing them)
         sub_mat = preproc.diag_trim(sub_mat.todia(), keep_distance)
