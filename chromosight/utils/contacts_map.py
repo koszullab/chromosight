@@ -43,14 +43,18 @@ class HicGenome:
 
     def __init__(self, path, inter=False, kernel_config={}, subsample=None):
         # Load Hi-C matrix and associated metadata
-        self.matrix, self.chroms, self.bins, self.resolution = self.load_data(path)
+        self.matrix, self.chroms, self.bins, self.resolution = self.load_data(
+            path
+        )
         self.kernel_config = kernel_config
         self.inter = inter
         if subsample is not None:
             try:
                 subsample = float(subsample)
                 if subsample < 0:
-                    sys.stderr.write("Error: Subsample must be strictly positive.\n")
+                    sys.stderr.write(
+                        "Error: Subsample must be strictly positive.\n"
+                    )
                     sys.exit(1)
                 if subsample < 1:
                     subsample *= self.matrix.sum()
@@ -65,11 +69,15 @@ class HicGenome:
                         "Skipping subsampling: Value is higher than the number of contacts in the matrix."
                     )
             except ValueError:
-                sys.stderr.write("Error: Subsample must be a number of reads.\n")
+                sys.stderr.write(
+                    "Error: Subsample must be a number of reads.\n"
+                )
                 sys.exit(1)
         # Convert maximum scanning distance to bins using resolution
         try:
-            self.max_dist = max(self.kernel_config["max_dist"] // self.resolution, 1)
+            self.max_dist = max(
+                self.kernel_config["max_dist"] // self.resolution, 1
+            )
             # Get the size of the largest convolution kernel
             self.largest_kernel = max(
                 [s.shape[0] for s in self.kernel_config["kernels"]]
@@ -79,8 +87,12 @@ class HicGenome:
             self.largest_kernel = 3
 
         # Preprocess the full genome matrix
-        self.detectable_bins = preproc.get_detectable_bins(self.matrix, n_mads=5)[0]
-        self.matrix = preproc.normalize(self.matrix, good_bins=self.detectable_bins)
+        self.detectable_bins = preproc.get_detectable_bins(
+            self.matrix, n_mads=5
+        )[0]
+        self.matrix = preproc.normalize(
+            self.matrix, good_bins=self.detectable_bins
+        )
         print("Whole genome matrix normalized")
         self.sub_mats = self.make_sub_matrices()
         print("Sub matrices extracted")
@@ -99,7 +111,9 @@ class HicGenome:
 
         # Load contact map and chromosome start bins coords
         try:
-            sub_mat_df, chroms, bins, resolution = format_loader[extension](mat_path)
+            sub_mat_df, chroms, bins, resolution = format_loader[extension](
+                mat_path
+            )
         except KeyError as e:
             sys.stderr.write(
                 f"Unknown format: {extension}. Must be one of {format_loader.keys()}\n"
@@ -127,7 +141,9 @@ class HicGenome:
         n_chroms = self.chroms.shape[0]
         if self.inter:
             sub_mats = pd.DataFrame(
-                np.zeros((int(n_chroms ** 2 / 2 + n_chroms / 2), 3), dtype=str),
+                np.zeros(
+                    (int(n_chroms ** 2 / 2 + n_chroms / 2), 3), dtype=str
+                ),
                 columns=sub_cols,
             )
         else:
@@ -190,8 +206,12 @@ class HicGenome:
         """
         full_patterns = patterns.copy()
         # Get start bin for chromosomes of interest
-        startA = self.chroms.loc[self.chroms.name == chr1, "start_bin"].values[0]
-        startB = self.chroms.loc[self.chroms.name == chr2, "start_bin"].values[0]
+        startA = self.chroms.loc[self.chroms.name == chr1, "start_bin"].values[
+            0
+        ]
+        startB = self.chroms.loc[self.chroms.name == chr2, "start_bin"].values[
+            0
+        ]
         # Shift index by start bin of chromosomes
         full_patterns.bin1 += startA
         full_patterns.bin2 += startB
@@ -257,7 +277,9 @@ class ContactMap:
         self.largest_kernel = largest_kernel
         # If detectable were not provided, compute them from the input matrix
         if detectable_bins is None:
-            detectable_bins = preproc.get_detectable_bins(self.matrix, inter=self.inter)
+            detectable_bins = preproc.get_detectable_bins(
+                self.matrix, inter=self.inter
+            )
         self.detectable_bins = detectable_bins
 
         # Apply preprocessing steps on the input matrix
@@ -273,7 +295,9 @@ class ContactMap:
         # Remove speckles (outlier pixels)
         sub_mat = preproc.despeckle(self.matrix, th2=3)
         # Compute signal to noise ratio at all diagonals
-        snr_dist = preproc.signal_to_noise_threshold(sub_mat, self.detectable_bins[0])
+        snr_dist = preproc.signal_to_noise_threshold(
+            sub_mat, self.detectable_bins[0]
+        )
         # Define max scanning dist based on snr and pattern config
         if self.max_dist is None:
             sub_mat_max_dist = snr_dist

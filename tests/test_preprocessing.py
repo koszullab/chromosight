@@ -2,13 +2,17 @@ import numpy as np
 import unittest
 from nose2.tools import params
 import scipy.sparse as sp
+import chromosight
+import chromosight.utils
 import chromosight.utils.preprocessing as preproc
 import chromosight.utils.io as cio
 
 mat, chroms, bins, res = cio.load_cool("data_test/example.cool")
 mat = mat.tocsr()
 # Get all intra-chromosomal matrices
-intra_mats = [mat[s:e, s:e] for s, e in zip(chroms["start_bin"], chroms["end_bin"])]
+intra_mats = [
+    mat[s:e, s:e] for s, e in zip(chroms["start_bin"], chroms["end_bin"])
+]
 
 
 class TestPreprocessing(unittest.TestCase):
@@ -18,7 +22,9 @@ class TestPreprocessing(unittest.TestCase):
         uniform_mat = sp.random(1000, 1000, 0.1, format="csr")
         # introduce outlier bin
         uniform_mat[10, :] = -10e6
-        det_bins = preproc.get_detectable_bins(uniform_mat.tocoo(), inter=False)
+        det_bins = preproc.get_detectable_bins(
+            uniform_mat.tocoo(), inter=False
+        )
         # Check if symmetric mode return same detectable rows and cols
         assert np.all(det_bins[0] == det_bins[1])
         # Check if the right bin index is indetectable
@@ -58,7 +64,9 @@ def test_diag_trim(matrix):
     """Check if trimming diagonals preserves shape and sets diagonals to zero."""
     for d in range(matrix.shape[0]):
         trimmed = preproc.diag_trim(matrix, d)
-        diag_sums = [trimmed.diagonal(d).sum() for d in range(trimmed.shape[0])]
+        diag_sums = [
+            trimmed.diagonal(d).sum() for d in range(trimmed.shape[0])
+        ]
         assert trimmed.shape == matrix.shape
         assert np.sum(diag_sums[d:]) == 0
 
@@ -103,7 +111,9 @@ def test_resize_kernel():
             )
             obs_dim = obs_kernel.shape[0]
             assert obs_dim == obs_kernel.shape[1]
-            assert obs_dim == max(min(max_allowed_dim, exp_dim), min_allowed_dim)
+            assert obs_dim == max(
+                min(max_allowed_dim, exp_dim), min_allowed_dim
+            )
             assert np.max(obs_kernel) == obs_kernel[obs_dim // 2, obs_dim // 2]
 
 

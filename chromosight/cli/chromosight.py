@@ -84,9 +84,17 @@ import docopt
 import multiprocessing as mp
 from chromosight.version import __version__
 from chromosight.utils.contacts_map import HicGenome
-from chromosight.utils.io import write_patterns, save_windows, load_kernel_config
+from chromosight.utils.io import (
+    write_patterns,
+    save_windows,
+    load_kernel_config,
+)
 from chromosight.utils.plotting import pattern_plot, pileup_plot
-from chromosight.utils.detection import pattern_detector, pileup_patterns, remove_smears
+from chromosight.utils.detection import (
+    pattern_detector,
+    pileup_patterns,
+    remove_smears,
+)
 
 
 def _override_kernel_config(param_name, param_value, param_type, config):
@@ -105,7 +113,9 @@ def _override_kernel_config(param_name, param_value, param_type, config):
         try:
             config[param_name] = param_type(param_value)
         except ValueError:
-            raise ValueError(f'Error: {param_name} must be a {param_type} or "auto"')
+            raise ValueError(
+                f'Error: {param_name} must be a {param_type} or "auto"'
+            )
 
     return config
 
@@ -138,7 +148,9 @@ def _detect_sub_mat(data):
     sub = data[0][1]
     config = data[1]
     kernel = data[2]
-    chrom_patterns, chrom_windows = pattern_detector(sub.contact_map, config, kernel)
+    chrom_patterns, chrom_windows = pattern_detector(
+        sub.contact_map, config, kernel
+    )
     return {
         "coords": chrom_patterns,
         "windows": chrom_windows,
@@ -199,13 +211,18 @@ def cmd_detect(arguments):
     kernel_config = _override_kernel_config(
         "precision", precision, float, kernel_config
     )
-    kernel_config = _override_kernel_config("max_dist", max_dist, int, kernel_config)
+    kernel_config = _override_kernel_config(
+        "max_dist", max_dist, int, kernel_config
+    )
 
     # kernel_config = _override_kernel_config("max_dist", max_dist, int, kernel_config)
     # Make shorten max distance in case matrix is noisy
 
     hic_genome = HicGenome(
-        mat_path, inter=interchrom, kernel_config=kernel_config, subsample=subsample
+        mat_path,
+        inter=interchrom,
+        kernel_config=kernel_config,
+        subsample=subsample,
     )
 
     all_pattern_coords = []
@@ -229,7 +246,9 @@ def cmd_detect(arguments):
             sub_mat_results = pool.map(_detect_sub_mat, sub_mat_data)
             # Convert coordinates from chromosome to whole genome bins
             kernel_coords = [
-                hic_genome.get_full_mat_pattern(d["chr1"], d["chr2"], d["coords"])
+                hic_genome.get_full_mat_pattern(
+                    d["chr1"], d["chr2"], d["coords"]
+                )
                 for d in sub_mat_results
                 if d["coords"] is not None
             ]
@@ -238,7 +257,11 @@ def cmd_detect(arguments):
             try:
                 # Extract surrounding windows for each sub_matrix
                 kernel_windows = np.concatenate(
-                    [w["windows"] for w in sub_mat_results if w["windows"] is not None],
+                    [
+                        w["windows"]
+                        for w in sub_mat_results
+                        if w["windows"] is not None
+                    ],
                     axis=0,
                 )
                 all_pattern_coords.append(
@@ -276,7 +299,9 @@ def cmd_detect(arguments):
         sys.exit(0)
 
     # Combine patterns of all kernel matrices into a single array
-    all_pattern_coords = pd.concat(all_pattern_coords, axis=0).reset_index(drop=True)
+    all_pattern_coords = pd.concat(all_pattern_coords, axis=0).reset_index(
+        drop=True
+    )
     # Combine all windows from different kernels into a single pile of windows
     all_pattern_windows = np.concatenate(all_pattern_windows, axis=0)
 
@@ -288,9 +313,13 @@ def cmd_detect(arguments):
     all_pattern_windows = all_pattern_windows[distinct_patterns, :, :]
 
     # Get from bins into basepair coordinates
-    coords_1 = hic_genome.bin_to_coords(all_pattern_coords.bin1).reset_index(drop=True)
+    coords_1 = hic_genome.bin_to_coords(all_pattern_coords.bin1).reset_index(
+        drop=True
+    )
     coords_1.columns = [str(col) + "1" for col in coords_1.columns]
-    coords_2 = hic_genome.bin_to_coords(all_pattern_coords.bin2).reset_index(drop=True)
+    coords_2 = hic_genome.bin_to_coords(all_pattern_coords.bin2).reset_index(
+        drop=True
+    )
     coords_2.columns = [str(col) + "2" for col in coords_2.columns]
 
     all_pattern_coords = pd.concat(
@@ -298,8 +327,11 @@ def cmd_detect(arguments):
     )
 
     # Filter patterns closer than minimum distance from the diagonal if any
-    min_dist_drop_mask = (all_pattern_coords.chrom1 == all_pattern_coords.chrom2) & (
-        np.abs(all_pattern_coords.start2 - all_pattern_coords.start1) < int(min_dist)
+    min_dist_drop_mask = (
+        all_pattern_coords.chrom1 == all_pattern_coords.chrom2
+    ) & (
+        np.abs(all_pattern_coords.start2 - all_pattern_coords.start1)
+        < int(min_dist)
     )
     # Reorder columns at the same time
     all_pattern_coords = all_pattern_coords.loc[
@@ -325,7 +357,9 @@ def cmd_detect(arguments):
     # Save patterns and their coordinates in a tsv file
     write_patterns(all_pattern_coords, kernel_config["name"], output)
     # Save windows as an array in an npy file
-    save_windows(all_pattern_windows, kernel_config["name"], output, format=win_fmt)
+    save_windows(
+        all_pattern_windows, kernel_config["name"], output, format=win_fmt
+    )
 
 
 def main():
