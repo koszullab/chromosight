@@ -10,7 +10,7 @@ Usage:
                         [--pattern=loops] [--precision=auto] [--iterations=auto]
                         [--win-fmt={json,npy}] [--subsample=no] [--inter]
                         [--min-dist=0] [--max-dist=auto] [--no-plotting]
-                        [--threads=1]
+                        [--threads=1] [--n-mads=5] [--resize-kernel]
     chromosight generate-config <prefix> [--preset loops]
 
     detect: 
@@ -47,6 +47,9 @@ Arguments for detect:
                                 sets a value based on the kernel configuration
                                 file and the signal to noise ratio. [default: auto]
     -n, --no-plotting           Disable generation of pileup plots.
+    -N, --n-mads=5              Maximum number of median absolute deviations below
+                                the median of the logged bin sums distribution
+                                allowed to consider detectable bins. [default: 5]
     -P, --pattern=loops         Which pattern to detect. This will use preset
                                 configurations for the given pattern. Possible
                                 values are: loops, borders, hairpin. [default: loops]
@@ -54,6 +57,8 @@ Arguments for detect:
                                 probability in the contact map. A lesser value
                                 leads to potentially more detections, but more
                                 false positives. [default: auto]
+    -r, --resize-kernel         Experimental: Enable to resize kernel based on
+                                input resolution.
     -s, --subsample=INT         If greater than 1, subsample contacts from the 
                                 matrix to INT contacts. If between 0 and 1, subsample
                                 a proportion of contacts instead. This is useful
@@ -87,6 +92,7 @@ from chromosight.utils.contacts_map import HicGenome
 from chromosight.utils.io import write_patterns, save_windows, load_kernel_config
 from chromosight.utils.plotting import pattern_plot, pileup_plot
 from chromosight.utils.detection import pattern_detector, pileup_patterns, remove_smears
+from chromosight.utils.preprocessing import resize_kernel
 
 
 def _override_kernel_config(param_name, param_value, param_type, config):
@@ -155,8 +161,10 @@ def cmd_detect(arguments):
     mat_path = arguments["<contact_map>"]
     max_dist = arguments["--max-dist"]
     min_dist = arguments["--min-dist"]
+    n_mads = float(arguments["--n-mads"])
     pattern = arguments["--pattern"]
     precision = arguments["--precision"]
+    resize = arguments["--resize-kernel"]
     threads = arguments["--threads"]
     output = arguments["<output>"]
     win_fmt = arguments["--win-fmt"]
@@ -201,17 +209,30 @@ def cmd_detect(arguments):
     )
     kernel_config = _override_kernel_config("max_dist", max_dist, int, kernel_config)
 
-    # kernel_config = _override_kernel_config("max_dist", max_dist, int, kernel_config)
-    # Make shorten max distance in case matrix is noisy
+    hic_genome = HicGenome(mat_path, inter=interchrom, kernel_config=kernel_config)
 
-    hic_genome = HicGenome(
-        mat_path, inter=interchrom, kernel_config=kernel_config, subsample=subsample
-    )
+    ### 1: Process input signal
+    #  Adapt size of kernel matrices based on the signal resolution
+    if resize:
+        for i, mat in enumerate(kernel_config["kernels"]):
+            kernel_config["kernels"][i] = resize_kernel(
+                mat, kernel_config["resolution"], hic_genome.resolution
+            )
+    hic_genome.kernel_config = kernel_config
+    # Normaliza (balance) matrix using ICE
+    hic_genome.normalize(n_mads)
+    # Subsample Hi-C contacts from the matrix, if requersted
+    hic_genome.subsample(subsample)
+    # Define how many diagonals should be used in intra-matrices
+    hic_genome.compute_max_dist()
+    # Split whole genome matrix into intra- and inter- sub matrices. Each sub
+    # matrix is processed on the fly (obs / exp, trimming diagonals > max dist)
+    hic_genome.make_sub_matrices()
 
     all_pattern_coords = []
     all_pattern_windows = []
 
-    ### 1: DETECTION ON EACH SUBMATRIX
+    ### 2: DETECTION ON EACH SUBMATRIX
     pool = mp.Pool(int(threads))
     n_sub_mats = hic_genome.sub_mats.shape[0]
     # Loop over the different kernel matrices for input pattern
@@ -320,7 +341,7 @@ def cmd_detect(arguments):
     ]
     all_pattern_windows = all_pattern_windows[~min_dist_drop_mask, :, :]
 
-    ### 2: WRITE OUTPUT
+    ### 3: WRITE OUTPUT
     sys.stderr.write(f"{all_pattern_coords.shape[0]} patterns detected\n")
     # Save patterns and their coordinates in a tsv file
     write_patterns(all_pattern_coords, kernel_config["name"], output)
