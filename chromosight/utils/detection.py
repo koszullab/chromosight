@@ -200,7 +200,7 @@ def remove_smears(patterns, win_size=8):
     Parameters
     ----------
     patterns : numpy.array of float
-        2D Array of patterns, with 3 columns: bin1, bin2 and score.
+        2D Array of patterns, with 3 columns: row, column and score.
     win_size : int
         The maximum number of pixels at which patterns are considered overlapping.
     
@@ -252,9 +252,7 @@ def picker(mat_conv, matrix, precision=None):
     thres = np.median(mat_conv.data) + precision * ss.median_absolute_deviation(
         mat_conv.data, nan_policy="omit"
     )
-    bak1 = candidate_mat.copy()
     candidate_mat.data[candidate_mat.data < thres] = 0
-    bak2 = candidate_mat.copy()
     candidate_mat.data[candidate_mat.data != 0] = 1
     candidate_mat.eliminate_zeros()
 
