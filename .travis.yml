@@ -15,6 +15,7 @@ os:
 install:
 - pip install -v -Ur requirements.txt
 - pip install codecov nose2
+-  pip install -e .
 
 script:
 - nose2 --with-coverage -s tests/
