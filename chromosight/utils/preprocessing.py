@@ -176,7 +176,9 @@ def despeckle(matrix, th2=3):
         stds[u] = ss.median_absolute_deviation(dist[u], nan_policy="omit")
 
     # Loop over all nonzero pixels in the COO matrix and their coordinates
-    for i, (row, col, val) in enumerate(zip(matrix.row, matrix.col, matrix.data)):
+    for i, (row, col, val) in enumerate(
+        zip(matrix.row, matrix.col, matrix.data)
+    ):
         # Compute genomic distance of interactions in pixel
         dist = abs(row - col)
         # If pixel in input matrix is an outlier, set this pixel to median
@@ -393,7 +395,8 @@ def subsample_contacts(M, n_contacts):
     sampled_cols = M.col[nnz_mask]
 
     return coo_matrix(
-        (sampled_counts, (sampled_rows, sampled_cols)), shape=(M.shape[0], M.shape[1])
+        (sampled_counts, (sampled_rows, sampled_cols)),
+        shape=(M.shape[0], M.shape[1]),
     )
 
 
@@ -450,4 +453,3 @@ def resize_kernel(kernel, kernel_res, signal_res, min_size=5, max_size=101):
         resized_kernel = ndi.zoom(kernel, adj_resize_factor, order=1)
 
     return resized_kernel
-

@@ -2,13 +2,17 @@ import numpy as np
 import unittest
 from nose2.tools import params
 import scipy.sparse as sp
+import chromosight
+import chromosight.utils
 import chromosight.utils.preprocessing as preproc
 import chromosight.utils.io as cio
 
 mat, chroms, bins, res = cio.load_cool("data_test/example.cool")
 mat = mat.tocsr()
 # Get all intra-chromosomal matrices
-intra_mats = [mat[s:e, s:e] for s, e in zip(chroms["start_bin"], chroms["end_bin"])]
+intra_mats = [
+    mat[s:e, s:e] for s, e in zip(chroms["start_bin"], chroms["end_bin"])
+]
 
 
 class TestPreprocessing(unittest.TestCase):
@@ -109,7 +113,9 @@ def test_resize_kernel():
             )
             obs_dim = obs_kernel.shape[0]
             assert obs_dim == obs_kernel.shape[1]
-            assert obs_dim == max(min(max_allowed_dim, exp_dim), min_allowed_dim)
+            assert obs_dim == max(
+                min(max_allowed_dim, exp_dim), min_allowed_dim
+            )
             assert np.max(obs_kernel) == obs_kernel[obs_dim // 2, obs_dim // 2]
 
 

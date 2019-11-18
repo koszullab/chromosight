@@ -48,6 +48,7 @@ class TestIO:
         chr_groups = df.groupby("chrom1")
         # Compute the number of bins in each chromosome and make a range (0 -> nbins)
         start_per_chrom = chr_groups.apply(lambda g: np.array(range(g.shape[0])))
+
         # Concatenate ranges to have start values from 0 to n bins
         start_array = np.hstack(start_per_chrom)
         # Multiply start values by resolution to get base pair values
@@ -193,4 +194,6 @@ class TestIO:
 
         # Check if an inappropriate format raises appropriate exception.
         with assert_raises(ValueError):
-            cio.save_windows(tmp_wins, self.tmp_file, self.tmp_dir, format="wrong")
+            cio.save_windows(
+                tmp_wins, self.tmp_file, self.tmp_dir, format="wrong"
+            )

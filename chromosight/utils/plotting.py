@@ -25,7 +25,11 @@ def pattern_plot(contact_map, patterns, output=None, name=None):
     else:
         output = pathlib.Path(output)
 
-    plt.imshow(contact_map.mat.todense() ** 0.15, interpolation="none", cmap="afmhot_r")
+    plt.imshow(
+        contact_map.mat.todense() ** 0.15,
+        interpolation="none",
+        cmap="afmhot_r",
+    )
     plt.title(name, fontsize=8)
     plt.colorbar()
 
@@ -43,7 +47,9 @@ def pattern_plot(contact_map, patterns, output=None, name=None):
                     continue
                 if loop[1] != "NA":
                     _, pos1, pos2, _ = loop
-                    plt.scatter(pos1, pos2, s=15, facecolors="none", edgecolors="blue")
+                    plt.scatter(
+                        pos1, pos2, s=15, facecolors="none", edgecolors="blue"
+                    )
 
     emplacement = output / pathlib.Path(str(name + 1) + ".2.pdf")
     plt.savefig(emplacement, dpi=100, format="pdf")
@@ -90,7 +96,13 @@ def pileup_plot(pileup_pattern, name="pileup patterns", output=None):
     else:
         output = pathlib.Path(output)
 
-    plt.imshow(pileup_pattern, interpolation="none", vmin=0.0, vmax=2.0, cmap="seismic")
+    plt.imshow(
+        pileup_pattern,
+        interpolation="none",
+        vmin=0.0,
+        vmax=2.0,
+        cmap="seismic",
+    )
     plt.title("pileup {}".format(name))
     plt.colorbar()
     emplacement = output / pathlib.Path(name + ".pdf")
@@ -154,11 +166,14 @@ def plot_whole_matrix(mat, patterns, out=None, region=None, region2=None):
 
     pat = patterns.copy()
     pat = pat.loc[
-        (pat.bin1 > s1) & (pat.bin1 < e1) & (pat.bin2 > s2) & (pat.bin2 < e2), :
+        (pat.bin1 > s1) & (pat.bin1 < e1) & (pat.bin2 > s2) & (pat.bin2 < e2),
+        :,
     ]
     sub_mat = mat.tocsr()[s1:e1, s2:e2]
     plt.imshow(np.log(sub_mat.todense()), cmap="Reds")
-    plt.scatter(pat.bin1 - s1, pat.bin2 - s2, facecolors="none", edgecolors="blue")
+    plt.scatter(
+        pat.bin1 - s1, pat.bin2 - s2, facecolors="none", edgecolors="blue"
+    )
     if out is None:
         plt.show()
     else:
@@ -166,4 +181,3 @@ def plot_whole_matrix(mat, patterns, out=None, region=None, region2=None):
     # cvs = ds.Canvas(plot_width=1000, plot_height=1000)
     # agg = cvs.points(df, "bin1", "bin2", ds.sum("contacts"))
     # img = tf.shade(agg, cmap=["white", "darkred"], how="log")
-

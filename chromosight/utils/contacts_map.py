@@ -41,7 +41,9 @@ class HicGenome:
 
     def __init__(self, path, inter=False, kernel_config=None):
         # Load Hi-C matrix and associated metadata
-        self.matrix, self.chroms, self.bins, self.resolution = self.load_data(path)
+        self.matrix, self.chroms, self.bins, self.resolution = self.load_data(
+            path
+        )
         self.kernel_config = kernel_config
         self.sub_mats = None
         self.detectable_bins = None
@@ -98,7 +100,9 @@ class HicGenome:
             try:
                 subsample = float(sub)
                 if subsample < 0:
-                    sys.stderr.write("Error: Subsample must be strictly positive.\n")
+                    sys.stderr.write(
+                        "Error: Subsample must be strictly positive.\n"
+                    )
                     sys.exit(1)
                 if subsample < 1:
                     subsample *= self.matrix.sum()
@@ -118,6 +122,7 @@ class HicGenome:
                 )
                 sys.exit(1)
 
+
     def load_data(self, mat_path):
         """Load contact, bin and chromosome informations from input path"""
         # Define functions to use for each format
@@ -130,7 +135,9 @@ class HicGenome:
 
         # Load contact map and chromosome start bins coords
         try:
-            sub_mat_df, chroms, bins, resolution = format_loader[extension](mat_path)
+            sub_mat_df, chroms, bins, resolution = format_loader[extension](
+                mat_path
+            )
         except KeyError as e:
             sys.stderr.write(
                 f"Unknown format: {extension}. Must be one of {format_loader.keys()}\n"
@@ -158,7 +165,9 @@ class HicGenome:
         n_chroms = self.chroms.shape[0]
         if self.inter:
             sub_mats = pd.DataFrame(
-                np.zeros((int(n_chroms ** 2 / 2 + n_chroms / 2), 3), dtype=str),
+                np.zeros(
+                    (int(n_chroms ** 2 / 2 + n_chroms / 2), 3), dtype=str
+                ),
                 columns=sub_cols,
             )
         else:
@@ -223,8 +232,12 @@ class HicGenome:
         """
         full_patterns = patterns.copy()
         # Get start bin for chromosomes of interest
-        startA = self.chroms.loc[self.chroms.name == chr1, "start_bin"].values[0]
-        startB = self.chroms.loc[self.chroms.name == chr2, "start_bin"].values[0]
+        startA = self.chroms.loc[self.chroms.name == chr1, "start_bin"].values[
+            0
+        ]
+        startB = self.chroms.loc[self.chroms.name == chr2, "start_bin"].values[
+            0
+        ]
         # Shift index by start bin of chromosomes
         full_patterns.bin1 += startA
         full_patterns.bin2 += startB
@@ -292,7 +305,9 @@ class ContactMap:
         self.largest_kernel = largest_kernel
         # If detectable were not provided, compute them from the input matrix
         if detectable_bins is None:
-            detectable_bins = preproc.get_detectable_bins(self.matrix, inter=self.inter)
+            detectable_bins = preproc.get_detectable_bins(
+                self.matrix, inter=self.inter
+            )
         self.detectable_bins = detectable_bins
 
         # Apply preprocessing steps on the input matrix
