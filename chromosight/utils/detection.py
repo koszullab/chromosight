@@ -200,7 +200,7 @@ def remove_smears(patterns, win_size=8):
     Parameters
     ----------
     patterns : numpy.array of float
-        2D Array of patterns, with 3 columns: row, column and score.
+        2D Array of patterns, with 3 columns: bin1, bin2 and score.
     win_size : int
         The maximum number of pixels at which patterns are considered overlapping.
     
@@ -212,11 +212,13 @@ def remove_smears(patterns, win_size=8):
     """
     p = patterns.copy()
     # Divide each row / col by the window size to serve as a "hash"
-    p.row = p.bin1 // win_size
-    p.col = p.bin2 // win_size
+    p["round_row"] = p.bin1 // win_size
+    p["round_col"] = p.bin2 // win_size
     # Group patterns by row-col combination and retrieve the index of the
     # pattern with the best score in each group
-    best_idx = p.groupby(["bin1", "bin2"], sort=False)["score"].idxmax().values
+    best_idx = (
+        p.groupby(["round_row", "round_col"], sort=False)["score"].idxmax().values
+    )
     good_patterns_mask = np.zeros(patterns.shape[0], dtype=bool)
     try:
         good_patterns_mask[best_idx] = True
