@@ -24,7 +24,7 @@ name = "chromosight"
 
 MAJOR = 0
 MINOR = 0
-MAINTENANCE = 2
+MAINTENANCE = 3
 VERSION = "{}.{}.{}".format(MAJOR, MINOR, MAINTENANCE)
 
 LICENSE = "GPLv3"
@@ -46,7 +46,9 @@ setup(
     version=VERSION,
     license=LICENSE,
     classifiers=CLASSIFIERS,
-    packages=find_packages(exclude=["demos"]),
+    url="https://github.com/koszullab/chromosight",
+    packages=find_packages(),
+    python_requires='>=3.6',
     install_requires=REQUIREMENTS,
     include_package_data=True,
     entry_points={

@@ -25,7 +25,12 @@ def numba_jit():
 
 @numba_jit()
 def validate_patterns(
-    coords, matrix, conv_mat, detectable_bins, kernel_matrix, max_undetected_perc
+    coords,
+    matrix,
+    conv_mat,
+    detectable_bins,
+    kernel_matrix,
+    max_undetected_perc,
 ):
     """
     Filters detected patterns to remove those in noisy regions or too close to
@@ -70,7 +75,11 @@ def validate_patterns(
 
     # Copy coords object and append column for scores
     validated_coords = pd.DataFrame(
-        {"bin1": coords[:, 0], "bin2": coords[:, 1], "score": np.zeros(coords.shape[0])}
+        {
+            "bin1": coords[:, 0],
+            "bin2": coords[:, 1],
+            "score": np.zeros(coords.shape[0]),
+        }
     )
     # validated_coords = np.append(coords, np.zeros((coords.shape[0], 1)), 1)
     # Initialize structure to store pattern windows
@@ -101,12 +110,18 @@ def validate_patterns(
             n_rows, n_cols = pattern_window.shape
             tot_pixels = n_rows * n_cols
             # Compute number of missing rows and cols
-            n_bad_rows = n_rows - len(set(win_rows).intersection(detectable_rows))
-            n_bad_cols = n_cols - len(set(win_cols).intersection(detectable_cols))
+            n_bad_rows = n_rows - len(
+                set(win_rows).intersection(detectable_rows)
+            )
+            n_bad_cols = n_cols - len(
+                set(win_cols).intersection(detectable_cols)
+            )
 
             # Number of undetected pixels is "bad rows area" + "bad cols area" - "bad rows x bad cols intersection"
             tot_undetected_pixels = (
-                n_bad_rows * n_cols + n_bad_cols * n_rows - n_bad_rows * n_bad_cols
+                n_bad_rows * n_cols
+                + n_bad_cols * n_rows
+                - n_bad_rows * n_bad_cols
             )
             # Number of uncovered pixels
             tot_zero_pixels = len(pattern_window[pattern_window == 0].A1)
@@ -181,7 +196,9 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix, area=3):
         return None, None
 
     # Pattern matching operate here
-    mat_conv = corrcoef2d(contact_map.matrix, kernel_matrix, kernel_config["max_dist"])
+    mat_conv = corrcoef2d(
+        contact_map.matrix, kernel_matrix, kernel_config["max_dist"]
+    )
     mat_conv = mat_conv.tocoo()
     # Clean potential missing values
     mat_conv.data[np.isnan(mat_conv.data)] = 0
@@ -191,9 +208,7 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix, area=3):
     mat_conv.eliminate_zeros()
 
     # Find foci of highly correlated pixels
-    chrom_pattern_coords = picker(
-        mat_conv, contact_map.matrix, kernel_config["precision"]
-    )
+    chrom_pattern_coords = picker(mat_conv, kernel_config["precision"])
     if chrom_pattern_coords is None:
         return None, None
     filtered_chrom_patterns, chrom_pattern_windows = validate_patterns(
@@ -234,7 +249,9 @@ def remove_smears(patterns, win_size=8):
     # Group patterns by row-col combination and retrieve the index of the
     # pattern with the best score in each group
     best_idx = (
-        p.groupby(["round_row", "round_col"], sort=False)["score"].idxmax().values
+        p.groupby(["round_row", "round_col"], sort=False)["score"]
+        .idxmax()
+        .values
     )
     good_patterns_mask = np.zeros(patterns.shape[0], dtype=bool)
     try:
@@ -246,7 +263,7 @@ def remove_smears(patterns, win_size=8):
 
 
 @numba_jit()
-def picker(mat_conv, matrix, precision=None):
+def picker(mat_conv, precision=None):
     """Pick pixels out of a convolution map
     Given a correlation heat map, pick (i, j) of local maxima
     Parameters
@@ -261,15 +278,21 @@ def picker(mat_conv, matrix, precision=None):
     Returns
     -------
     foci_coords : numpy.array of ints
-        2D array of coordinates for identified patterns.
+        2D array of coordinates for identified patterns. None is no pattern was
+        detected.
     """
 
     candidate_mat = mat_conv.copy()
     candidate_mat = candidate_mat.tocoo()
     # Compute a threshold from precision arg and set all pixels below to 0
-    thres = np.median(mat_conv.data) + precision * ss.median_absolute_deviation(
-        mat_conv.data, nan_policy="omit"
-    )
+    if precision is None:
+        thres = 0
+    else:
+        thres = np.median(
+            mat_conv.data
+        ) + precision * ss.median_absolute_deviation(
+            mat_conv.data, nan_policy="omit"
+        )
     candidate_mat.data[candidate_mat.data < thres] = 0
     candidate_mat.data[candidate_mat.data != 0] = 1
     candidate_mat.eliminate_zeros()
@@ -277,7 +300,8 @@ def picker(mat_conv, matrix, precision=None):
     # Check if at least one candidate pixel was found
     if len(candidate_mat.data) > 0:
         num_foci, labelled_mat = label_connected_pixels_sparse(candidate_mat)
-
+        if num_foci == 0:
+            return None
         mat_conv = mat_conv.tocsr()
         # Will hold the coordinates of the best pixel for each focus
         foci_coords = np.zeros([num_foci, 2], int)
@@ -302,7 +326,7 @@ def picker(mat_conv, matrix, precision=None):
             foci_coords[focus_rank, 0] = focus_pixel_row
             foci_coords[focus_rank, 1] = focus_pixel_col
     else:
-        foci_coords = None
+        return None
     return foci_coords
 
 
@@ -431,10 +455,15 @@ def label_connected_pixels_sparse(matrix, min_focus_size=2):
     # generate a new matrix, similar to the input, but where pixel values
     # are the foci ID of the pixel.
     foci_mat = sp.coo_matrix(
-        (foci[good_foci], (candidates.row[good_foci], candidates.col[good_foci])),
+        (
+            foci[good_foci],
+            (candidates.row[good_foci], candidates.col[good_foci]),
+        ),
         shape=candidates.shape,
         dtype=np.int64,
     )
+    # Update number after removal of small foci
+    num_foci = len(np.unique(foci_mat.data))
     return num_foci, foci_mat
 
 
@@ -496,7 +525,10 @@ def xcorr2(signal, kernel, threshold=1e-4):
     else:
         for kj in range(kn):
             subkernel_sp = sp.diags(
-                kernel[:, kj], np.arange(km), shape=(sn - km + 1, sm), format="csr"
+                kernel[:, kj],
+                np.arange(km),
+                shape=(sn - km + 1, sm),
+                format="csr",
             )
             out += subkernel_sp.dot(signal[:, kj : sn - kn + 1 + kj])
 
@@ -508,13 +540,17 @@ def xcorr2(signal, kernel, threshold=1e-4):
     # matrix, effectively adding margins.
     out = out.tocoo()
     rows, cols = out.row + kh, out.col + kw
-    out = sp.coo_matrix((out.data, (rows, cols)), shape=(sm, sn), dtype=np.float64)
+    out = sp.coo_matrix(
+        (out.data, (rows, cols)), shape=(sm, sn), dtype=np.float64
+    )
 
     return out
 
 
 @numba_jit()
-def corrcoef2d(signal, kernel, max_dist=None, sym_upper=False, scaling="pearson"):
+def corrcoef2d(
+    signal, kernel, max_dist=None, sym_upper=False, scaling="pearson"
+):
     """Signal-kernel 2D correlation
     Pearson correlation coefficient between signal and sliding kernel. Convolutes
     the input signal and kernel computes a cross correlation coefficient.
@@ -579,7 +615,8 @@ def corrcoef2d(signal, kernel, max_dist=None, sym_upper=False, scaling="pearson"
         std_kernel = float(kernel.std())
         if not (std_kernel > 0):
             raise ValueError(
-                "Cannot have scaling=pearson when kernel" "is flat. Use scaling=cross."
+                "Cannot have scaling=pearson when kernel"
+                "is flat. Use scaling=cross."
             )
 
         kernel1 = np.ones(kernel.shape)
