@@ -67,8 +67,12 @@ class TestDetection(unittest.TestCase):
         # Test if speckles are discarded
         assert cud.picker(point_mat, precision=None) is None
         # Test that index is not shifted
-        assert cud.picker(gauss1, precision=None)
+        obs_coord = cud.picker(gauss1, precision=None)[0]
+        exp_coord = np.where(gauss1.todense() == np.max(gauss1.data))
+        exp_coord = np.array((exp_coord[0][0], exp_coord[1][0]))
+        assert np.all(obs_coord == exp_coord)
         # Test number of foci
+        assert len(cud.picker(gauss12, precision=1)) == 2
 
     def test_label_connected_pixels_sparse():
         cud.label_connected_pixels_sparse(matrix, min_focus_size=2)

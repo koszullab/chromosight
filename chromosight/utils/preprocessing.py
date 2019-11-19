@@ -11,7 +11,6 @@ import scipy.stats as ss
 import scipy.sparse as sp
 from scipy.sparse import dia_matrix, csr_matrix, coo_matrix, issparse
 import scipy.ndimage as ndi
-from numba import njit, prange
 
 
 def normalize(B, good_bins=None, iterations=10):
@@ -92,7 +91,9 @@ def diag_trim(mat, n):
     return trimmed
 
 
-def distance_law(matrix, detectable_bins=None, max_dist=None, fun=np.nanmedian):
+def distance_law(
+    matrix, detectable_bins=None, max_dist=None, fun=np.nanmedian
+):
     """
     Computes genomic distance law by averaging over each diagonal in
     the upper triangle matrix.
@@ -178,7 +179,9 @@ def despeckle(matrix, th2=3):
         stds[u] = ss.median_absolute_deviation(dist[u], nan_policy="omit")
 
     # Loop over all nonzero pixels in the COO matrix and their coordinates
-    for i, (row, col, val) in enumerate(zip(matrix.row, matrix.col, matrix.data)):
+    for i, (row, col, val) in enumerate(
+        zip(matrix.row, matrix.col, matrix.data)
+    ):
         # Compute genomic distance of interactions in pixel
         dist = abs(row - col)
         # If pixel in input matrix is an outlier, set this pixel to median
@@ -261,7 +264,9 @@ def detrend(matrix, detectable_bins=None, max_dist=None, fun=np.nanmedian):
         The detrended Hi-C matrix.
     """
     matrix = matrix.tocsr()
-    y = distance_law(matrix, detectable_bins=detectable_bins, max_dist=max_dist)
+    y = distance_law(
+        matrix, detectable_bins=detectable_bins, max_dist=max_dist
+    )
     y[np.isnan(y)] = 0.0
 
     # Detrending by the distance law
@@ -320,8 +325,12 @@ def signal_to_noise_threshold(matrix, detectable_bins):
         The maximum distance from the diagonal at which the matrix should be scanned
     """
     # Using median and mad to reduce sensitivity to outlier
-    dist_means = distance_law(matrix, detectable_bins=detectable_bins, fun=np.nanmean)
-    dist_stds = distance_law(matrix, detectable_bins=detectable_bins, fun=np.nanstd)
+    dist_means = distance_law(
+        matrix, detectable_bins=detectable_bins, fun=np.nanmean
+    )
+    dist_stds = distance_law(
+        matrix, detectable_bins=detectable_bins, fun=np.nanstd
+    )
     snr = dist_means / dist_stds
     # Values below 1 are considered too noisy
     threshold_noise = 1.0
@@ -395,7 +404,8 @@ def subsample_contacts(M, n_contacts):
     sampled_cols = M.col[nnz_mask]
 
     return coo_matrix(
-        (sampled_counts, (sampled_rows, sampled_cols)), shape=(M.shape[0], M.shape[1])
+        (sampled_counts, (sampled_rows, sampled_cols)),
+        shape=(M.shape[0], M.shape[1]),
     )
 
 
