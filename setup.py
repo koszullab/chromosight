@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 # coding: utf-8
 
-"""Detect loops (and other patterns) in Hi-C contact maps.
-"""
+"""Detect loops (and other patterns) in Hi-C contact maps."""
 
 from setuptools import setup, find_packages
 import codecs
@@ -24,7 +23,7 @@ name = "chromosight"
 
 MAJOR = 0
 MINOR = 0
-MAINTENANCE = 3
+MAINTENANCE = 4
 VERSION = "{}.{}.{}".format(MAJOR, MINOR, MAINTENANCE)
 
 LICENSE = "GPLv3"
@@ -41,15 +40,15 @@ with codecs.open("README.md", encoding="utf-8") as f:
 setup(
     name=name,
     author="axel.cournac@pasteur.fr",
+    long_description_content_type="text/markdown",
     description=__doc__,
     long_description=LONG_DESCRIPTION,
-    long_description_content_type="text/markdown",
     version=VERSION,
     license=LICENSE,
     classifiers=CLASSIFIERS,
     url="https://github.com/koszullab/chromosight",
     packages=find_packages(),
-    python_requires='>=3.6',
+    python_requires=">=3.6",
     install_requires=REQUIREMENTS,
     include_package_data=True,
     entry_points={

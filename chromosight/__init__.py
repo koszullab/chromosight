@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # coding: utf-8
 
-from .chromosight import *
 from .version import __version__ as version
 
 __author__ = "Axel Cournac, Axel Breuer, Lyam Baudry, Rémi Montagne, Cyril Matthey-Doret"

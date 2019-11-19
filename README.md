@@ -12,20 +12,22 @@ Detect chromatin loops (and other patterns) in Hi-C contact maps.
 ## Installation
 
 ```sh
-    pip3 install -U chromosight
+pip3 install -U chromosight
 ```
 
 or, if you want to get the very latest version:
 
-```sh
-   sudo pip3 install -e git+https://github.com/koszullab/chromosight.git@master#egg=chromosight
+```
+sudo pip3 install -e git+https://github.com/koszullab/chromosight.git@master#egg=chromosight
 ```
 
 ## Usage
 
-    chromosight detect <contact_maps> [<output>] [--kernels=None] [--loops]
-                           [--borders] [--precision=4] [--iterations=auto]
-                           [--output]
+```
+chromosight detect <contact_maps> [<output>] [--kernels=None] [--loops]
+                       [--borders] [--precision=4] [--iterations=auto]
+                       [--output]
+```
 
 ## Input
 
