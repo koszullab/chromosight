@@ -47,7 +47,9 @@ class TestIO:
         # Group bins per chromosome
         chr_groups = df.groupby("chrom1")
         # Compute the number of bins in each chromosome and make a range (0 -> nbins)
-        start_per_chrom = chr_groups.apply(lambda g: np.array(range(g.shape[0])))
+        start_per_chrom = chr_groups.apply(
+            lambda g: np.array(range(g.shape[0]))
+        )
 
         # Concatenate ranges to have start values from 0 to n bins
         start_array = np.hstack(start_per_chrom)
@@ -58,7 +60,17 @@ class TestIO:
         # Make the same bins for second pairs (just a diagonal matrix then)
         df[["chrom2", "start2", "end2"]] = df[["chrom1", "start1", "end1"]]
         # Reorder columns
-        df = df[["chrom1", "start1", "end1", "chrom2", "start2", "end2", "contacts"]]
+        df = df[
+            [
+                "chrom1",
+                "start1",
+                "end1",
+                "chrom2",
+                "start2",
+                "end2",
+                "contacts",
+            ]
+        ]
         df.to_csv(self.tmp_path, sep="\t", header=None, index=False)
 
         # Load bedraph and check whether it was parsed correctly
@@ -166,10 +178,14 @@ class TestIO:
             }
         )
         for dec in range(1, 5):
-            cio.write_patterns(tmp_coords, self.tmp_file, self.tmp_dir, dec=dec)
+            cio.write_patterns(
+                tmp_coords, self.tmp_file, self.tmp_dir, dec=dec
+            )
             obs_coords = pd.read_csv(self.tmp_path + "_out.txt", sep="\t")
             assert obs_coords.shape == tmp_coords.shape
-            assert np.all(np.isclose(obs_coords.score, np.round(tmp_coords.score, dec)))
+            assert np.all(
+                np.isclose(obs_coords.score, np.round(tmp_coords.score, dec))
+            )
             os.unlink(self.tmp_path + "_out.txt")
 
     def test_save_windows(self):

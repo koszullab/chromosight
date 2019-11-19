@@ -25,7 +25,9 @@ class TestPreprocessing(unittest.TestCase):
         uniform_mat[:, 10] = 0.0
         uniform_mat = uniform_mat.tocoo()
         uniform_mat.eliminate_zeros()
-        det_bins = preproc.get_detectable_bins(uniform_mat, inter=False, n_mads=1)
+        det_bins = preproc.get_detectable_bins(
+            uniform_mat, inter=False, n_mads=1
+        )
         # Check if symmetric mode return same detectable rows and cols
         assert np.all(det_bins[0] == det_bins[1])
         # Check if the right bin index is indetectable
@@ -68,7 +70,9 @@ def test_diag_trim(matrix):
     """Check if trimming diagonals preserves shape and sets diagonals to zero."""
     for d in range(matrix.shape[0]):
         trimmed = preproc.diag_trim(matrix.todia(), d)
-        diag_sums = [trimmed.diagonal(d).sum() for d in range(trimmed.shape[0])]
+        diag_sums = [
+            trimmed.diagonal(d).sum() for d in range(trimmed.shape[0])
+        ]
         assert trimmed.shape == matrix.shape
         assert np.sum(diag_sums[d + 1 :]) == 0
 
@@ -170,7 +174,9 @@ def test_sum_mat_bins(mat):
 @params(0, 0.1, 0.5, 0.8, 1)
 def test_subsample_contacts_prop(prop):
     """Test sampling proportions of contacts"""
-    sampled = preproc.subsample_contacts(mat.tocoo(), int(prop * mat.data.sum()))
+    sampled = preproc.subsample_contacts(
+        mat.tocoo(), int(prop * mat.data.sum())
+    )
     assert np.isclose(sampled.data.sum(), mat.data.sum() * prop, rtol=0.1)
 
 

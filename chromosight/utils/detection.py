@@ -25,12 +25,7 @@ def numba_jit():
 
 @numba_jit()
 def validate_patterns(
-    coords,
-    matrix,
-    conv_mat,
-    detectable_bins,
-    kernel_matrix,
-    max_undetected_perc,
+    coords, matrix, conv_mat, detectable_bins, kernel_matrix, max_undetected_perc
 ):
     """
     Filters detected patterns to remove those in noisy regions or too close to
@@ -75,11 +70,7 @@ def validate_patterns(
 
     # Copy coords object and append column for scores
     validated_coords = pd.DataFrame(
-        {
-            "bin1": coords[:, 0],
-            "bin2": coords[:, 1],
-            "score": np.zeros(coords.shape[0]),
-        }
+        {"bin1": coords[:, 0], "bin2": coords[:, 1], "score": np.zeros(coords.shape[0])}
     )
     # validated_coords = np.append(coords, np.zeros((coords.shape[0], 1)), 1)
     # Initialize structure to store pattern windows
@@ -110,18 +101,12 @@ def validate_patterns(
             n_rows, n_cols = pattern_window.shape
             tot_pixels = n_rows * n_cols
             # Compute number of missing rows and cols
-            n_bad_rows = n_rows - len(
-                set(win_rows).intersection(detectable_rows)
-            )
-            n_bad_cols = n_cols - len(
-                set(win_cols).intersection(detectable_cols)
-            )
+            n_bad_rows = n_rows - len(set(win_rows).intersection(detectable_rows))
+            n_bad_cols = n_cols - len(set(win_cols).intersection(detectable_cols))
 
             # Number of undetected pixels is "bad rows area" + "bad cols area" - "bad rows x bad cols intersection"
             tot_undetected_pixels = (
-                n_bad_rows * n_cols
-                + n_bad_cols * n_rows
-                - n_bad_rows * n_bad_cols
+                n_bad_rows * n_cols + n_bad_cols * n_rows - n_bad_rows * n_bad_cols
             )
             # Number of uncovered pixels
             tot_zero_pixels = len(pattern_window[pattern_window == 0].A1)
@@ -196,9 +181,7 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix, area=3):
         return None, None
 
     # Pattern matching operate here
-    mat_conv = corrcoef2d(
-        contact_map.matrix, kernel_matrix, kernel_config["max_dist"]
-    )
+    mat_conv = corrcoef2d(contact_map.matrix, kernel_matrix, kernel_config["max_dist"])
     mat_conv = mat_conv.tocoo()
     # Clean potential missing values
     mat_conv.data[np.isnan(mat_conv.data)] = 0
@@ -284,9 +267,7 @@ def picker(mat_conv, matrix, precision=None):
     candidate_mat = mat_conv.copy()
     candidate_mat = candidate_mat.tocoo()
     # Compute a threshold from precision arg and set all pixels below to 0
-    thres = np.median(
-        mat_conv.data
-    ) + precision * ss.median_absolute_deviation(
+    thres = np.median(mat_conv.data) + precision * ss.median_absolute_deviation(
         mat_conv.data, nan_policy="omit"
     )
     candidate_mat.data[candidate_mat.data < thres] = 0
@@ -450,10 +431,7 @@ def label_connected_pixels_sparse(matrix, min_focus_size=2):
     # generate a new matrix, similar to the input, but where pixel values
     # are the foci ID of the pixel.
     foci_mat = sp.coo_matrix(
-        (
-            foci[good_foci],
-            (candidates.row[good_foci], candidates.col[good_foci]),
-        ),
+        (foci[good_foci], (candidates.row[good_foci], candidates.col[good_foci])),
         shape=candidates.shape,
         dtype=np.int64,
     )
@@ -518,10 +496,7 @@ def xcorr2(signal, kernel, threshold=1e-4):
     else:
         for kj in range(kn):
             subkernel_sp = sp.diags(
-                kernel[:, kj],
-                np.arange(km),
-                shape=(sn - km + 1, sm),
-                format="csr",
+                kernel[:, kj], np.arange(km), shape=(sn - km + 1, sm), format="csr"
             )
             out += subkernel_sp.dot(signal[:, kj : sn - kn + 1 + kj])
 
@@ -533,17 +508,13 @@ def xcorr2(signal, kernel, threshold=1e-4):
     # matrix, effectively adding margins.
     out = out.tocoo()
     rows, cols = out.row + kh, out.col + kw
-    out = sp.coo_matrix(
-        (out.data, (rows, cols)), shape=(sm, sn), dtype=np.float64
-    )
+    out = sp.coo_matrix((out.data, (rows, cols)), shape=(sm, sn), dtype=np.float64)
 
     return out
 
 
 @numba_jit()
-def corrcoef2d(
-    signal, kernel, max_dist=None, sym_upper=False, scaling="pearson"
-):
+def corrcoef2d(signal, kernel, max_dist=None, sym_upper=False, scaling="pearson"):
     """Signal-kernel 2D correlation
     Pearson correlation coefficient between signal and sliding kernel. Convolutes
     the input signal and kernel computes a cross correlation coefficient.
@@ -608,8 +579,7 @@ def corrcoef2d(
         std_kernel = float(kernel.std())
         if not (std_kernel > 0):
             raise ValueError(
-                "Cannot have scaling=pearson when kernel"
-                "is flat. Use scaling=cross."
+                "Cannot have scaling=pearson when kernel" "is flat. Use scaling=cross."
             )
 
         kernel1 = np.ones(kernel.shape)

@@ -11,6 +11,7 @@ import scipy.stats as ss
 import scipy.sparse as sp
 from scipy.sparse import dia_matrix, csr_matrix, coo_matrix, issparse
 import scipy.ndimage as ndi
+from numba import njit, prange
 
 
 def normalize(B, good_bins=None, iterations=10):
@@ -131,6 +132,7 @@ def distance_law(matrix, detectable_bins=None, max_dist=None, fun=np.nanmedian):
     dist = np.zeros(mat_n)
     if detectable_bins is None:
         detectable_bins = np.array(range(mat_n))
+
     for diag in range(n_diags):
         # Find detectable which fall in diagonal
         detect_mask = np.zeros(mat_n, dtype=bool)
@@ -176,9 +178,7 @@ def despeckle(matrix, th2=3):
         stds[u] = ss.median_absolute_deviation(dist[u], nan_policy="omit")
 
     # Loop over all nonzero pixels in the COO matrix and their coordinates
-    for i, (row, col, val) in enumerate(
-        zip(matrix.row, matrix.col, matrix.data)
-    ):
+    for i, (row, col, val) in enumerate(zip(matrix.row, matrix.col, matrix.data)):
         # Compute genomic distance of interactions in pixel
         dist = abs(row - col)
         # If pixel in input matrix is an outlier, set this pixel to median
@@ -395,8 +395,7 @@ def subsample_contacts(M, n_contacts):
     sampled_cols = M.col[nnz_mask]
 
     return coo_matrix(
-        (sampled_counts, (sampled_rows, sampled_cols)),
-        shape=(M.shape[0], M.shape[1]),
+        (sampled_counts, (sampled_rows, sampled_cols)), shape=(M.shape[0], M.shape[1])
     )
 
 
