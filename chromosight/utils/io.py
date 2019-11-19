@@ -248,7 +248,7 @@ def load_kernel_config(kernel, custom=False):
     # Preset kernel: Find preset config file matching pattern name
     else:
         # Find chromosight installation directory and get kernel config path
-        chromo_dir = pathlib.Path(__file__).parents[2]
+        chromo_dir = pathlib.Path(__file__).parents[1]
         preset_kernel_dir = pathlib.Path(join(chromo_dir, "kernels"))
         # Preset config filename should be {pattern}.json
         config_path = join(preset_kernel_dir, f"{kernel}.json")
