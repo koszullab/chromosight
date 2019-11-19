@@ -10,8 +10,9 @@ Usage:
                         [--pattern=loops] [--precision=auto] [--iterations=auto]
                         [--win-fmt={json,npy}] [--subsample=no] [--inter]
                         [--min-dist=0] [--max-dist=auto] [--no-plotting]
-                        [--threads=1] [--n-mads=5] [--resize-kernel]
+                        [--threads=1] [--n-mads=5] [--resize-kernel] [--perc-undetected=auto]
     chromosight generate-config <prefix> [--preset loops]
+
 
     detect: 
         performs pattern detection on a Hi-C contact map using kernel convolution
@@ -65,6 +66,8 @@ Arguments for detect:
                                 when comparing matrices with different
                                 coverages. [default: no]
     -t, --threads=1             Number of CPUs to use in parallel. [default: 1]
+    -u, --perc-undetected=auto  Maximum percentage of empty pixels in windows
+                                allowed to keep detected patterns. [default: auto]
     -w, --win-fmt={json,npy}    File format used to store individual windows
                                 around each pattern. Window order match
                                 patterns inside the associated text file.
@@ -175,6 +178,7 @@ def cmd_detect(arguments):
     min_dist = arguments["--min-dist"]
     n_mads = float(arguments["--n-mads"])
     pattern = arguments["--pattern"]
+    perc_undetected = arguments["--perc-undetected"]
     precision = arguments["--precision"]
     resize = arguments["--resize-kernel"]
     threads = arguments["--threads"]
@@ -221,6 +225,9 @@ def cmd_detect(arguments):
     )
     kernel_config = _override_kernel_config(
         "max_dist", max_dist, int, kernel_config
+    )
+    kernel_config = _override_kernel_config(
+        "max_perc_undetected", perc_undetected, float, kernel_config
     )
 
     hic_genome = HicGenome(
