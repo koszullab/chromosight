@@ -5,6 +5,7 @@
 """
 
 from setuptools import setup, find_packages
+import codecs
 
 CLASSIFIERS = [
     "Development Status :: 3 - Alpha",
