@@ -75,7 +75,7 @@ Arguments for generate-config:
                                 files a/b.json and a/b.1.txt will be generated.
                                 If a given pattern has N kernel matrices, N txt
                                 files are created they will be named a/b.[1-N].txt.
-    -p, --preset=loops          Generate a preset config for the given pattern.
+    -e, --preset=loops          Generate a preset config for the given pattern.
                                 Preset configs available are "loops" and 
                                 "borders". [default: loops]
 """
