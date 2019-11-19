@@ -1,5 +1,5 @@
 # Chromosight
-<img src="docs/chromosight.gif" alt="animater logo" width="200"/>
+<img src="docs/chromosight.gif" alt="animated logo" width="200"/>
 
 [![PyPI version](https://badge.fury.io/py/chromosight.svg)](https://badge.fury.io/py/chromosight)
 [![Build Status](https://travis-ci.com/koszullab/chromosight.svg?branch=master)](https://travis-ci.org/koszullab/chromosight)

@@ -43,6 +43,7 @@ setup(
     author="axel.cournac@pasteur.fr",
     description=__doc__,
     long_description=LONG_DESCRIPTION,
+    long_description_content_type="text/markdown",
     version=VERSION,
     license=LICENSE,
     classifiers=CLASSIFIERS,
