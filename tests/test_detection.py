@@ -9,18 +9,28 @@ import chromosight.utils
 import chromosight.utils.detection as cud
 import chromosight.utils.io as cio
 import chromosight.kernels as ck
-from matplotlib.mlab import bivariate_normal
+from scipy.stats import multivariate_normal
 
 
 ### GENERATING SYNTHETIC DATA
 def gauss_mat(meanx, meany, std, shape=(100, 100)):
-    # 2D gaussian distribution -> single pattern
-    m, n = shape
-    grid_x, grid_y = np.mgrid[
-        -10 : 10 : complex(0, m), -10 : 10 : complex(0, n)
-    ]
-    # 0.1 std, -1 mean on both axes
-    g_mat = bivariate_normal(grid_x, grid_y, std, std, meanx, meany)
+
+    # create 2 kernels
+    means = (meanx, meany)
+    stds = np.eye(2) * std
+    k = multivariate_normal(mean=means, cov=stds)
+
+    # create a grid of (x,y) coordinates at which to evaluate the kernels
+    x = np.linspace(-10, 10, shape[0])
+    y = np.linspace(-10, 10, shape[1])
+    xx, yy = np.meshgrid(x, y)
+
+    # evaluate kernels at grid points
+    xxyy = np.c_[xx.ravel(), yy.ravel()]
+    zz = k.pdf(xxyy)
+
+    # reshape and plot image
+    g_mat = zz.reshape(shape)
     g_mat = sp.coo_matrix(g_mat)
     return g_mat
 
