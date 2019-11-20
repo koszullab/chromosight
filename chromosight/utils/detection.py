@@ -164,7 +164,7 @@ def pileup_patterns(pattern_windows):
 
 
 @numba_jit()
-def pattern_detector(contact_map, kernel_config, kernel_matrix, area=3):
+def pattern_detector(contact_map, kernel_config, kernel_matrix):
     """Pattern detector
 
     Detect patterns by iterated kernel matching, and extract windows around the
@@ -180,9 +180,7 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix, area=3):
         chromosight.utils.io.load_kernel_config
     kernel_matrix : numpy.array
         The kernel matrix to use for convolution as a 2D numpy array
-    area : int, optional
-        The window size of the pileup pattern. The final windows will have
-        a width of 2 * area + 1. Default is 8.
+
     Returns
     -------
     filtered_chrom_patterns : numpy.array
@@ -232,7 +230,7 @@ def remove_smears(patterns, win_size=8):
     Parameters
     ----------
     patterns : numpy.array of float
-        2D Array of patterns, with 3 columns: row, column and score.
+        2D Array of patterns, with 3 columns: bin1, bin2 and score.
     win_size : int
         The maximum number of pixels at which patterns are considered overlapping.
     
@@ -646,12 +644,11 @@ def corrcoef2d(
     # Case there are no nonzero corrcoef
     except AttributeError:
         pass
-    conv.data[conv.data < 0] = 0
     if max_dist is not None:
         # Trim diagonals further than max_scan_distance
         conv = preproc.diag_trim(conv.todia(), max_dist)
 
     # Only keep the upper triangle
     conv = sp.triu(conv)
-
+    conv.data[conv.data < 0] = 0
     return conv
