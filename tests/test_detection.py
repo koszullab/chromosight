@@ -75,6 +75,8 @@ gauss12.data[gauss12.data < np.percentile(gauss12.data, 80)] = 0
 
 
 class DummyMap:
+    """Simulates ContactMap class, but only includes attributes required for testing"""
+
     def __init__(self, matrix, max_dist, detectable_bins):
         self.matrix = matrix
         self.max_dist = max_dist
@@ -113,7 +115,9 @@ def test_pileup_patterns():
 
 @params(*gauss1_mats)
 def test_pattern_detector(matrix):
+    """Test if pattern detector exits correctly"""
     contact_map = DummyMap(matrix, max_dist=100, detectable_bins=None)
+    # Gaussian kernel
     kernel_matrix = gauss_mat(0, 0, 5, shape=(7, 7)).todense()
     kernel_config = {
         "max_dist": 100,
@@ -150,23 +154,35 @@ def test_picker_speckles():
 
 
 @params(*zip(gauss1_coords, gauss1_mats))
-def test_picker_idx(coords, mat):
+def test_picker_idx(patterns, matrix):
     """Test that index is not shifted when using picker"""
-    obs_coord = cud.picker(mat, precision=None)[0]
-    assert np.all(obs_coord == coords)
+    obs_coord = cud.picker(matrix, precision=None)[0]
+    assert np.all(obs_coord == patterns)
 
 
 def test_picker_nloci():
     """Test if the number of foci detected by picker is correct"""
     assert len(cud.picker(gauss12, precision=1)) == 2
 
-    def test_label_connected_pixels_sparse():
-        cud.label_connected_pixels_sparse(matrix, min_focus_size=2)
 
-    def test_xcorr2():
-        cud.xcorr2(signal, kernel, threshold=1e-4)
+@params(*gauss1_mats)
+def test_label_connected_pixels_sparse(matrix):
+    """Check if correct pixels are members and if no more than 1 focus was found."""
+    n_labs, lab_mat = cud.label_connected_pixels_sparse(
+        matrix, min_focus_size=2
+    )
+    assert n_labs == 1
+    obs_rows, obs_cols = lab_mat.nonzero()
+    exp_rows, exp_cols = matrix.nonzero()
+    assert np.all(exp_rows == obs_rows)
+    assert np.all(exp_cols == obs_cols)
 
-    def test_corrcoef2d():
-        cud.corrcoef2d(
-            signal, kernel, max_dist=None, sym_upper=False, scaling="pearson"
-        )
+
+def test_xcorr2():
+    cud.xcorr2(signal, kernel, threshold=1e-4)
+
+
+def test_corrcoef2d():
+    cud.corrcoef2d(
+        signal, kernel, max_dist=None, sym_upper=False, scaling="pearson"
+    )
