@@ -27,7 +27,7 @@ def gauss_mat(meanx, meany, std, shape=(100, 100)):
     ]
     # 0.1 std, -1 mean on both axes
     g_mat = bivariate_normal(grid_x, grid_y, std, std, meanx, meany)
-    g_mat = sp.coo_matrix(np.triu(g_mat))
+    g_mat = sp.coo_matrix(g_mat)
     return g_mat
 
 
@@ -178,11 +178,26 @@ def test_label_connected_pixels_sparse(matrix):
     assert np.all(exp_cols == obs_cols)
 
 
-def test_xcorr2():
-    cud.xcorr2(signal, kernel, threshold=1e-4)
+@params(*gauss1_mats)
+def test_xcorr2(signal):
+    """Check if correlation matrix match signal"""
+    # Make gaussian kernel
+    kernel = gauss_mat(0, 0, 5, shape=(7, 7)).todense()
+    kernel = kernel + kernel.T - np.diag(np.diag(kernel))
+    # Get max coordinates of 2D normal in signal
+    exp_row, exp_col = np.where(signal.todense() == np.max(signal.todense()))
+    # Get max coordinates of correlation scores
+    corr_mat = cud.xcorr2(signal, kernel, threshold=1e-4).todense()
+    obs_row, obs_col = np.where(corr_mat == np.max(corr_mat))
+    # Check if best correlation is at the mode of the normal distribution
+    # NOTE: There are sometime two maximum values side to side in signal, hence
+    # the isin check rather than equality
+    assert np.all(np.isin(obs_row, exp_row))
+    assert np.all(np.isin(obs_col, exp_col))
 
 
 def test_corrcoef2d():
+    """Test Pearson and cross-product correlations"""
     cud.corrcoef2d(
         signal, kernel, max_dist=None, sym_upper=False, scaling="pearson"
     )
