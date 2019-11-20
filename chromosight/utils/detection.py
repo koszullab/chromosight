@@ -625,30 +625,44 @@ def corrcoef2d(
             ) - mean_signal.power(2)
             std_signal = std_signal.sqrt()
         else:
-            std_signal = np.sqrt(
+            std_signal = (
                 xcorr2(signal ** 2, kernel1 / kernel_size) - mean_signal ** 2
             )
-
+            std_signal = np.sqrt(std_signal)
         conv = xcorr2(signal, kernel / kernel_size) - mean_signal * mean_kernel
         denom = std_signal * std_kernel
-
     # Since elementwise sparse matrices division is not implemented, compute
     # numerator and denominator and perform division on the 1D array of nonzero
     # values.
     # Get coords of non-zero (nz) values in the numerator
-    nz_vals = conv.nonzero()
-    # Divide them by corresponding entries in the numerator
-    denom = denom.tocsr()
-    try:
-        conv.data /= denom[nz_vals].A1
-    # Case there are no nonzero corrcoef
-    except AttributeError:
-        pass
+    if sp.issparse(conv):
+        nz_vals = conv.nonzero()
+        # Divide them by corresponding entries in the numerator
+        denom = denom.tocsr()
+        try:
+            conv.data /= denom[nz_vals].A1
+        # Case there are no nonzero corrcoef
+        except AttributeError:
+            pass
+    else:
+        conv /= denom
+
     if max_dist is not None:
         # Trim diagonals further than max_scan_distance
         conv = preproc.diag_trim(conv.todia(), max_dist)
 
-    # Only keep the upper triangle
-    conv = sp.triu(conv)
-    conv.data[conv.data < 0] = 0
+    if sp.issparse(conv):
+        if sym_upper:
+            conv = sp.triu(conv)
+        conv = conv.tocoo()
+        conv.data[~np.isfinite(conv.data)] = 0.0
+        conv.data[conv.data < 0] = 0.0
+        conv.eliminate_zeros()
+        conv = conv.tocsr()
+    else:
+        if sym_upper:
+            conv = np.triu(conv)
+        conv[~np.isfinite(conv)] = 0.0
+        conv[conv < 0] = 0.0
+
     return conv
