@@ -1,7 +1,7 @@
 {
     "name": "hairpins",
     "kernels": [
-        "hairpins.1.txt"
+        "artificial_template_hairpin.txt"
     ],
     "max_dist": 1,
     "max_iterations": 3,
