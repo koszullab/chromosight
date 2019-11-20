@@ -53,7 +53,7 @@ Arguments for detect:
                                 allowed to consider detectable bins. [default: 5]
     -P, --pattern=loops         Which pattern to detect. This will use preset
                                 configurations for the given pattern. Possible
-                                values are: loops, borders, hairpin. [default: loops]
+                                values are: loops, borders, hairpins. [default: loops]
     -p, --precision=auto        Precision threshold when assessing pattern
                                 probability in the contact map. A lesser value
                                 leads to potentially more detections, but more

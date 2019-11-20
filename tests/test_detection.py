@@ -8,15 +8,9 @@ import chromosight
 import chromosight.utils
 import chromosight.utils.detection as cud
 import chromosight.utils.io as cio
+import chromosight.kernels as ck
 from matplotlib.mlab import bivariate_normal
 
-### LOADING (REAL) TEST DATA
-mat, chroms, bins, res = cio.load_cool("data_test/example.cool")
-mat = mat.tocsr()
-#  Get all intra-chromosomal matrices
-intra_mats = [
-    mat[s:e, s:e] for s, e in zip(chroms["start_bin"], chroms["end_bin"])
-]
 
 ### GENERATING SYNTHETIC DATA
 def gauss_mat(meanx, meany, std, shape=(100, 100)):
@@ -196,8 +190,49 @@ def test_xcorr2(signal):
     assert np.all(np.isin(obs_col, exp_col))
 
 
-def test_corrcoef2d():
-    """Test Pearson and cross-product correlations"""
-    cud.corrcoef2d(
-        signal, kernel, max_dist=None, sym_upper=False, scaling="pearson"
-    )
+@params(*gauss1_mats)
+def test_corrcoef2d(signal):
+    """Check if Pearson and cross-product correlations yield appropriate values"""
+    # Make gaussian kernel
+    kernel = gauss_mat(0, 0, 5, shape=(7, 7)).todense()
+    kernel = kernel + kernel.T - np.diag(np.diag(kernel))
+    for scaling in ["pearson", "cross"]:
+        corr = cud.corrcoef2d(
+            signal, kernel, max_dist=None, sym_upper=False, scaling=scaling
+        )
+        assert np.isclose(np.mean(corr.data), 0, atol=0.01)
+        assert np.min(corr.data) >= -1
+        assert np.max(corr.data) <= 1
+
+
+@params(ck.loops, ck.borders, ck.hairpins)
+def test_corrcoef2d_kernels(kernel_config):
+    """Test corrfoef2d on all built-in patterns"""
+    # Loop over the different kernel matrices for the current pattern
+    for kernel in kernel_config["kernels"]:
+        for scaling in ["pearson", "cross"]:
+            km, kn = kernel.shape
+            # Generate fake Hi-C matrix: empty with pattern centered at 60,80
+            pattern_signal = np.zeros((100, 100), dtype=float)
+            pattern_signal[
+                60 - km // 2 : 60 + (km // 2 + 1),
+                80 - kn // 2 : 80 + (kn // 2 + 1),
+            ] = kernel
+            pattern_signal = sp.coo_matrix(np.triu(pattern_signal))
+            # Compute correlation between fake matrix and kernel
+            corr = cud.corrcoef2d(
+                pattern_signal,
+                kernel,
+                max_dist=None,
+                sym_upper=False,
+                scaling=scaling,
+            )
+
+            # Check if the max correlation is where we inserted the pattern
+            obs_row = corr.row[np.where(corr.data == np.max(corr.data))]
+            obs_col = corr.col[np.where(corr.data == np.max(corr.data))]
+            assert obs_row == 60
+            assert obs_col == 80
+
+
+# TODO: Add tests for inter (asymmetric) matrices
