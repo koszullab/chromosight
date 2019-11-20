@@ -68,10 +68,15 @@ gauss12 += gauss_mat(1.5, 3, 0.25, shape=(100, 100))
 gauss12.data[gauss12.data < np.percentile(gauss12.data, 80)] = 0
 
 
+# Generate dummy gaussian kernel
+gauss_kernel = gauss_mat(0, 0, 5, shape=(7, 7)).todense()
+gauss_kernel = gauss_kernel + gauss_kernel.T - np.diag(np.diag(gauss_kernel))
+
+
 class DummyMap:
     """Simulates ContactMap class, but only includes attributes required for testing"""
 
-    def __init__(self, matrix, max_dist, detectable_bins):
+    def __init__(self, matrix, max_dist=None, detectable_bins=None):
         self.matrix = matrix
         self.max_dist = max_dist
         self.detectable_bins = detectable_bins
@@ -80,16 +85,21 @@ class DummyMap:
             self.detectable_bins = (bins, bins)
 
 
-class TestDetection(unittest.TestCase):
-    def test_validate_patterns():
-        cud.validate_patterns(
-            coords,
-            matrix,
-            conv_mat,
-            detectable_bins,
-            kernel_matrix,
-            max_undetected_perc,
-        )
+@params(*zip(gauss1_mats, gauss1_coords))
+def test_validate_patterns(matrix, coords):
+    """Test pattern validation"""
+    contact_map = DummyMap(matrix)
+    conv_mat = cud.corrcoef2d(
+        matrix, gauss_kernel, max_dist=None, sym_upper=False, scaling="pearson"
+    )
+    cud.validate_patterns(
+        np.array([coords]),
+        matrix,
+        conv_mat,
+        contact_map.detectable_bins,
+        gauss_kernel,
+        10.0,
+    )
 
 
 def test_pileup_patterns():
@@ -175,13 +185,10 @@ def test_label_connected_pixels_sparse(matrix):
 @params(*gauss1_mats)
 def test_xcorr2(signal):
     """Check if correlation matrix match signal"""
-    # Make gaussian kernel
-    kernel = gauss_mat(0, 0, 5, shape=(7, 7)).todense()
-    kernel = kernel + kernel.T - np.diag(np.diag(kernel))
     # Get max coordinates of 2D normal in signal
     exp_row, exp_col = np.where(signal.todense() == np.max(signal.todense()))
     # Get max coordinates of correlation scores
-    corr_mat = cud.xcorr2(signal, kernel, threshold=1e-4).todense()
+    corr_mat = cud.xcorr2(signal, gauss_kernel, threshold=1e-4).todense()
     obs_row, obs_col = np.where(corr_mat == np.max(corr_mat))
     # Check if best correlation is at the mode of the normal distribution
     # NOTE: There are sometime two maximum values side to side in signal, hence
@@ -193,16 +200,17 @@ def test_xcorr2(signal):
 @params(*gauss1_mats)
 def test_corrcoef2d(signal):
     """Check if Pearson and cross-product correlations yield appropriate values"""
-    # Make gaussian kernel
-    kernel = gauss_mat(0, 0, 5, shape=(7, 7)).todense()
-    kernel = kernel + kernel.T - np.diag(np.diag(kernel))
     for scaling in ["pearson", "cross"]:
         corr = cud.corrcoef2d(
-            signal, kernel, max_dist=None, sym_upper=False, scaling=scaling
+            signal,
+            gauss_kernel,
+            max_dist=None,
+            sym_upper=False,
+            scaling=scaling,
         )
-        assert np.isclose(np.mean(corr.data), 0, atol=0.01)
-        assert np.min(corr.data) >= -1
-        assert np.max(corr.data) <= 1
+        if len(corr.data):
+            assert np.min(corr.data) >= 0
+            assert np.max(corr.data) <= 1
 
 
 @params(ck.loops, ck.borders, ck.hairpins)
@@ -229,6 +237,7 @@ def test_corrcoef2d_kernels(kernel_config):
             )
 
             # Check if the max correlation is where we inserted the pattern
+            corr = corr.tocoo()
             obs_row = corr.row[np.where(corr.data == np.max(corr.data))]
             obs_col = corr.col[np.where(corr.data == np.max(corr.data))]
             assert obs_row == 60
@@ -236,3 +245,4 @@ def test_corrcoef2d_kernels(kernel_config):
 
 
 # TODO: Add tests for inter (asymmetric) matrices
+# TODO: Test for error handling
