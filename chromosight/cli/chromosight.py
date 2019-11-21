@@ -219,6 +219,11 @@ def cmd_detect(arguments):
             param_name, param_value, param_type, kernel_config
         )
 
+    # NOTE: Temporary warning
+    if interchrom:
+        sys.stderr.write(
+            "WARNING: Support for nterchromosomal matrices is experimental and very expensive in RAM\n"
+        )
     hic_genome = HicGenome(
         mat_path, inter=interchrom, kernel_config=kernel_config
     )
