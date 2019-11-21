@@ -86,8 +86,11 @@ gauss_kernel = gauss_kernel + gauss_kernel.T - np.diag(np.diag(gauss_kernel))
 class DummyMap:
     """Simulates ContactMap class, but only includes attributes required for testing"""
 
-    def __init__(self, matrix, max_dist=None, detectable_bins=None):
+    def __init__(
+        self, matrix, max_dist=None, detectable_bins=None, inter=False
+    ):
         self.matrix = matrix
+        self.inter = inter
         self.max_dist = max_dist
         self.detectable_bins = detectable_bins
         if self.detectable_bins is None:
