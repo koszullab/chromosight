@@ -182,12 +182,18 @@ class HicGenome:
 
         # Loop over all possible combinations of chromosomes
         # in the upper triangle matrix
+        sys.stderr.write("Preprocessing sub-matrices...\n")
         sub_mat_idx = 0
         for i1, r1 in self.chroms.iterrows():
             for i2, r2 in self.chroms.iterrows():
                 s1, e1 = r1.start_bin, r1.end_bin
                 s2, e2 = r2.start_bin, r2.end_bin
                 if i1 == i2 or (i1 < i2 and self.inter):
+                    cio.progress(
+                        sub_mat_idx,
+                        sub_mats.shape[0],
+                        f"{r1['name']}-{r2['name']}",
+                    )
                     # Subset intra / inter sub_matrix and matching detectable bins
                     sub_mat = matrix[s1:e1, s2:e2]
                     sub_mat_detectable_bins = (
@@ -213,7 +219,11 @@ class HicGenome:
                     sub_mats.chr1[sub_mat_idx] = r1["name"]
                     sub_mats.chr2[sub_mat_idx] = r2["name"]
                     sub_mat_idx += 1
-                    print(f"Processed {r1['name']}-{r2['name']} sub matrix.")
+        cio.progress(
+            sub_mat_idx,
+            sub_mats.shape[0],
+            f"{sub_mats.loc[sub_mat_idx-1, 'chr1']}-{sub_mats.loc[sub_mat_idx-1, 'chr2']}\n",
+        )
         self.sub_mats = sub_mats
         print("Sub matrices extracted")
 

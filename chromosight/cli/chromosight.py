@@ -41,8 +41,8 @@ Arguments for detect:
                                 config path. Use this to override pattern if 
                                 you do not want to use one of the preset 
                                 patterns.
-    -m, --min-dist=0            Filter out patterns closer than a target base
-                                pair distance from the diagonal. [default: 0]
+    -m, --min-dist=auto         Filter out patterns closer than a target base
+                                pair distance from the diagonal. [default: auto]
     -M, --max-dist=auto         Maximum distance from the diagonal (in base pairs)
                                 at which pattern detection should operate. Auto
                                 sets a value based on the kernel configuration
@@ -92,17 +92,9 @@ import docopt
 import multiprocessing as mp
 from chromosight.version import __version__
 from chromosight.utils.contacts_map import HicGenome
-from chromosight.utils.io import (
-    write_patterns,
-    save_windows,
-    load_kernel_config,
-)
+import chromosight.utils.io as cio
+import chromosight.utils.detection as cid
 from chromosight.utils.plotting import pileup_plot
-from chromosight.utils.detection import (
-    pattern_detector,
-    pileup_patterns,
-    remove_smears,
-)
 from chromosight.utils.preprocessing import resize_kernel
 
 
@@ -135,7 +127,7 @@ def cmd_generate_config(arguments):
     pattern = arguments["--preset"]
     arguments = docopt.docopt(__doc__, version=__version__)
 
-    kernel_config = load_kernel_config(pattern, False)
+    kernel_config = cio.load_kernel_config(pattern, False)
 
     # If prefix involves a directory, create it
     if os.path.dirname(prefix):
@@ -157,7 +149,7 @@ def _detect_sub_mat(data):
     sub = data[0][1]
     config = data[1]
     kernel = data[2]
-    chrom_patterns, chrom_windows = pattern_detector(
+    chrom_patterns, chrom_windows = cid.pattern_detector(
         sub.contact_map, config, kernel
     )
     return {
@@ -221,7 +213,7 @@ def cmd_detect(arguments):
         "min_dist": (min_dist, int),
         "max_perc_undetected": (perc_undetected, float),
     }
-    kernel_config = load_kernel_config(config_path, custom)
+    kernel_config = cio.load_kernel_config(config_path, custom)
     for param_name, (param_value, param_type) in params.items():
         kernel_config = _override_kernel_config(
             param_name, param_value, param_type, kernel_config
@@ -257,10 +249,17 @@ def cmd_detect(arguments):
     pool = mp.Pool(int(threads))
     n_sub_mats = hic_genome.sub_mats.shape[0]
     # Loop over the different kernel matrices for input pattern
+    run_id = 0
+    total_runs = (
+        len(kernel_config["kernels"]) * kernel_config["max_iterations"]
+    )
+    sys.stderr.write("Detecting patterns...\n")
     for kernel_id, kernel_matrix in enumerate(kernel_config["kernels"]):
         # Adjust kernel iteratively
         for i in range(kernel_config["max_iterations"]):
-            sys.stderr.write(f"Detection: kernel {kernel_id}, iteration {i}\n")
+            cio.progress(
+                run_id, total_runs, f"Kernel: {kernel_id}, Iteration: {i}"
+            )
 
             # Apply detection procedure to all sub matrices in parallel
             sub_mat_data = zip(
@@ -310,13 +309,15 @@ def cmd_detect(arguments):
                 kernel=kernel_id,
                 iter=i,
             )
-            kernel_pileup = pileup_patterns(kernel_windows)
+            kernel_pileup = cid.pileup_patterns(kernel_windows)
 
             # Update kernel with patterns detected at current iteration
             kernel_matrix = kernel_pileup
             # Generate pileup visualisations if requested
             if plotting_enabled:
                 pileup_plot(kernel_pileup, name=pileup_fname, output=output)
+            run_id += 1
+    cio.progress(run_id, total_runs, f"Kernel: {kernel_id}, Iteration: {i}\n")
 
     # If no pattern detected on any chromosome, with any kernel, exit gracefully
     if len(all_pattern_coords) == 0:
@@ -331,7 +332,7 @@ def cmd_detect(arguments):
     all_pattern_windows = np.concatenate(all_pattern_windows, axis=0)
 
     # Remove patterns with overlapping windows (smeared patterns)
-    distinct_patterns = remove_smears(all_pattern_coords, win_size=4)
+    distinct_patterns = cid.remove_smears(all_pattern_coords, win_size=4)
 
     # Drop patterns that are too close to each other
     all_pattern_coords = all_pattern_coords.loc[distinct_patterns, :]
@@ -356,7 +357,7 @@ def cmd_detect(arguments):
         all_pattern_coords.chrom1 == all_pattern_coords.chrom2
     ) & (
         np.abs(all_pattern_coords.start2 - all_pattern_coords.start1)
-        < int(min_dist)
+        < int(kernel_config["min_dist"])
     )
     # Reorder columns at the same time
     all_pattern_coords = all_pattern_coords.loc[
@@ -380,9 +381,9 @@ def cmd_detect(arguments):
     ### 3: WRITE OUTPUT
     sys.stderr.write(f"{all_pattern_coords.shape[0]} patterns detected\n")
     # Save patterns and their coordinates in a tsv file
-    write_patterns(all_pattern_coords, kernel_config["name"], output)
+    cio.write_patterns(all_pattern_coords, kernel_config["name"], output)
     # Save windows as an array in an npy file
-    save_windows(
+    cio.save_windows(
         all_pattern_windows, kernel_config["name"], output, format=win_fmt
     )
 

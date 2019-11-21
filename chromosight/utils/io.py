@@ -340,3 +340,26 @@ def save_windows(windows, pattern_name, output_dir=".", format="json"):
             json.dump(json_wins, handle, indent=4)
     else:
         raise ValueError("window format must be either npy or json.")
+
+
+def progress(count, total, status=""):
+    """
+    Basic progress bar in terminal.
+    
+    Parameters
+    ----------
+    count : float
+        Current task id.
+    total : float
+        Maximum task id.
+    status : str
+        Info to write on the side of the bar.
+    """
+    bar_len = 20
+    filled_len = int(round(bar_len * count / float(total)))
+
+    percents = round(100.0 * count / float(total), 1)
+    bar = "=" * filled_len + "-" * (bar_len - filled_len)
+
+    sys.stderr.write(" [%s] %s%s %s\r" % (bar, percents, "%", status))
+    sys.stderr.flush()
