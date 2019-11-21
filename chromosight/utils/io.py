@@ -206,6 +206,7 @@ def load_kernel_config(kernel, custom=False):
             ...
         ],
         "max_dist": int,
+        "min_dist": int,
         "max_iterations": int,
         "max_perc_undetected": float,
         "precision": float
