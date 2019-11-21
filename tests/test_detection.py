@@ -194,17 +194,25 @@ def test_label_connected_pixels_sparse(matrix):
 
 @params(*gauss1_mats)
 def test_xcorr2(signal):
-    """Check if correlation matrix match signal"""
+    """Check if correlation matrix match signal and compare dense vs sparse results"""
     # Get max coordinates of 2D normal in signal
     exp_row, exp_col = np.where(signal.todense() == np.max(signal.todense()))
     # Get max coordinates of correlation scores
     corr_mat = cud.xcorr2(signal, gauss_kernel, threshold=1e-4).todense()
+    corr_mat_dense = cud.xcorr2(signal.todense(), gauss_kernel, threshold=1e-4)
     obs_row, obs_col = np.where(corr_mat == np.max(corr_mat))
     # Check if best correlation is at the mode of the normal distribution
     # NOTE: There are sometime two maximum values side to side in signal, hence
     # the isin check rather than equality
     assert np.all(np.isin(obs_row, exp_row))
     assert np.all(np.isin(obs_col, exp_col))
+    assert np.all(
+        np.isclose(
+            corr_mat_dense,
+            corr_mat,
+            atol=np.mean(corr_mat[corr_mat != 0].A1 / 10),
+        )
+    )
 
 
 @params(*gauss1_mats)
@@ -221,6 +229,27 @@ def test_corrcoef2d(signal):
         if len(corr.data):
             assert np.min(corr.data) >= 0
             assert np.max(corr.data) <= 1
+
+
+@params(*gauss1_mats)
+def test_corrcoef2d_dense_sparse(signal):
+    """Check if corrcoef2d yields identical values for dense and sparse versions"""
+    for scaling in ["pearson", "cross"]:
+        corr_d = cud.corrcoef2d(
+            signal.todense(),
+            gauss_kernel,
+            max_dist=None,
+            sym_upper=False,
+            scaling=scaling,
+        )
+        corr_s = cud.corrcoef2d(
+            signal,
+            gauss_kernel,
+            max_dist=None,
+            sym_upper=False,
+            scaling=scaling,
+        )
+        assert np.all(np.isclose(corr_s.todense(), corr_d, rtol=10e-4))
 
 
 @params(ck.loops, ck.borders, ck.hairpins)
