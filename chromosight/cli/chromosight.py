@@ -97,7 +97,7 @@ from chromosight.utils.io import (
     save_windows,
     load_kernel_config,
 )
-from chromosight.utils.plotting import pattern_plot, pileup_plot
+from chromosight.utils.plotting import pileup_plot
 from chromosight.utils.detection import (
     pattern_detector,
     pileup_patterns,
@@ -214,21 +214,18 @@ def cmd_detect(arguments):
         config_path = pattern
 
     ### 0: LOAD INPUT
+    params = {
+        "max_iterations": (iterations, int),
+        "precision": (precision, float),
+        "max_dist": (max_dist, int),
+        "min_dist": (min_dist, int),
+        "max_perc_undetected": (perc_undetected, float),
+    }
     kernel_config = load_kernel_config(config_path, custom)
-
-    # User can override configuration for input pattern if desired
-    kernel_config = _override_kernel_config(
-        "max_iterations", iterations, int, kernel_config
-    )
-    kernel_config = _override_kernel_config(
-        "precision", precision, float, kernel_config
-    )
-    kernel_config = _override_kernel_config(
-        "max_dist", max_dist, int, kernel_config
-    )
-    kernel_config = _override_kernel_config(
-        "max_perc_undetected", perc_undetected, float, kernel_config
-    )
+    for param_name, (param_value, param_type) in params.items():
+        kernel_config = _override_kernel_config(
+            param_name, param_value, param_type, kernel_config
+        )
 
     hic_genome = HicGenome(
         mat_path, inter=interchrom, kernel_config=kernel_config
