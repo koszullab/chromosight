@@ -6,10 +6,8 @@ Operations to perform on Hi-C matrices before analyses
 """
 import numpy as np
 import sys
-from scipy.signal import savgol_filter
 import scipy.stats as ss
 import scipy.sparse as sp
-from scipy.sparse import dia_matrix, csr_matrix, coo_matrix, issparse
 import scipy.ndimage as ndi
 
 
@@ -70,21 +68,32 @@ def diag_trim(mat, n):
     Parameters
     ----------
 
-    mat : scipy.sparse.dia_matrix
+    mat : scipy.sparse.dia_matrix or numpy.array
         The sparse matrix to be trimmed
     n : int
         The number of diagonals from the center to keep (0-based).
 
     Returns
     -------
-    scipy.sparse.dia_matrix :
+    scipy.sparse.dia_matrix or numpy.array:
         The diagonally trimmed upper triangle matrix with only the first n diagonal.
     """
-    if not issparse(mat) or mat.format != "dia":
+    if not sp.issparse(mat):
+        trimmed = mat.copy()
+        m = mat.shape[0]
+        for diag in range(n, m):
+            step = m + 1
+            start = diag
+            end = m ** 2 - diag * m
+            trimmed.flat[start:end:step] = 0
+
+        return trimmed
+
+    if mat.format != "dia":
         raise ValueError("input type must be scipy.sparse.dia_matrix")
     # Create a new matrix from the diagonals below max dist (faster than removing them)
     keep_offsets = np.where((mat.offsets <= n) & (mat.offsets >= 0))[0]
-    trimmed = dia_matrix(
+    trimmed = sp.dia_matrix(
         (mat.data[keep_offsets], mat.offsets[keep_offsets]), shape=mat.shape
     )
 
@@ -403,7 +412,7 @@ def subsample_contacts(M, n_contacts):
     sampled_rows = M.row[nnz_mask]
     sampled_cols = M.col[nnz_mask]
 
-    return coo_matrix(
+    return sp.coo_matrix(
         (sampled_counts, (sampled_rows, sampled_cols)),
         shape=(M.shape[0], M.shape[1]),
     )
