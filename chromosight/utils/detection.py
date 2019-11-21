@@ -24,7 +24,6 @@ def numba_jit():
     return jit
 
 
-@numba_jit()
 def validate_patterns(
     coords,
     matrix,
@@ -158,13 +157,11 @@ def validate_patterns(
     return filtered_coords, filtered_windows
 
 
-@numba_jit()
 def pileup_patterns(pattern_windows):
     """Generate a pileup from an input list of pattern coords and a Hi-C matrix"""
     return np.apply_along_axis(np.median, 0, pattern_windows)
 
 
-@numba_jit()
 def pattern_detector(contact_map, kernel_config, kernel_matrix):
     """Pattern detector
 
@@ -194,17 +191,27 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix):
     if kernel_matrix.shape[0] >= contact_map.matrix.shape[0]:
         return None, None
 
+    # Dirty trick: Since sparse implementation of convolution currently works 
+    # only for symmetric matrices, use dense implementation for inter-matrices
+    # This is very expensive in RAM
+    if contact_map.inter:
+        contact_map.matrix = contact_map.matrix.todense()
     # Pattern matching operate here
     mat_conv = corrcoef2d(
-        contact_map.matrix, kernel_matrix, kernel_config["max_dist"]
+        contact_map.matrix, kernel_matrix, max_dist=kernel_config["max_dist"], sym_upper=not contact_map.inter
     )
-    mat_conv = mat_conv.tocoo()
-    # Clean potential missing values
-    mat_conv.data[np.isnan(mat_conv.data)] = 0
-    # Only keep corrcoeff in scannable range
-    mat_conv = preproc.diag_trim(mat_conv.todia(), contact_map.max_dist)
-    mat_conv = mat_conv.tocoo()
-    mat_conv.eliminate_zeros()
+    if contact_map.inter:
+        mat_conv = sp.coo_matrix(mat_conv)
+        contact_map.matrix = sp.coo_matrix(contact_map.matrix)
+    else:
+        # Only trim diagonals for intra matrices (makes no sense for inter)
+        mat_conv = mat_conv.tocoo()
+        # Clean potential missing values
+        mat_conv.data[np.isnan(mat_conv.data)] = 0
+        # Only keep corrcoeff in scannable range
+        mat_conv = preproc.diag_trim(mat_conv.todia(), contact_map.max_dist)
+        mat_conv = mat_conv.tocoo()
+        mat_conv.eliminate_zeros()
 
     # Find foci of highly correlated pixels
     chrom_pattern_coords = picker(mat_conv, kernel_config["precision"])
@@ -221,7 +228,6 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix):
     return filtered_chrom_patterns, chrom_pattern_windows
 
 
-@numba_jit()
 def remove_smears(patterns, win_size=8):
     """
     Identify patterns that are too close from each other to exclude them.
@@ -261,7 +267,6 @@ def remove_smears(patterns, win_size=8):
     return good_patterns_mask
 
 
-@numba_jit()
 def picker(mat_conv, precision=None):
     """Pick pixels out of a convolution map
     Given a correlation heat map, pick (i, j) of local maxima
@@ -329,7 +334,6 @@ def picker(mat_conv, precision=None):
     return foci_coords
 
 
-@numba_jit()
 def label_connected_pixels_sparse(matrix, min_focus_size=2):
     """
     Given a sparse matrix of 1 and 0 values, find
@@ -725,7 +729,7 @@ def _corrcoef2d_sparse(
     except AttributeError:
         pass
 
-    if max_dist is not None:
+    if (max_dist is not None) and sym_upper:
         # Trim diagonals further than max_scan_distance
         conv = preproc.diag_trim(conv.todia(), max_dist)
 
@@ -812,7 +816,7 @@ def _corrcoef2d_dense(
 
     conv /= denom
 
-    if max_dist is not None:
+    if (max_dist is not None) and sym_upper:
         # Trim diagonals further than max_scan_distance
         conv = preproc.diag_trim(conv, max_dist)
 
@@ -820,5 +824,4 @@ def _corrcoef2d_dense(
         conv = np.triu(conv)
     conv[~np.isfinite(conv)] = 0.0
     conv[conv < 0] = 0.0
-
     return conv

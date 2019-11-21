@@ -83,7 +83,6 @@ def _check_datashader(fun):
     return wrapped
 
 
-@_check_datashader
 def plot_whole_matrix(mat, patterns, out=None, region=None, region2=None):
     """
     Visualise the input matrix with a set of patterns overlaid on top.
