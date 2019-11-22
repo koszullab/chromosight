@@ -41,9 +41,7 @@ class HicGenome:
 
     def __init__(self, path, inter=False, kernel_config=None):
         # Load Hi-C matrix and associated metadata
-        self.matrix, self.chroms, self.bins, self.resolution = self.load_data(
-            path
-        )
+        self.matrix, self.chroms, self.bins, self.resolution = self.load_data(path)
         self.kernel_config = kernel_config
         self.sub_mats = None
         self.detectable_bins = None
@@ -54,9 +52,7 @@ class HicGenome:
         """Use the kernel config to compute max_dist"""
         # Convert maximum scanning distance to bins using resolution
         try:
-            self.max_dist = max(
-                self.kernel_config["max_dist"] // self.resolution, 1
-            )
+            self.max_dist = max(self.kernel_config["max_dist"] // self.resolution, 1)
             # Get the size of the largest convolution kernel
             self.largest_kernel = max(
                 [s.shape[0] for s in self.kernel_config["kernels"]]
@@ -79,15 +75,13 @@ class HicGenome:
             detectable.
         """
         # Preprocess the full genome matrix
-        self.detectable_bins = preproc.get_detectable_bins(
-            self.matrix, n_mads=n_mads
-        )[0]
+        self.detectable_bins = preproc.get_detectable_bins(self.matrix, n_mads=n_mads)[
+            0
+        ]
         print(
             f"Found {len(self.detectable_bins)} / {self.matrix.shape[0]} detectable bins"
         )
-        self.matrix = preproc.normalize(
-            self.matrix, good_bins=self.detectable_bins
-        )
+        self.matrix = preproc.normalize(self.matrix, good_bins=self.detectable_bins)
         print("Whole genome matrix normalized")
 
     def subsample(self, sub):
@@ -104,9 +98,7 @@ class HicGenome:
             try:
                 subsample = float(sub)
                 if subsample < 0:
-                    sys.stderr.write(
-                        "Error: Subsample must be strictly positive.\n"
-                    )
+                    sys.stderr.write("Error: Subsample must be strictly positive.\n")
                     sys.exit(1)
                 if subsample < 1:
                     subsample *= self.matrix.sum()
@@ -138,9 +130,7 @@ class HicGenome:
 
         # Load contact map and chromosome start bins coords
         try:
-            sub_mat_df, chroms, bins, resolution = format_loader[extension](
-                mat_path
-            )
+            sub_mat_df, chroms, bins, resolution = format_loader[extension](mat_path)
         except KeyError as e:
             sys.stderr.write(
                 f"Unknown format: {extension}. Must be one of {format_loader.keys()}\n"
@@ -168,9 +158,7 @@ class HicGenome:
         n_chroms = self.chroms.shape[0]
         if self.inter:
             sub_mats = pd.DataFrame(
-                np.zeros(
-                    (int(n_chroms ** 2 / 2 + n_chroms / 2), 3), dtype=str
-                ),
+                np.zeros((int(n_chroms ** 2 / 2 + n_chroms / 2), 3), dtype=str),
                 columns=sub_cols,
             )
         else:
@@ -190,9 +178,7 @@ class HicGenome:
                 s2, e2 = r2.start_bin, r2.end_bin
                 if i1 == i2 or (i1 < i2 and self.inter):
                     cio.progress(
-                        sub_mat_idx,
-                        sub_mats.shape[0],
-                        f"{r1['name']}-{r2['name']}",
+                        sub_mat_idx, sub_mats.shape[0], f"{r1['name']}-{r2['name']}"
                     )
                     # Subset intra / inter sub_matrix and matching detectable bins
                     sub_mat = matrix[s1:e1, s2:e2]
@@ -245,12 +231,8 @@ class HicGenome:
         """
         full_patterns = patterns.copy()
         # Get start bin for chromosomes of interest
-        startA = self.chroms.loc[self.chroms.name == chr1, "start_bin"].values[
-            0
-        ]
-        startB = self.chroms.loc[self.chroms.name == chr2, "start_bin"].values[
-            0
-        ]
+        startA = self.chroms.loc[self.chroms.name == chr1, "start_bin"].values[0]
+        startB = self.chroms.loc[self.chroms.name == chr2, "start_bin"].values[0]
         # Shift index by start bin of chromosomes
         full_patterns.bin1 += startA
         full_patterns.bin2 += startB
@@ -318,9 +300,7 @@ class ContactMap:
         self.largest_kernel = largest_kernel
         # If detectable were not provided, compute them from the input matrix
         if detectable_bins is None:
-            detectable_bins = preproc.get_detectable_bins(
-                self.matrix, inter=self.inter
-            )
+            detectable_bins = preproc.get_detectable_bins(self.matrix, inter=self.inter)
         self.detectable_bins = detectable_bins
 
         # Apply preprocessing steps on the input matrix
@@ -355,7 +335,8 @@ class ContactMap:
         # Detrend matrix for power law
         sub_mat = preproc.detrend(
             sub_mat,
-            max_dist=self.max_dist,
+            max_dist=keep_distance,
+            smooth=True,
             detectable_bins=self.detectable_bins[0],
         )
 
@@ -364,6 +345,6 @@ class ContactMap:
         sub_mat = sub_mat.tocoo()
         # Fill diagonals of the lower triangle that might overlap the kernel
         for i in range(1, min(sub_mat.shape[0], self.largest_kernel)):
-            sub_mat.setdiag(sub_mat.diagonal(i), -i)
+            sub_mat.setdiag(1, -i)
 
         return sub_mat

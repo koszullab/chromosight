@@ -25,12 +25,7 @@ def numba_jit():
 
 
 def validate_patterns(
-    coords,
-    matrix,
-    conv_mat,
-    detectable_bins,
-    kernel_matrix,
-    max_undetected_perc,
+    coords, matrix, conv_mat, detectable_bins, kernel_matrix, max_undetected_perc
 ):
     """
     Filters detected patterns to remove those in noisy regions or too close to
@@ -75,11 +70,7 @@ def validate_patterns(
 
     # Copy coords object and append column for scores
     validated_coords = pd.DataFrame(
-        {
-            "bin1": coords[:, 0],
-            "bin2": coords[:, 1],
-            "score": np.zeros(coords.shape[0]),
-        }
+        {"bin1": coords[:, 0], "bin2": coords[:, 1], "score": np.zeros(coords.shape[0])}
     )
     # validated_coords = np.append(coords, np.zeros((coords.shape[0], 1)), 1)
     # Initialize structure to store pattern windows
@@ -110,18 +101,12 @@ def validate_patterns(
             n_rows, n_cols = pattern_window.shape
             tot_pixels = n_rows * n_cols
             # Compute number of missing rows and cols
-            n_bad_rows = n_rows - len(
-                set(win_rows).intersection(detectable_rows)
-            )
-            n_bad_cols = n_cols - len(
-                set(win_cols).intersection(detectable_cols)
-            )
+            n_bad_rows = n_rows - len(set(win_rows).intersection(detectable_rows))
+            n_bad_cols = n_cols - len(set(win_cols).intersection(detectable_cols))
 
             # Number of undetected pixels is "bad rows area" + "bad cols area" - "bad rows x bad cols intersection"
             tot_undetected_pixels = (
-                n_bad_rows * n_cols
-                + n_bad_cols * n_rows
-                - n_bad_rows * n_bad_cols
+                n_bad_rows * n_cols + n_bad_cols * n_rows - n_bad_rows * n_bad_cols
             )
             # Number of uncovered pixels
             tot_zero_pixels = len(pattern_window[pattern_window == 0].A1)
@@ -191,14 +176,17 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix):
     if kernel_matrix.shape[0] >= contact_map.matrix.shape[0]:
         return None, None
 
-    # Dirty trick: Since sparse implementation of convolution currently works 
+    # Dirty trick: Since sparse implementation of convolution currently works
     # only for symmetric matrices, use dense implementation for inter-matrices
     # This is very expensive in RAM
     if contact_map.inter:
         contact_map.matrix = contact_map.matrix.todense()
     # Pattern matching operate here
     mat_conv = corrcoef2d(
-        contact_map.matrix, kernel_matrix, max_dist=kernel_config["max_dist"], sym_upper=not contact_map.inter
+        contact_map.matrix,
+        kernel_matrix,
+        max_dist=kernel_config["max_dist"],
+        sym_upper=not contact_map.inter,
     )
     if contact_map.inter:
         mat_conv = sp.coo_matrix(mat_conv)
@@ -254,9 +242,7 @@ def remove_smears(patterns, win_size=8):
     # Group patterns by row-col combination and retrieve the index of the
     # pattern with the best score in each group
     best_idx = (
-        p.groupby(["round_row", "round_col"], sort=False)["score"]
-        .idxmax()
-        .values
+        p.groupby(["round_row", "round_col"], sort=False)["score"].idxmax().values
     )
     good_patterns_mask = np.zeros(patterns.shape[0], dtype=bool)
     try:
@@ -292,9 +278,7 @@ def picker(mat_conv, precision=None):
     if precision is None:
         thres = 0
     else:
-        thres = np.median(
-            mat_conv.data
-        ) + precision * ss.median_absolute_deviation(
+        thres = np.median(mat_conv.data) + precision * ss.median_absolute_deviation(
             mat_conv.data, nan_policy="omit"
         )
     candidate_mat.data[candidate_mat.data < thres] = 0
@@ -458,10 +442,7 @@ def label_connected_pixels_sparse(matrix, min_focus_size=2):
     # generate a new matrix, similar to the input, but where pixel values
     # are the foci ID of the pixel.
     foci_mat = sp.coo_matrix(
-        (
-            foci[good_foci],
-            (candidates.row[good_foci], candidates.col[good_foci]),
-        ),
+        (foci[good_foci], (candidates.row[good_foci], candidates.col[good_foci])),
         shape=candidates.shape,
         dtype=np.int64,
     )
@@ -478,9 +459,7 @@ def xcorr2(signal, kernel, threshold=1e-4):
     return conv
 
 
-def corrcoef2d(
-    signal, kernel, max_dist=None, sym_upper=False, scaling="pearson"
-):
+def corrcoef2d(signal, kernel, max_dist=None, sym_upper=False, scaling="pearson"):
     """
     Signal-kernel 2D correlation
     Pearson correlation coefficient between signal and sliding kernel. Convolutes
@@ -511,19 +490,11 @@ def corrcoef2d(
     """
     if sp.issparse(signal):
         corr = _corrcoef2d_sparse(
-            signal,
-            kernel,
-            max_dist=max_dist,
-            sym_upper=sym_upper,
-            scaling=scaling,
+            signal, kernel, max_dist=max_dist, sym_upper=sym_upper, scaling=scaling
         )
     else:
         corr = _corrcoef2d_dense(
-            signal,
-            kernel,
-            max_dist=max_dist,
-            sym_upper=sym_upper,
-            scaling=scaling,
+            signal, kernel, max_dist=max_dist, sym_upper=sym_upper, scaling=scaling
         )
 
     return corr
@@ -586,10 +557,7 @@ def _xcorr2_sparse(signal, kernel, threshold=1e-4):
     else:
         for kj in range(kn):
             subkernel_sp = sp.diags(
-                kernel[:, kj],
-                np.arange(km),
-                shape=(sn - km + 1, sm),
-                format="csr",
+                kernel[:, kj], np.arange(km), shape=(sn - km + 1, sm), format="csr"
             )
             out += subkernel_sp.dot(signal[:, kj : sn - kn + 1 + kj])
 
@@ -601,9 +569,7 @@ def _xcorr2_sparse(signal, kernel, threshold=1e-4):
     # matrix, effectively adding margins.
     out = out.tocoo()
     rows, cols = out.row + kh, out.col + kw
-    out = sp.coo_matrix(
-        (out.data, (rows, cols)), shape=(sm, sn), dtype=np.float64
-    )
+    out = sp.coo_matrix((out.data, (rows, cols)), shape=(sm, sn), dtype=np.float64)
 
     return out
 
@@ -616,7 +582,7 @@ def _xcorr2_dense(signal, kernel, threshold=1e-4):
 
     Parameters
     ----------
-    signal: scipy.sparse.csr_matrix
+    signal: numpy.array
         A 2-dimensional numpy array Ms x Ns acting as the detrended Hi-C map.
     kernel: array_like
         A 2-dimensional numpy array Mk x Nk acting as the pattern template.
@@ -625,7 +591,7 @@ def _xcorr2_dense(signal, kernel, threshold=1e-4):
         on time and memory.
     Returns
     -------
-    out: scipy.sparse.coo_matrix
+    out: numpy.array
         Convolution product of signal by kernel.
     """
     sm, sn = signal.shape
@@ -704,15 +670,14 @@ def _corrcoef2d_sparse(
         std_kernel = float(kernel.std())
         if not (std_kernel > 0):
             raise ValueError(
-                "Cannot have scaling=pearson when kernel"
-                "is flat. Use scaling=cross."
+                "Cannot have scaling=pearson when kernel" "is flat. Use scaling=cross."
             )
 
         kernel1 = np.ones(kernel.shape)
         mean_signal = xcorr2(signal, kernel1 / kernel_size)
-        std_signal = xcorr2(
-            signal.power(2), kernel1 / kernel_size
-        ) - mean_signal.power(2)
+        std_signal = xcorr2(signal.power(2), kernel1 / kernel_size) - mean_signal.power(
+            2
+        )
         std_signal = std_signal.sqrt()
         conv = xcorr2(signal, kernel / kernel_size) - mean_signal * mean_kernel
         denom = std_signal * std_kernel
@@ -740,7 +705,6 @@ def _corrcoef2d_sparse(
     conv.data[conv.data < 0] = 0.0
     conv.eliminate_zeros()
     conv = conv.tocsr()
-
     return conv
 
 
@@ -800,16 +764,15 @@ def _corrcoef2d_dense(
         std_kernel = float(kernel.std())
         if not (std_kernel > 0):
             raise ValueError(
-                "Cannot have scaling=pearson when kernel"
-                "is flat. Use scaling=cross."
+                "Cannot have scaling=pearson when kernel" "is flat. Use scaling=cross."
             )
 
         kernel1 = np.ones(kernel.shape)
         mean_signal = xcorr2(signal, kernel1 / kernel_size)
 
-        std_signal = xcorr2(
-            np.power(signal, 2), kernel1 / kernel_size
-        ) - np.power(mean_signal, 2)
+        std_signal = xcorr2(np.power(signal, 2), kernel1 / kernel_size) - np.power(
+            mean_signal, 2
+        )
         std_signal = np.sqrt(std_signal)
         conv = xcorr2(signal, kernel / kernel_size) - mean_signal * mean_kernel
         denom = std_signal * std_kernel
