@@ -173,7 +173,7 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix):
     """
 
     # Do not attempt pattern detection unless matrix is larger than the kernel
-    if kernel_matrix.shape[0] >= contact_map.matrix.shape[0]:
+    if min(contact_map.matrix.shape) <= max(kernel_matrix.shape):
         return None, None
 
     # Dirty trick: Since sparse implementation of convolution currently works
@@ -464,7 +464,7 @@ def label_connected_pixels_sparse(matrix, min_focus_size=2):
 
 def xcorr2(signal, kernel, threshold=1e-4):
     if sp.issparse(signal):
-        conv = _xcorr2_sparse(signal, kernel, threshold=threshold)
+        conv = _xcorr2_sparse(signal.tocsr(), kernel, threshold=threshold)
     else:
         conv = _xcorr2_dense(signal, kernel, threshold=threshold)
     return conv
@@ -499,6 +499,9 @@ def corrcoef2d(signal, kernel, max_dist=None, sym_upper=False, scaling="pearson"
     scipy.sparse.csr_matrix or numpy.array
         The sparse matrix of correlation coefficients
     """
+    if min(kernel.shape) >= max(signal.shape):
+        raise ValueError("cannot have kernel bigger than signal")
+
     if sp.issparse(signal):
         corr = _corrcoef2d_sparse(
             signal, kernel, max_dist=max_dist, sym_upper=sym_upper, scaling=scaling
@@ -542,8 +545,6 @@ def _xcorr2_sparse(signal, kernel, threshold=1e-4):
     # Sanity checks
     if sp.issparse(kernel):
         raise ValueError("cannot handle kernel in sparse format")
-    if (km > sm) or (sn > sn):
-        raise ValueError("cannot have kernel bigger than signal")
     if not sp.issparse(signal):
         raise ValueError("cannot handle signal in dense format")
     # Check of kernel is constant (uniform)
@@ -611,9 +612,6 @@ def _xcorr2_dense(signal, kernel, threshold=1e-4):
     kw = (kn - 1) // 2
     constant_kernel = np.nan
 
-    # Sanity checks
-    if (km > sm) or (sn > sn):
-        raise ValueError("cannot have kernel bigger than signal")
     # out_wo_margin = sig.correlate2d(signa, kernel, 'valid')
     out_wo_margin = np.zeros([sm - km + 1, sn - kn + 1])
     # Simplified convolution for the special case where kernel is constant:
@@ -679,7 +677,7 @@ def _corrcoef2d_sparse(
         signal = signal.tolil()
         for i in range(1, kernel.shape[0]):
             signal.setdiag(signal.diagonal(i), -i)
-
+    signal = signal.tocsr()
     kernel_size = kernel.shape[0] * kernel.shape[1]
 
     if scaling == "cross":
@@ -765,6 +763,12 @@ def _corrcoef2d_dense(
     numpy.array
         The sparse matrix of correlation coefficients
     """
+
+    # Convert numpy matrices to array to avoid operator overloading
+    if isinstance(signal, np.matrix):
+        signal = np.array(signal)
+    if isinstance(kernel, np.matrix):
+        kernel = np.array(kernel)
     # If using only the upper triangle matrix, set diagonals that will
     # overlap the kernel in the lower triangle to their opposite diagonal
     # in the upper triangle
@@ -782,8 +786,8 @@ def _corrcoef2d_dense(
         # Generate constant kernel
         kernel1 = np.ones(kernel.shape)
         # Convolute squared signal with constant kernel
-        signal2 = xcorr2(np.power(signal, 2), kernel1)
-        kernel2 = float(np.sum(np.power(kernel, 2)))
+        signal2 = xcorr2(signal ** 2, kernel1)
+        kernel2 = float(np.sum(kernel ** 2))
         denom = signal2 * kernel2
         denom = np.sqrt(denom)
     elif scaling == "pearson":
@@ -797,9 +801,7 @@ def _corrcoef2d_dense(
         kernel1 = np.ones(kernel.shape)
         mean_signal = xcorr2(signal, kernel1 / kernel_size)
 
-        std_signal = xcorr2(np.power(signal, 2), kernel1 / kernel_size) - np.power(
-            mean_signal, 2
-        )
+        std_signal = xcorr2(signal ** 2, kernel1 / kernel_size) - mean_signal ** 2
         std_signal = np.sqrt(std_signal)
         conv = xcorr2(signal, kernel / kernel_size) - mean_signal * mean_kernel
         denom = std_signal * std_kernel
