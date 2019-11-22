@@ -1,0 +1,12 @@
+{
+    "name": "centromeres",
+    "kernels": [
+        "centromeres.1.txt"
+    ],
+    "min_dist": 0,
+    "max_dist": 0,
+    "max_iterations": 3,
+    "max_perc_undetected": 80.0,
+    "precision": 2,
+    "resolution": 2000
+}
