@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import scipy.sparse as sp
 import scipy.stats as ss
-import scipy.ndimage as ndi
+import scipy.signal as sig
 import warnings
 import chromosight.utils.preprocessing as preproc
 
@@ -179,8 +179,6 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix):
     # Dirty trick: Since sparse implementation of convolution currently works
     # only for symmetric matrices, use dense implementation for inter-matrices
     # This is very expensive in RAM
-    if contact_map.inter:
-        contact_map.matrix = contact_map.matrix.todense()
     # Pattern matching operate here
     mat_conv = corrcoef2d(
         contact_map.matrix,
@@ -188,18 +186,16 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix):
         max_dist=kernel_config["max_dist"],
         sym_upper=not contact_map.inter,
     )
-    if contact_map.inter:
-        mat_conv = sp.coo_matrix(mat_conv)
-        contact_map.matrix = sp.coo_matrix(contact_map.matrix)
-    else:
-        # Only trim diagonals for intra matrices (makes no sense for inter)
-        mat_conv = mat_conv.tocoo()
-        # Clean potential missing values
-        mat_conv.data[np.isnan(mat_conv.data)] = 0
-        # Only keep corrcoeff in scannable range
+    # Only trim diagonals for intra matrices (makes no sense for inter)
+    mat_conv = mat_conv.tocoo()
+    # Clean potential missing values
+    mat_conv.data[np.isnan(mat_conv.data)] = 0
+    # Only keep corrcoeff in scannable range
+    
+    if not contact_map.inter:
         mat_conv = preproc.diag_trim(mat_conv.todia(), contact_map.max_dist)
-        mat_conv = mat_conv.tocoo()
-        mat_conv.eliminate_zeros()
+    mat_conv = mat_conv.tocoo()
+    mat_conv.eliminate_zeros()
 
     # Find foci of highly correlated pixels
     chrom_pattern_coords = picker(mat_conv, kernel_config["precision"])
@@ -216,7 +212,7 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix):
     return filtered_chrom_patterns, chrom_pattern_windows
 
 
-def remove_smears(patterns, win_size=8):
+def remove_neighbours(patterns, win_size=8):
     """
     Identify patterns that are too close from each other to exclude them.
     This can happen when patterns smear over several pixels and are detected twice.
@@ -236,17 +232,32 @@ def remove_smears(patterns, win_size=8):
         which are smears (False values)
     """
     p = patterns.copy()
+    p["pattern_id"] = range(p.shape[0])
+    p = p.sort_values(["bin1", "bin2"])
+    all_phase_df = []
+    for phase_h in range(win_size):
+        for phase_v in range(win_size):
+            if phase_v != 0 and phase_h != 0:
+                phase_df = p.copy()
+                phase_df.bin1 += phase_h
+                phase_df.bin2 += phase_v
+                all_phase_df.append(phase_df)
+    p = pd.concat([p] + all_phase_df, axis=0)
+
     # Divide each row / col by the window size to serve as a "hash"
     p["round_row"] = p.bin1 // win_size
     p["round_col"] = p.bin2 // win_size
     # Group patterns by row-col combination and retrieve the index of the
     # pattern with the best score in each group
-    best_idx = (
-        p.groupby(["round_row", "round_col"], sort=False)["score"].idxmax().values
+    pattern_ids = (
+        p.sort_values("score", ascending=False)
+        .drop_duplicates(subset=["round_row", "round_col"], keep="first")
+        .pattern_id.unique()
     )
+
     good_patterns_mask = np.zeros(patterns.shape[0], dtype=bool)
     try:
-        good_patterns_mask[best_idx] = True
+        good_patterns_mask[pattern_ids] = True
     except IndexError:
         # no input pattern
         pass
@@ -533,9 +544,8 @@ def _xcorr2_sparse(signal, kernel, threshold=1e-4):
         raise ValueError("cannot handle kernel in sparse format")
     if (km > sm) or (sn > sn):
         raise ValueError("cannot have kernel bigger than signal")
-
-    if sp.issparse(signal):
-        signal = signal.tocsr()
+    if not sp.issparse(signal):
+        raise ValueError("cannot handle signal in dense format")
     # Check of kernel is constant (uniform)
     constant_kernel = np.nan
     if np.allclose(kernel, np.tile(kernel[0, 0], kernel.shape), rtol=1e-08):
@@ -546,10 +556,10 @@ def _xcorr2_sparse(signal, kernel, threshold=1e-4):
     # Simplified convolution for the special case where kernel is constant:
     if np.isfinite(constant_kernel):
         l_subkernel_sp = sp.diags(
-            np.ones(km), np.arange(km), shape=(sn - km + 1, sm), format="csr"
+            np.ones(km), np.arange(km), shape=(sm - km + 1, sm), format="csr"
         )
         r_subkernel_sp = sp.diags(
-            np.ones(kn), -np.arange(kn), shape=(sn, sm - kn + 1), format="csr"
+            np.ones(kn), -np.arange(kn), shape=(sn, sn - kn + 1), format="csr"
         )
         out = (l_subkernel_sp @ signal) @ r_subkernel_sp
         out *= constant_kernel
@@ -557,7 +567,7 @@ def _xcorr2_sparse(signal, kernel, threshold=1e-4):
     else:
         for kj in range(kn):
             subkernel_sp = sp.diags(
-                kernel[:, kj], np.arange(km), shape=(sn - km + 1, sm), format="csr"
+                kernel[:, kj], np.arange(km), shape=(sm - km + 1, sm), format="csr"
             )
             out += subkernel_sp.dot(signal[:, kj : sn - kn + 1 + kj])
 
@@ -599,17 +609,34 @@ def _xcorr2_dense(signal, kernel, threshold=1e-4):
     # Kernel (half) height and width
     kh = (km - 1) // 2
     kw = (kn - 1) // 2
+    constant_kernel = np.nan
 
     # Sanity checks
     if (km > sm) or (sn > sn):
         raise ValueError("cannot have kernel bigger than signal")
+    # out_wo_margin = sig.correlate2d(signa, kernel, 'valid')
+    out_wo_margin = np.zeros([sm - km + 1, sn - kn + 1])
+    # Simplified convolution for the special case where kernel is constant:
+    if np.isfinite(constant_kernel):
+        l_subkernel_sp = sp.diags(
+            np.ones(km), np.arange(km), shape=(sm - km + 1, sm), format="csr"
+        )
+        r_subkernel_sp = sp.diags(
+            np.ones(kn), -np.arange(kn), shape=(sn, sn - kn + 1), format="csr"
+        )
+        out_wo_margin = (l_subkernel_sp @ signal) @ r_subkernel_sp
+        out_wo_margin *= constant_kernel
+    # Convolution code for general case
+    else:
+        for kj in range(kn):
+            subkernel_sp = sp.diags(
+                kernel[:, kj], np.arange(km), shape=(sm - km + 1, sm), format="csr"
+            )
+            out_wo_margin += subkernel_sp.dot(signal[:, kj : sn - kn + 1 + kj])
 
-    out = ndi.convolve(signal, kernel, mode="constant")
     # Add margins of zeros where kernel overlaps edges
-    out[:kh, :] = 0
-    out[sm - kh :, :] = 0
-    out[:, :kw] = 0
-    out[:, sn - kw :] = 0
+    out = np.zeros([sm, sn])
+    out[kh:-kh, kw:-kw] = out_wo_margin
     # Set very low pixels to 0
     out[out < threshold] = 0
     return out
