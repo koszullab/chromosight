@@ -148,13 +148,13 @@ def test_pattern_detector(matrix):
 
 
 @params(*range(1, 10))
-def test_remove_smears(win_size):
+def test_remove_neighbours(win_size):
     """Check if the correct number of patterns are removed and highest scores are kept"""
     patterns = pd.DataFrame(gauss1_coords, columns=["bin1", "bin2"])
     patterns["bin1"] = patterns["bin1"] // win_size
     patterns["bin2"] = patterns["bin2"] // win_size
     patterns["score"] = np.random.random(patterns.shape[0])
-    clean_patterns = cud.remove_smears(patterns, win_size=1)
+    clean_patterns = cud.remove_neighbours(patterns, win_size=1)
     obs_clean = len(clean_patterns[clean_patterns])
     exp_clean = np.unique(patterns.loc[:, ["bin1", "bin2"]], axis=0).shape[0]
     assert obs_clean == exp_clean
