@@ -9,6 +9,7 @@ import sys
 import scipy.stats as ss
 import scipy.sparse as sp
 import scipy.ndimage as ndi
+from sklearn.isotonic import IsotonicRegression
 
 
 def normalize(B, good_bins=None, iterations=10):
@@ -61,6 +62,28 @@ def normalize(B, good_bins=None, iterations=10):
     return r
 
 
+def set_mat_diag(mat, diag=0, val=0):
+    """
+    Set the nth diagonal of a symmetric 2D numpy array to a fixed value.
+    Operates in place.
+
+    Parameters
+    ----------
+    mat : numpy.array
+        Symmetric 2D array of floats.
+    diag : int
+        0-based index of the diagonal to modify. Use negative values for the
+        lower half.
+    val : float
+        Value to use for filling the diagonal
+    """
+    m = mat.shape[0]
+    step = m + 1
+    start = diag
+    end = m ** 2 - diag * m
+    mat.flat[start:end:step] = val
+
+
 def diag_trim(mat, n):
     """
     Trim an upper triangle sparse matrix so that only the first n diagonals are kept.
@@ -80,13 +103,9 @@ def diag_trim(mat, n):
     """
     if not sp.issparse(mat):
         trimmed = mat.copy()
-        m = mat.shape[0]
-        for diag in range(n, m):
-            step = m + 1
-            start = diag
-            end = m ** 2 - diag * m
-            trimmed.flat[start:end:step] = 0
-
+        n_diags = trimmed.shape[0]
+        for diag in range(n, n_diags):
+            set_mat_diag(trimmed, diag, 0)
         return trimmed
 
     if mat.format != "dia":
@@ -101,7 +120,7 @@ def diag_trim(mat, n):
 
 
 def distance_law(
-    matrix, detectable_bins=None, max_dist=None, fun=np.nanmedian
+    matrix, detectable_bins=None, max_dist=None, smooth=False, fun=np.nanmedian
 ):
     """
     Computes genomic distance law by averaging over each diagonal in
@@ -115,6 +134,8 @@ def distance_law(
         An array of detectable bins indices to consider when computing distance law.
     max_dist : int
         Maximum distance from diagonal, in number of bins in which to compute distance law
+    smooth : bool
+        Whether to use isotonic regression to smooth the distance law.
     fun : callable
         A function to apply on each diagonal. Defaults to mean.
 
@@ -143,7 +164,7 @@ def distance_law(
     if detectable_bins is None:
         detectable_bins = np.array(range(mat_n))
 
-    for diag in range(n_diags):
+    for diag in range(n_diags + 1):
         # Find detectable which fall in diagonal
         detect_mask = np.zeros(mat_n, dtype=bool)
         detect_mask[detectable_bins] = 1
@@ -152,6 +173,11 @@ def distance_law(
         detect_mask_v = detect_mask[mat_n - (mat_n - diag) :]
         detect_mask_diag = detect_mask_h & detect_mask_v
         dist[diag] = fun(matrix.diagonal(diag)[detect_mask_diag])
+
+    if smooth:
+        ir = IsotonicRegression(increasing=False)
+        dist[~np.isfinite(dist)] = 0
+        dist = ir.fit_transform(range(len(dist)), dist)
     return dist
 
 
@@ -188,9 +214,7 @@ def despeckle(matrix, th2=3):
         stds[u] = ss.median_absolute_deviation(dist[u], nan_policy="omit")
 
     # Loop over all nonzero pixels in the COO matrix and their coordinates
-    for i, (row, col, val) in enumerate(
-        zip(matrix.row, matrix.col, matrix.data)
-    ):
+    for i, (row, col, val) in enumerate(zip(matrix.row, matrix.col, matrix.data)):
         # Compute genomic distance of interactions in pixel
         dist = abs(row - col)
         # If pixel in input matrix is an outlier, set this pixel to median
@@ -251,7 +275,9 @@ def get_detectable_bins(mat, n_mads=3, inter=False):
     return good_bins
 
 
-def detrend(matrix, detectable_bins=None, max_dist=None, fun=np.nanmedian):
+def detrend(
+    matrix, detectable_bins=None, max_dist=None, smooth=False, fun=np.nanmedian
+):
     """
     Detrends a Hi-C matrix by the distance law.
     The input matrix should have been normalised beforehandand.
@@ -266,6 +292,9 @@ def detrend(matrix, detectable_bins=None, max_dist=None, fun=np.nanmedian):
         excluded.
     max_dist : int
         Maximum number of bins from the diagonal at which to compute trend.
+    smooth : bool
+        Whether to use isotonic regression to smooth the trend.
+    fun : function to use on each diagonal to compute the trend.
 
     Returns
     -------
@@ -274,7 +303,11 @@ def detrend(matrix, detectable_bins=None, max_dist=None, fun=np.nanmedian):
     """
     matrix = matrix.tocsr()
     y = distance_law(
-        matrix, detectable_bins=detectable_bins, max_dist=max_dist
+        matrix,
+        detectable_bins=detectable_bins,
+        max_dist=max_dist,
+        smooth=smooth,
+        fun=fun,
     )
     y[np.isnan(y)] = 0.0
 
@@ -334,12 +367,8 @@ def signal_to_noise_threshold(matrix, detectable_bins):
         The maximum distance from the diagonal at which the matrix should be scanned
     """
     # Using median and mad to reduce sensitivity to outlier
-    dist_means = distance_law(
-        matrix, detectable_bins=detectable_bins, fun=np.nanmean
-    )
-    dist_stds = distance_law(
-        matrix, detectable_bins=detectable_bins, fun=np.nanstd
-    )
+    dist_means = distance_law(matrix, detectable_bins=detectable_bins, fun=np.nanmean)
+    dist_stds = distance_law(matrix, detectable_bins=detectable_bins, fun=np.nanstd)
     snr = dist_means / dist_stds
     # Values below 1 are considered too noisy
     threshold_noise = 1.0
@@ -413,8 +442,7 @@ def subsample_contacts(M, n_contacts):
     sampled_cols = M.col[nnz_mask]
 
     return sp.coo_matrix(
-        (sampled_counts, (sampled_rows, sampled_cols)),
-        shape=(M.shape[0], M.shape[1]),
+        (sampled_counts, (sampled_rows, sampled_cols)), shape=(M.shape[0], M.shape[1])
     )
 
 

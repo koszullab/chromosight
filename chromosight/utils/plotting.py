@@ -3,7 +3,6 @@ import functools
 import numpy as np
 import chromosight.utils.preprocessing as preproc
 from matplotlib import pyplot as plt
-from sklearn.isotonic import IsotonicRegression
 
 
 def distance_plot(matrices, labels=None, out=None, smooth=True):
@@ -19,12 +18,9 @@ def distance_plot(matrices, labels=None, out=None, smooth=True):
         labels = [labels]
 
     for matrix, name in zip(matrix_list, labels):
-        dist = preproc.distance_law(matrix, fun=np.nanmean)
+        dist = preproc.distance_law(matrix, fun=np.nanmean, smooth=smooth)
         x = np.arange(0, len(dist))
         y = dist
-        if smooth:
-            ir = IsotonicRegression(increasing=False)
-            y = ir.fit_transform(x, y, sample_weight=1 / (1 + x))
         y[np.isnan(y)] = 0.0
         plt.plot(x, y, label=str(name))
         plt.xlabel("Genomic distance")
@@ -48,13 +44,7 @@ def pileup_plot(pileup_pattern, name="pileup_patterns", output=None):
     else:
         output = pathlib.Path(output)
 
-    plt.imshow(
-        pileup_pattern,
-        interpolation="none",
-        vmin=0.0,
-        vmax=2.0,
-        cmap="seismic",
-    )
+    plt.imshow(pileup_pattern, interpolation="none", vmin=0.0, vmax=2.0, cmap="seismic")
     plt.title("{} pileup".format(name))
     plt.colorbar()
     emplacement = output / pathlib.Path(name + ".pdf")
@@ -117,14 +107,11 @@ def plot_whole_matrix(mat, patterns, out=None, region=None, region2=None):
 
     pat = patterns.copy()
     pat = pat.loc[
-        (pat.bin1 > s1) & (pat.bin1 < e1) & (pat.bin2 > s2) & (pat.bin2 < e2),
-        :,
+        (pat.bin1 > s1) & (pat.bin1 < e1) & (pat.bin2 > s2) & (pat.bin2 < e2), :
     ]
     sub_mat = mat.tocsr()[s1:e1, s2:e2]
     plt.imshow(np.log(sub_mat.todense()), cmap="Reds")
-    plt.scatter(
-        pat.bin1 - s1, pat.bin2 - s2, facecolors="none", edgecolors="blue"
-    )
+    plt.scatter(pat.bin1 - s1, pat.bin2 - s2, facecolors="none", edgecolors="blue")
     if out is None:
         plt.show()
     else:
