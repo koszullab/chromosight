@@ -5,12 +5,16 @@ Load and save contact matrices in sparse format
 """
 import pandas as pd
 import numpy as np
-import h5py
 import pathlib
 import sys
 import json
 from os.path import join
 from scipy.sparse import coo_matrix, lil_matrix, csc_matrix, csr_matrix, triu
+import warnings
+
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", category=FutureWarning)
+    import h5py
 
 
 def load_bedgraph2d(mat_path):
@@ -41,15 +45,7 @@ def load_bedgraph2d(mat_path):
     """
     bg2 = pd.read_csv(mat_path, delimiter="\t", header=None)
     bg2.head()
-    bg2.columns = [
-        "chr1",
-        "start1",
-        "end1",
-        "chr2",
-        "start2",
-        "end2",
-        "contacts",
-    ]
+    bg2.columns = ["chr1", "start1", "end1", "chr2", "start2", "end2", "contacts"]
 
     # estimate bin size from file
     bin_size = np.median(bg2.end1 - bg2.start1).astype(int)
@@ -80,25 +76,19 @@ def load_bedgraph2d(mat_path):
     bins = pd.DataFrame(
         {
             "start": [
-                start
-                for chromsize in chromsizes.values
-                for start in range(chromsize)
+                start for chromsize in chromsizes.values for start in range(chromsize)
             ]
         }
     )
     bins["start"] *= bin_size
     bins["end"] = bins["start"] + bin_size
-    bins["chrom"] = np.repeat(
-        np.array(chromsizes.index), np.array(chromsizes.values)
-    )
+    bins["chrom"] = np.repeat(np.array(chromsizes.index), np.array(chromsizes.values))
 
     # Shift chromsizes by one to get starting bin, first one is zero
     chrom_start = chromsizes.shift(1)
     chrom_start[0] = 0
     # Make chromsize cumulative to get start bin of each chrom
-    chrom_start = pd.DataFrame(
-        chrom_start.cumsum(), columns=["cumsum"], dtype=np.int
-    )
+    chrom_start = pd.DataFrame(chrom_start.cumsum(), columns=["cumsum"], dtype=np.int)
 
     # Get frags indices
     bg2 = bg2.merge(chrom_start, left_on="chr1", right_index=True)
@@ -177,9 +167,7 @@ def load_cool(cool_path):
     n = int(max(np.amax(mat.bin1_id), np.amax(mat.bin2_id))) + 1
     shape = (n, n)
     mat = coo_matrix(
-        (mat["count"], (mat.bin1_id, mat.bin2_id)),
-        shape=shape,
-        dtype=np.float64,
+        (mat["count"], (mat.bin1_id, mat.bin2_id)), shape=shape, dtype=np.float64
     )
     # Only keep upper triangle
     mat = triu(mat)
