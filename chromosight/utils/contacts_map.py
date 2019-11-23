@@ -8,7 +8,21 @@ from time import time
 import sys
 import numpy as np
 import pandas as pd
+from functools import wraps
 from scipy.sparse import dia_matrix
+
+
+def dump_matrix(filename):
+    def actual_decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+                print("Calling Function: " + func.__name__)
+                print(filename)
+            return func(*args, **kwargs)
+
+        return wrapper
+
+    return actual_decorator
 
 
 class HicGenome:
@@ -36,17 +50,22 @@ class HicGenome:
         Kernel configuration associated with the Hi-C genome
     max_dist : int
         Maximum scanning distance for convolution during pattern detection.
+    dump : str
+        Base path where dump files will be generated. None means no dump.
 
     """
 
-    def __init__(self, path, inter=False, kernel_config=None):
+    def __init__(self, path, inter=False, kernel_config=None, dump=None):
         # Load Hi-C matrix and associated metadata
+        self.dump = dump
         self.matrix, self.chroms, self.bins, self.resolution = self.load_data(path)
         self.kernel_config = kernel_config
         self.sub_mats = None
         self.detectable_bins = None
         self.inter = inter
         self.compute_max_dist()
+        if self.dump:
+            self.dump_matrix("raw")
 
     def compute_max_dist(self):
         """Use the kernel config to compute max_dist"""

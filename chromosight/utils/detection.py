@@ -191,7 +191,7 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix):
     # Clean potential missing values
     mat_conv.data[np.isnan(mat_conv.data)] = 0
     # Only keep corrcoeff in scannable range
-    
+
     if not contact_map.inter:
         mat_conv = preproc.diag_trim(mat_conv.todia(), contact_map.max_dist)
     mat_conv = mat_conv.tocoo()
@@ -209,6 +209,8 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix):
         kernel_matrix,
         kernel_config["max_perc_undetected"],
     )
+    # Update the matrix attribute of contact map with the convoluted matrix
+    contact_map.matrix = mat_conv
     return filtered_chrom_patterns, chrom_pattern_windows
 
 
