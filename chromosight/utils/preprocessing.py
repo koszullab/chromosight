@@ -120,7 +120,7 @@ def diag_trim(mat, n):
 
 
 def distance_law(
-    matrix, detectable_bins=None, max_dist=None, smooth=False, fun=np.nanmedian
+    matrix, detectable_bins=None, max_dist=None, smooth=True, fun=np.nanmedian
 ):
     """
     Computes genomic distance law by averaging over each diagonal in

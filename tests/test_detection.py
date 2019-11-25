@@ -167,19 +167,22 @@ def test_remove_neighbours(win_size):
 
 def test_picker_speckles():
     """Test if speckles are discarded by picker"""
-    assert cud.picker(point_mat, precision=None) is None
+    obs_coords, obs_mat = cud.picker(point_mat, precision=None)
+    assert obs_coords is None
+    assert obs_mat is None
 
 
 @params(*zip(gauss1_coords, gauss1_mats))
 def test_picker_idx(patterns, matrix):
     """Test that index is not shifted when using picker"""
-    obs_coord = cud.picker(matrix, precision=None)[0]
-    assert np.all(obs_coord == patterns)
+    obs_coords, _ = cud.picker(matrix, precision=None)
+    assert np.all(obs_coords[0] == patterns)
 
 
 def test_picker_nloci():
     """Test if the number of foci detected by picker is correct"""
-    assert len(cud.picker(gauss12, precision=1)) == 2
+    obs_coords, _ = cud.picker(gauss12, precision=1)
+    assert len(obs_coords) == 2
 
 
 @params(*gauss1_mats)
