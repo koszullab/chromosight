@@ -127,8 +127,13 @@ def test_distance_law():
     """Test if the distance law array has the right dimensions and expected values"""
     m = np.ones((3, 3))
     m += np.array([1, 2, 3])
-    dist_law = preproc.distance_law(sp.csr_matrix(m))
+    # Test regular distance law
+    dist_law = preproc.distance_law(sp.csr_matrix(m), smooth=False)
     assert np.all(dist_law == np.array([3.0, 3.5, 4.0]))
+    assert dist_law.shape == (3,)
+    # Test distance law with isotonic regression: values should not go up
+    dist_law = preproc.distance_law(sp.csr_matrix(m), smooth=True)
+    assert np.all(dist_law == np.array([3.5, 3.5, 3.5]))
     assert dist_law.shape == (3,)
 
 
