@@ -2,6 +2,7 @@ from nose2.tools import params
 import tempfile
 import os
 import numpy as np
+import pandas as pd
 import chromosight.utils.plotting as cup
 import chromosight.utils.detection as cud
 import chromosight.utils.io as cio
@@ -40,10 +41,10 @@ class TestPlotting:
             pileup_pattern, name="pileup_patterns", output=self.tmp_dir
         )
 
+    @params(*intra_mats)
+    def test_distance_plot(self, matrix):
+        rand_rows = np.random.randint(0, matrix.shape[0], size=10)
+        rand_cols = np.random.randint(0, matrix.shape[1], size=10)
+        patterns = pd.DataFrame({"bin1": rand_rows, "bin2": rand_cols})
+        cup.plot_whole_matrix(matrix, patterns, out=self.tmp_path)
 
-"""
-@params(*zip(pattern_list, chroms.name))
-def test_plot_whole_matrix(patterns, chrom):
-    region = chroms.loc[chroms.name == chrom, ["start_bin", "end_bin"]]
-    cup.plot_whole_matrix(mat, patterns, out=None, region=region)
-"""
