@@ -4,25 +4,61 @@ from . import io as cio
 from . import preprocessing as preproc
 import os
 import re
-from time import time
 import sys
+import pathlib
 import numpy as np
 import pandas as pd
-from functools import wraps
-from scipy.sparse import dia_matrix
+import scipy.sparse as sp
 
 
-def dump_matrix(filename):
-    def actual_decorator(func):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-                print("Calling Function: " + func.__name__)
-                print(filename)
-            return func(*args, **kwargs)
+class DumpMatrix:
+    """
+    This class is used as a decorator to wrap methods and generate dump files
+    of their class' "matrix" atribute. The matrix should be a scipy.sparse
+    matrix and will be saved in npy format. If the instance has a "name" 
+    attribute, the full dump path will be:
+        self.dump / self.name_basename.npy
+    if the instance has no name attribute, the dump path will be:
+        self.dump / basename.npy
+    If the instance has no matrix or dump attribute, no action is performed.
 
-        return wrapper
+    Parameters
+    ----------
+    dump_name : str, os.PathLike object or None
+        The basename of the file where to save the dump. If None, no action is
+        performed.
+    """
 
-    return actual_decorator
+    def __init__(self, dump_name):
+        """Executed only at method definition when used as method wrapper"""
+        self.dump_name = dump_name
+
+    def __call__(self, fn, *args, **kwargs):
+        def decorated_fn(*args, **kwargs):
+            """
+            Executed at run time of the wrapped method.
+            Executes the input function with its arguments, then dumps the
+            matrix to target path. Note args[0] will always denote the instance
+            of the wrapped method.
+            """
+            # Execute wrap function and store result
+            res = fn(*args, **kwargs)
+            # Instance of the wrapped method
+            inst = args[0]
+            # Define dump path based on instance's attributes
+            if self.dump_name is not None and inst.dump is not None:
+                if hasattr(inst, "name"):
+                    dump_path = inst.dump / f"{inst.name}_{self.dump_name}"
+                else:
+                    dump_path = inst.dump / f"{self.dump_name}"
+                print(
+                    f"Dumping matrix after executing {fn.__name__} to {dump_path}"
+                )
+                # Save updated matrix to dump path
+                sp.save_npz(dump_path, inst.matrix)
+            return res
+
+        return decorated_fn
 
 
 class HicGenome:
@@ -57,21 +93,27 @@ class HicGenome:
 
     def __init__(self, path, inter=False, kernel_config=None, dump=None):
         # Load Hi-C matrix and associated metadata
-        self.dump = dump
-        self.matrix, self.chroms, self.bins, self.resolution = self.load_data(path)
+        try:
+            self.dump = pathlib.Path(dump)
+            os.makedirs(self.dump, exist_ok=True)
+        except TypeError:
+            self.dump = None
+        self.matrix, self.chroms, self.bins, self.resolution = self.load_data(
+            path
+        )
         self.kernel_config = kernel_config
         self.sub_mats = None
         self.detectable_bins = None
         self.inter = inter
         self.compute_max_dist()
-        if self.dump:
-            self.dump_matrix("raw")
 
     def compute_max_dist(self):
         """Use the kernel config to compute max_dist"""
         # Convert maximum scanning distance to bins using resolution
         try:
-            self.max_dist = max(self.kernel_config["max_dist"] // self.resolution, 1)
+            self.max_dist = max(
+                self.kernel_config["max_dist"] // self.resolution, 1
+            )
             # Get the size of the largest convolution kernel
             self.largest_kernel = max(
                 [s.shape[0] for s in self.kernel_config["kernels"]]
@@ -81,6 +123,7 @@ class HicGenome:
             self.max_dist = None
             self.largest_kernel = 3
 
+    @DumpMatrix("normalized")
     def normalize(self, n_mads=5):
         """
         Finds detectable bins and applies ICE normalisation to the whole genome
@@ -94,15 +137,18 @@ class HicGenome:
             detectable.
         """
         # Preprocess the full genome matrix
-        self.detectable_bins = preproc.get_detectable_bins(self.matrix, n_mads=n_mads)[
-            0
-        ]
+        self.detectable_bins = preproc.get_detectable_bins(
+            self.matrix, n_mads=n_mads
+        )[0]
         print(
             f"Found {len(self.detectable_bins)} / {self.matrix.shape[0]} detectable bins"
         )
-        self.matrix = preproc.normalize(self.matrix, good_bins=self.detectable_bins)
+        self.matrix = preproc.normalize(
+            self.matrix, good_bins=self.detectable_bins
+        )
         print("Whole genome matrix normalized")
 
+    @DumpMatrix("subsampled")
     def subsample(self, sub):
         """
         Subsample contacts from the Hi-C matrix.
@@ -117,7 +163,9 @@ class HicGenome:
             try:
                 subsample = float(sub)
                 if subsample < 0:
-                    sys.stderr.write("Error: Subsample must be strictly positive.\n")
+                    sys.stderr.write(
+                        "Error: Subsample must be strictly positive.\n"
+                    )
                     sys.exit(1)
                 if subsample < 1:
                     subsample *= self.matrix.sum()
@@ -149,7 +197,9 @@ class HicGenome:
 
         # Load contact map and chromosome start bins coords
         try:
-            sub_mat_df, chroms, bins, resolution = format_loader[extension](mat_path)
+            sub_mat_df, chroms, bins, resolution = format_loader[extension](
+                mat_path
+            )
         except KeyError as e:
             sys.stderr.write(
                 f"Unknown format: {extension}. Must be one of {format_loader.keys()}\n"
@@ -177,7 +227,9 @@ class HicGenome:
         n_chroms = self.chroms.shape[0]
         if self.inter:
             sub_mats = pd.DataFrame(
-                np.zeros((int(n_chroms ** 2 / 2 + n_chroms / 2), 3), dtype=str),
+                np.zeros(
+                    (int(n_chroms ** 2 / 2 + n_chroms / 2), 3), dtype=str
+                ),
                 columns=sub_cols,
             )
         else:
@@ -197,7 +249,9 @@ class HicGenome:
                 s2, e2 = r2.start_bin, r2.end_bin
                 if i1 == i2 or (i1 < i2 and self.inter):
                     cio.progress(
-                        sub_mat_idx, sub_mats.shape[0], f"{r1['name']}-{r2['name']}"
+                        sub_mat_idx,
+                        sub_mats.shape[0],
+                        f"{r1['name']}-{r2['name']}",
                     )
                     # Subset intra / inter sub_matrix and matching detectable bins
                     sub_mat = matrix[s1:e1, s2:e2]
@@ -208,18 +262,20 @@ class HicGenome:
                     if i1 == i2:
                         sub_mats.contact_map[sub_mat_idx] = ContactMap(
                             sub_mat,
-                            resolution=self.resolution,
                             detectable_bins=sub_mat_detectable_bins,
                             inter=False,
                             max_dist=self.max_dist,
                             largest_kernel=self.largest_kernel,
+                            dump=self.dump,
+                            name=f"{r1['name']}-{r2['name']}",
                         )
                     else:
                         sub_mats.contact_map[sub_mat_idx] = ContactMap(
                             sub_mat,
-                            resolution=self.resolution,
                             detectable_bins=sub_mat_detectable_bins,
                             inter=True,
+                            dump=self.dump,
+                            name=f"{r1['name']}-{r2['name']}",
                         )
                     sub_mats.chr1[sub_mat_idx] = r1["name"]
                     sub_mats.chr2[sub_mat_idx] = r2["name"]
@@ -250,8 +306,12 @@ class HicGenome:
         """
         full_patterns = patterns.copy()
         # Get start bin for chromosomes of interest
-        startA = self.chroms.loc[self.chroms.name == chr1, "start_bin"].values[0]
-        startB = self.chroms.loc[self.chroms.name == chr2, "start_bin"].values[0]
+        startA = self.chroms.loc[self.chroms.name == chr1, "start_bin"].values[
+            0
+        ]
+        startB = self.chroms.loc[self.chroms.name == chr2, "start_bin"].values[
+            0
+        ]
         # Shift index by start bin of chromosomes
         full_patterns.bin1 += startA
         full_patterns.bin2 += startB
@@ -290,80 +350,86 @@ class ContactMap:
     detectable_bins : tuple of arrays
         List containing two arrays (rows and columns) of indices from bins
         considered detectable in the matrix.
-    resolution : int
-        The basepair resolution of the matrix
     inter : bool
         True if the matrix represents contacts between two different,
         False otherwise.
     max_dist : int
         Maximum distance (in bins) at which contact values should be analysed. Only
         valid for intrachromosomal matrices.
+    dump : str
+        Base path where dump files will be generated. None means no dump.
+    name : str
+        Name of the submatrix (used for dumping).
     
     """
 
     def __init__(
         self,
         matrix,
-        resolution,
+        name="",
         detectable_bins=None,
         inter=False,
         max_dist=None,
         largest_kernel=0,
+        dump=None,
     ):
         self.despeckle = False
         self.snr = False
         self.matrix = matrix
-        self.resolution = resolution
         self.inter = inter
         self.max_dist = max_dist
+        self.name = name
         self.largest_kernel = largest_kernel
+        self.dump = dump
         # If detectable were not provided, compute them from the input matrix
         if detectable_bins is None:
-            detectable_bins = preproc.get_detectable_bins(self.matrix, inter=self.inter)
+            detectable_bins = preproc.get_detectable_bins(
+                self.matrix, inter=self.inter
+            )
         self.detectable_bins = detectable_bins
 
         # Apply preprocessing steps on the input matrix
         if self.inter:
-            self.matrix = self.preprocess_inter_matrix()
+            self.preprocess_inter_matrix()
         else:
-            self.matrix = self.preprocess_intra_matrix()
+            self.preprocess_intra_matrix()
 
+    @DumpMatrix("interproc")
     def preprocess_inter_matrix(self):
-        return preproc.ztransform(self.matrix)
+        self.matrix /= np.median(self.matrix.data)
 
     def preprocess_intra_matrix(self):
-        # Remove speckles (outlier pixels)
-        if self.despeckle:
-            sub_mat = preproc.despeckle(self.matrix, th2=3)
-        else:
-            sub_mat = self.matrix
-        if self.snr:
-            # Compute signal to noise ratio at all diagonals
-            snr_dist = preproc.signal_to_noise_threshold(
-                sub_mat, detectable_bins=self.detectable_bins[0]
-            )
-        else:
-            snr_dist = sub_mat.shape[0]
-        # Define max scanning dist based on snr and pattern config
-        if self.max_dist is None:
-            sub_mat_max_dist = snr_dist
-        else:
-            sub_mat_max_dist = min(self.max_dist, snr_dist)
-        # If we scan until a given distance, data values in a margin must be kept as well
-        keep_distance = sub_mat_max_dist + (self.largest_kernel)
+        self.detrend()
+        self.remove_diags()
+
+    @DumpMatrix("detrended")
+    def detrend(self):
         # Detrend matrix for power law
-        sub_mat = preproc.detrend(
-            sub_mat,
-            max_dist=keep_distance,
+        self.matrix = preproc.detrend(
+            self.matrix,
+            max_dist=self.keep_distance,
             smooth=True,
             detectable_bins=self.detectable_bins[0],
         )
 
+    @DumpMatrix("trimmed")
+    def remove_diags(self):
         # Create a new matrix from the diagonals below max dist (faster than removing them)
-        sub_mat = preproc.diag_trim(sub_mat.todia(), keep_distance)
-        sub_mat = sub_mat.tocoo()
+        self.matrix = preproc.diag_trim(
+            self.matrix.todia(), self.keep_distance
+        )
+        self.matrix = self.matrix.tocoo()
         # Fill diagonals of the lower triangle that might overlap the kernel
-        for i in range(1, min(sub_mat.shape[0], self.largest_kernel)):
-            sub_mat.setdiag(1, -i)
+        for i in range(1, min(self.matrix.shape[0], self.largest_kernel)):
+            self.matrix.setdiag(1, -i)
 
-        return sub_mat
+    @property
+    def keep_distance(self):
+        # Define max scanning dist based on pattern config
+        if self.max_dist is None:
+            mat_max_dist = self.matrix.shape[0]
+        else:
+            mat_max_dist = min(self.max_dist, self.matrix.shape[0])
+        # If we scan until a given distance, data values in a margin must be kept as well
+        return mat_max_dist + (self.largest_kernel)
+
