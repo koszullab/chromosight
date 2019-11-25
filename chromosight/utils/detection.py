@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 import scipy.sparse as sp
 import scipy.stats as ss
-import scipy.signal as sig
 import pathlib
 import warnings
 import chromosight.utils.preprocessing as preproc
@@ -667,7 +666,6 @@ def _xcorr2_dense(signal, kernel, threshold=1e-4):
     kw = (kn - 1) // 2
     constant_kernel = np.nan
 
-    # out_wo_margin = sig.correlate2d(signa, kernel, 'valid')
     out_wo_margin = np.zeros([sm - km + 1, sn - kn + 1])
     # Simplified convolution for the special case where kernel is constant:
     if np.isfinite(constant_kernel):

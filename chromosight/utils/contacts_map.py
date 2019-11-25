@@ -5,7 +5,7 @@ from . import preprocessing as preproc
 import os
 import re
 import sys
-import pathlib
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
@@ -46,11 +46,17 @@ class DumpMatrix:
             # Instance of the wrapped method
             inst = args[0]
             # Define dump path based on instance's attributes
-            if self.dump_name is not None and inst.dump is not None:
+            if (
+                hasattr(inst, "matrix")
+                and inst.dump is not None
+                and self.dump_name is not None
+            ):
                 if hasattr(inst, "name"):
-                    dump_path = inst.dump / f"{inst.name}_{self.dump_name}"
+                    dump_path = (
+                        Path(inst.dump) / f"{inst.name}_{self.dump_name}"
+                    )
                 else:
-                    dump_path = inst.dump / f"{self.dump_name}"
+                    dump_path = Path(inst.dump) / f"{self.dump_name}"
                 print(
                     f"Dumping matrix after executing {fn.__name__} to {dump_path}"
                 )
@@ -94,7 +100,7 @@ class HicGenome:
     def __init__(self, path, inter=False, kernel_config=None, dump=None):
         # Load Hi-C matrix and associated metadata
         try:
-            self.dump = pathlib.Path(dump)
+            self.dump = Path(dump)
             os.makedirs(self.dump, exist_ok=True)
         except TypeError:
             self.dump = None
@@ -103,7 +109,7 @@ class HicGenome:
         )
         self.kernel_config = kernel_config
         self.sub_mats = None
-        self.detectable_bins = None
+        self.detectable_bins = np.array(range(self.matrix.shape[0]))
         self.inter = inter
         self.compute_max_dist()
 
@@ -118,13 +124,13 @@ class HicGenome:
             self.largest_kernel = max(
                 [s.shape[0] for s in self.kernel_config["kernels"]]
             )
-        except ValueError:
+        except (ValueError, TypeError):
 
             self.max_dist = None
             self.largest_kernel = 3
 
     @DumpMatrix("normalized")
-    def normalize(self, n_mads=5):
+    def normalize(self, n_mads=5, iterations=10):
         """
         Finds detectable bins and applies ICE normalisation to the whole genome
         matrix.
@@ -144,7 +150,7 @@ class HicGenome:
             f"Found {len(self.detectable_bins)} / {self.matrix.shape[0]} detectable bins"
         )
         self.matrix = preproc.normalize(
-            self.matrix, good_bins=self.detectable_bins
+            self.matrix, good_bins=self.detectable_bins, iterations=iterations
         )
         print("Whole genome matrix normalized")
 
@@ -163,10 +169,9 @@ class HicGenome:
             try:
                 subsample = float(sub)
                 if subsample < 0:
-                    sys.stderr.write(
-                        "Error: Subsample must be strictly positive.\n"
+                    raise ValueError(
+                        "Error: Subsample must be strictly positive."
                     )
-                    sys.exit(1)
                 if subsample < 1:
                     subsample *= self.matrix.sum()
                 if subsample < self.matrix.sum():
@@ -181,9 +186,9 @@ class HicGenome:
                     )
             except ValueError:
                 sys.stderr.write(
-                    "Error: Subsample must be a number of reads or proportion.\n"
+                    "Error: Subsample must be a number of reads or proportion."
                 )
-                sys.exit(1)
+                raise
 
     def load_data(self, mat_path):
         """Load contact, bin and chromosome informations from input path"""
@@ -303,6 +308,12 @@ class HicGenome:
             A dataframme of pattern coordinates. Each row is a pattern and
             columns should be bin1 and bin2, for row and column coordinates in
             the Hi-C matrix, respectively.
+        
+        Returns
+        -------
+        full_patterns : pandas.DataFrame
+            A dataframe similar to the input, but with bins shifted to represent
+            coordinates in the whole genome matrix.
         """
         full_patterns = patterns.copy()
         # Get start bin for chromosomes of interest
