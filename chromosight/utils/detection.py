@@ -337,7 +337,7 @@ def picker(mat_conv, precision=None):
     if len(candidate_mat.data) > 0:
         num_foci, labelled_mat = label_connected_pixels_sparse(candidate_mat)
         if num_foci == 0:
-            return None
+            return None, None
         mat_conv = mat_conv.tocsr()
         # Will hold the coordinates of the best pixel for each focus
         foci_coords = np.zeros([num_foci, 2], int)
@@ -362,7 +362,7 @@ def picker(mat_conv, precision=None):
             foci_coords[focus_rank, 0] = focus_pixel_row
             foci_coords[focus_rank, 1] = focus_pixel_col
     else:
-        return None
+        return None, None
     return foci_coords, labelled_mat
 
 
