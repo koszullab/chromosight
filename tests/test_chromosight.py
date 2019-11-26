@@ -7,6 +7,7 @@ import chromosight.cli.chromosight as ccc
 from docopt import docopt
 
 COOL = "data_test/example.cool"
+BED2D = "data_test/example.bed2"
 OUTDIR = tempfile.TemporaryDirectory()
 DUMPDIR = tempfile.TemporaryDirectory()
 # Select a bunch of arguments that are relevant to test and generate
@@ -40,3 +41,13 @@ def test_cmd_generate_config(preset):
     )
     ccc.cmd_generate_config(args)
     os.unlink(tmpconf.name)
+
+
+@params("loops", "borders", "hairpins", "centromeres")
+def test_cmd_quantify(pattern):
+    """Test for proper exit with different combinations of arguments"""
+    args = docopt(
+        ccc.__doc__,
+        ["quantify", "--pattern", pattern, BED2D, COOL, OUTDIR.name],
+    )
+    ccc.cmd_quantify(args)

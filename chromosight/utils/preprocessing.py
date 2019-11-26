@@ -455,21 +455,34 @@ def subsample_contacts(M, n_contacts):
     )
 
 
-def resize_kernel(kernel, kernel_res, signal_res, min_size=5, max_size=101):
+def resize_kernel(
+    kernel,
+    kernel_res=None,
+    signal_res=None,
+    factor=None,
+    min_size=5,
+    max_size=101,
+):
     """
     Resize a kernel matrix based on the resolution at which it was defined and
     the signal resolution. E.g. if a kernel matrix was generated for 10kb and
     the input signal is 20kb, kernel size will be divided by two. If the kernel
-    is enlarged, pixels are interpolated with a spline of degree 1.
+    is enlarged, pixels are interpolated with a spline of degree 1. Alternatively,
+    a resize factor can be provided. In the example above, the factor would be 0.5.
 
     Parameters
     ----------
     kernel : numpy.array
         Kernel matrix.
     kernel_res : int
-        Resolution for which the kernel was designed.
+        Resolution for which the kernel was designed. Mutually exclusive with factor.
     signal_res : int
-        Resolution of the signal matrix in basepair per matrix bin.
+        Resolution of the signal matrix in basepair per matrix bin. Mutually
+        exclusive with factor.
+    factor : float
+        Resize factor. Can be provided as an alternative to kernel_res and
+        signal_res. Values above 1 will enlarge the kernel, values below 1 will
+        shrink it.
     min_size : int
         Lower bound, in number of rows/column allowed when resizing the kernel.
     max_size : int
@@ -481,15 +494,27 @@ def resize_kernel(kernel, kernel_res, signal_res, min_size=5, max_size=101):
         The resized input kernel.
     """
     km, kn = kernel.shape
-
     if km != kn:
         ValueError("kernel must be square.")
     if not (km % 2) or not (kn % 2):
         ValueError("kernel size must be odd.")
 
-    # Define by how many times kernel must be enlarged for its pixels to match
-    # the signal's pixels
-    resize_factor = kernel_res / signal_res
+    if factor is not None:
+        if kernel_res is not None or signal_res is not None:
+            raise ValueError(
+                "factor is mutually exclusive with resolution "
+                "parameters (kernel_res and signal_res)."
+            )
+        resize_factor = factor
+    else:
+        if kernel_res is None or signal_res is None:
+            raise ValueError(
+                "You must provide either a resize factor or the signal and "
+                "kernel resolutions."
+            )
+        # Define by how many times kernel must be enlarged for its pixels to match
+        # the signal's pixels
+        resize_factor = kernel_res / signal_res
     if km * resize_factor > max_size:
         resize_factor = max_size / km
     elif km * resize_factor < min_size:
@@ -497,8 +522,6 @@ def resize_kernel(kernel, kernel_res, signal_res, min_size=5, max_size=101):
 
     resized_kernel = ndi.zoom(kernel, resize_factor, order=1)
 
-    # TODO: Adjust resize factor to ensure odd dimensions before zooming
-    # instead of trimming afterwards
     if not resized_kernel.shape[0] % 2:
         # Compute the factor required to yield a dimension smaller by one
         adj_resize_factor = (resized_kernel.shape[0] - 1) / km

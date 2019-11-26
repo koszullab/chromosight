@@ -13,7 +13,7 @@ Usage:
                         [--min-separation=auto] [--threads=1] [--n-mads=5]
                         [--resize-kernel] [--perc-undetected=auto]
     chromosight generate-config <prefix> [--preset loops]
-    chromosight quantify [--pattern=loops] [--win-size=auto] <bed2d> <contact_map> <output>
+    chromosight quantify [--pattern=loops] [--subsample=no] [--n-mads=5] [--win-size=auto] <bed2d> <contact_map> <output>
 
     detect: 
         performs pattern detection on a Hi-C contact map using kernel convolution
@@ -63,7 +63,8 @@ Arguments for detect:
                                 allowed to consider detectable bins. [default: 5]
     -P, --pattern=loops         Which pattern to detect. This will use preset
                                 configurations for the given pattern. Possible
-                                values are: loops, borders, hairpins. [default: loops]
+                                values are: loops, borders, hairpins and
+                                centromeres. [default: loops]
     -p, --precision=auto        Precision threshold when assessing pattern
                                 probability in the contact map. A lesser value
                                 leads to potentially more detections, but more
@@ -101,8 +102,7 @@ Arguments for quantify:
                                 a pair of positions (i.e. a position in the matrix).
     contact_map                 Path to the contact map, in bedgraph2d or
                                 cool format.
-    output
-    -P, pattern=loops           
+    output                      output directory where files should be generated.
     -W, --win-size=auto         Window size, in basepairs, in which to compute the
                                 correlation. The pattern kernel will be resized to
                                 match this size. If the pattern must be enlarged,
@@ -125,6 +125,7 @@ import chromosight.utils.io as cio
 import chromosight.utils.detection as cid
 from chromosight.utils.plotting import pileup_plot
 from chromosight.utils.preprocessing import resize_kernel
+import scipy.stats as ss
 
 
 def _override_kernel_config(param_name, param_value, param_type, config):
@@ -155,27 +156,96 @@ def _override_kernel_config(param_name, param_value, param_type, config):
 
 
 def cmd_quantify(arguments):
-    bed2d = arguments["<bed2d>"]
+    bed2d_path = arguments["<bed2d>"]
     mat_path = arguments["<contact_map>"]
+    output = pathlib.Path(arguments["<output>"])
+    n_mads = float(arguments["--n-mads"])
     pattern = arguments["--pattern"]
+    inter = arguments["--inter"]
     win_size = arguments["--win-size"]
+    subsample = arguments["--subsample"]
     kernel_config = cio.load_kernel_config(pattern, False)
-    hic_genome = HicGenome(mat_path, inter=True, kernel_config=kernel_config)
-    positions = pd.read_csv(
-        bed2d,
-        sep="\t",
-        header=None,
-        names=["chrom1", "start1", "end1", "chrom2", "start2", "end2"],
+    hic_genome = HicGenome(mat_path, inter=inter, kernel_config=kernel_config)
+    kernel_config["max_dist"] = (
+        hic_genome.matrix.shape[0] * hic_genome.resolution
     )
-    for kernel_matrix in kernel_config["kernels"]:
-        if kernel_config != "auto":
-            kernel_matrix = resize_kernel(
-                kernel_matrix,
-                kernel_config["resolution"],
-                hic_genome.resolution,
+    kernel_config["min_dist"] = 0
+    hic_genome.kernel_config = kernel_config
+    # Create directory if it does not exist
+    if not output.exists():
+        os.makedirs(output, exist_ok=True)
+    # Subsample Hi-C contacts from the matrix, if requested
+    if subsample != "no":
+        hic_genome.subsample(subsample)
+    # Normalize (balance) matrix using ICE
+    hic_genome.normalize(n_mads)
+    # Define how many diagonals should be used in intra-matrices
+    hic_genome.compute_max_dist()
+    # Split whole genome matrix into intra- and inter- sub matrices. Each sub
+    # matrix is processed on the fly (obs / exp, trimming diagonals > max dist)
+    hic_genome.make_sub_matrices()
+    # Load 6 cols from 2D BED file and infer header
+    bed2d = cio.load_bed2d(bed2d_path)
+    # Initialize output structures
+    bed2d["score"] = 0.0
+    positions, windows = bed2d.copy(), []
+    # For each position, we use the center of the BED interval
+    positions["pos1"] = (positions.start1 + positions.end1) // 2
+    positions["pos2"] = (positions.start2 + positions.end2) // 2
+    # Use each kernel matrix available for the pattern
+    for kernel_id, kernel_matrix in enumerate(kernel_config["kernels"]):
+        km, kn = kernel_matrix.shape
+        kh = (km - 1) // 2
+        kw = (kn - 1) // 2
+        # Only resize kernel matrix if explicitely requested
+        if win_size != "auto":
+            kernel_matrix = resize_kernel(kernel_matrix, factor=win_size / km)
+        # Iterate over intra- and inter-chromosomal sub-matrices
+        for sub_mat in hic_genome.sub_mats.iterrows():
+            mat = sub_mat[1]
+            # Filter patterns falling onto this sub-matrix
+            sub_pat = positions.loc[
+                (positions.chrom1 == mat.chr1) & (positions.chrom2 == mat.chr2)
+            ]
+            # Convert genomic coordinates to bins for horizontal and vertical axes
+            for ax in [1, 2]:
+                sub_pat_ax = sub_pat.loc[:, [f"chrom{ax}", f"pos{ax}"]].rename(
+                    columns={f"chrom{ax}": "chrom", f"pos{ax}": "pos"}
+                )
+                sub_pat[f"bin{ax}"] = hic_genome.coords_to_bins(sub_pat_ax)
+            # Convert bins from whole genome matrix to sub matrix
+            sub_pat = hic_genome.get_sub_mat_pattern(
+                mat.chr1, mat.chr2, sub_pat
             )
-        for pattern in positions.iterrows():
-            pat = pattern[1]
+            m = mat.contact_map.matrix.tocsr()
+            # Iterate over patterns from the 2D BED file
+            for i, (x, y) in enumerate(zip(sub_pat.bin1, sub_pat.bin2)):
+                if (
+                    x - kh >= 0
+                    and x + kh + 1 < m.shape[0]
+                    and y - kw >= 0
+                    and y + kw + 1 < m.shape[1]
+                ):
+                    # For each pattern, compute correlation score with all kernels
+                    # but only keep the best
+                    win = m[x - kh : x + kh + 1, y - kw : y + kw + 1].toarray()
+
+                    score = ss.pearsonr(
+                        win.flatten(), kernel_matrix.flatten()
+                    )[0]
+                    if score > bed2d["score"][i] or kernel_id == 0:
+                        bed2d["score"][i] = score
+                # Pattern falls outside or at the edge of the matrix
+                else:
+                    win = np.zeros((km, kn))
+                    bed2d["score"][i] = np.nan
+                if kernel_id == 0:
+                    windows.append(win.tolist())
+        bed2d.to_csv(
+            output / f"{pattern}_quant.txt", sep="\t", header=True, index=False
+        )
+        with open(output / f"{pattern}_quant.json", "w") as win_handle:
+            json.dump(windows, win_handle, indent=4)
 
 
 def cmd_generate_config(arguments):
@@ -293,7 +363,9 @@ def cmd_detect(arguments):
     if resize:
         for i, mat in enumerate(kernel_config["kernels"]):
             kernel_config["kernels"][i] = resize_kernel(
-                mat, kernel_config["resolution"], hic_genome.resolution
+                mat,
+                kernel_res=kernel_config["resolution"],
+                signal_res=hic_genome.resolution,
             )
     hic_genome.kernel_config = kernel_config
     # Subsample Hi-C contacts from the matrix, if requested
@@ -469,10 +541,13 @@ def main():
     arguments = docopt.docopt(__doc__, version=__version__)
     detect = arguments["detect"]
     generate_config = arguments["generate-config"]
+    quantify = arguments["quantify"]
     if detect:
         cmd_detect(arguments)
     elif generate_config:
         cmd_generate_config(arguments)
+    elif quantify:
+        cmd_quantify(arguments)
     return 0
 
 
