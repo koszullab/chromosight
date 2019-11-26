@@ -228,10 +228,10 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix, dump=None):
     chrom_pattern_coords, foci_mat = picker(
         mat_conv, kernel_config["precision"]
     )
-    if dump:
-        save_dump("foci", foci_mat)
     if chrom_pattern_coords is None:
         return None, None
+    if dump:
+        save_dump("foci", foci_mat)
     filtered_chrom_patterns, chrom_pattern_windows = validate_patterns(
         chrom_pattern_coords,
         contact_map.matrix,
