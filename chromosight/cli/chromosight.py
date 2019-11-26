@@ -10,7 +10,8 @@ Usage:
                         [--pattern=loops] [--precision=auto] [--iterations=auto]
                         [--win-fmt={json,npy}] [--subsample=no] [--inter]
                         [--min-dist=0] [--max-dist=auto] [--no-plotting] [--dump=DIR]
-                        [--threads=1] [--n-mads=5] [--resize-kernel] [--perc-undetected=auto]
+                        [--min-separation=auto] [--threads=1] [--n-mads=5]
+                        [--resize-kernel] [--perc-undetected=auto]
     chromosight generate-config <prefix> [--preset loops]
 
 
@@ -70,6 +71,10 @@ Arguments for detect:
                                 a proportion of contacts instead. This is useful
                                 when comparing matrices with different
                                 coverages. [default: no]
+    -S, --min-separation=auto   Minimum distance required between patterns, in
+                                basepairs. If two patterns are closer than this
+                                distance in both axes, the one with the lowest
+                                score is discarded. [default: auto]
     -t, --threads=1             Number of CPUs to use in parallel. [default: 1]
     -u, --perc-undetected=auto  Maximum percentage of empty pixels in windows
                                 allowed to keep detected patterns. [default: auto]
@@ -175,6 +180,7 @@ def cmd_detect(arguments):
     mat_path = arguments["<contact_map>"]
     max_dist = arguments["--max-dist"]
     min_dist = arguments["--min-dist"]
+    min_separation = arguments["--min-separation"]
     n_mads = float(arguments["--n-mads"])
     pattern = arguments["--pattern"]
     perc_undetected = arguments["--perc-undetected"]
@@ -218,6 +224,7 @@ def cmd_detect(arguments):
         "precision": (precision, float),
         "max_dist": (max_dist, int),
         "min_dist": (min_dist, int),
+        "min_separation": (min_separation, int),
         "max_perc_undetected": (perc_undetected, float),
     }
     kernel_config = cio.load_kernel_config(config_path, custom)
@@ -344,8 +351,15 @@ def cmd_detect(arguments):
     # Combine all windows from different kernels into a single pile of windows
     all_pattern_windows = np.concatenate(all_pattern_windows, axis=0)
 
+    # Compute minimum separation in bins and make sure it has a reasonable value
+    separation_bins = int(kernel_config["min_separation"] // hic_genome.resolution)
+    if separation_bins < 1: separation_bins = 1
+    elif separation_bins > 100: separation_bins = 100
+    print(f"separation is : {separation_bins}")
     # Remove patterns with overlapping windows (smeared patterns)
-    distinct_patterns = cid.remove_neighbours(all_pattern_coords, win_size=5)
+    distinct_patterns = cid.remove_neighbours(
+        all_pattern_coords, win_size=separation_bins
+    )
 
     # Drop patterns that are too close to each other
     all_pattern_coords = all_pattern_coords.loc[distinct_patterns, :]

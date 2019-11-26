@@ -7,6 +7,7 @@
   "max_dist": 500000,
   "max_iterations": 3,
   "max_perc_undetected": 10.0,
+  "min_separation": 5000,
   "precision": 3,
   "resolution": 1000
 }
