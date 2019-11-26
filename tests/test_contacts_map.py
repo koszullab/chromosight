@@ -96,7 +96,7 @@ class TestHicGenome(unittest.TestCase):
 
 
 @params(COOL_TEST, BG2_TEST)
-def test_hic_genome_pattern_coords(path):
+def test_hic_genome_get_full_mat_pattern(path):
     """Test sub matrix to full matrix bin conversion"""
     hic_genome = ccm.HicGenome(path)
     dummy_patterns = pd.DataFrame({"bin1": [0, 10, 50], "bin2": [1, 11, 51]})
@@ -108,12 +108,32 @@ def test_hic_genome_pattern_coords(path):
 
 
 @params(COOL_TEST, BG2_TEST)
-def test_hic_genome_bin_to_coords(path):
+def test_hic_genome_get_sub_mat_pattern(path):
+    """Test full matrix to sub matrix bin conversion"""
+    hic_genome = ccm.HicGenome(path)
+    dummy_patterns = pd.DataFrame({"bin1": [0, 10, 50], "bin2": [1, 11, 51]})
+    obs_coords = hic_genome.get_sub_mat_pattern("chr1", "chr1", dummy_patterns)
+    assert np.all(obs_coords.bin1 == dummy_patterns.bin1)
+    assert np.all(obs_coords.bin2 == dummy_patterns.bin2)
+
+
+@params(COOL_TEST, BG2_TEST)
+def test_hic_genome_bins_to_coords(path):
     """Test conversion of bins to genomic coordinates"""
     hic_genome = ccm.HicGenome(path)
     idx = [0, 5, 8]
     exp_bins = hic_genome.bins.iloc[idx, :]
-    obs_bins = hic_genome.bin_to_coords(idx)
+    obs_bins = hic_genome.bins_to_coords(idx)
+    assert np.all(exp_bins == obs_bins)
+
+
+@params(COOL_TEST, BG2_TEST)
+def test_hic_genome_coords_to_bins(path):
+    """Test conversion of bins to genomic coordinates"""
+    hic_genome = ccm.HicGenome(path)
+    coords = pd.DataFrame({"chrom": ["chr1", "chr2"], "pos": [150, 4000]})
+    exp_bins = np.array([0, 131])
+    obs_bins = hic_genome.coords_to_bins(coords)
     assert np.all(exp_bins == obs_bins)
 
 
