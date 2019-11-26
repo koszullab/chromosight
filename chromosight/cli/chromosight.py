@@ -13,7 +13,7 @@ Usage:
                         [--min-separation=auto] [--threads=1] [--n-mads=5]
                         [--resize-kernel] [--perc-undetected=auto]
     chromosight generate-config <prefix> [--preset loops]
-
+    chromosight quantify [--pattern=loops] [--win-size=auto] <bed2d> <contact_map> <output>
 
     detect: 
         performs pattern detection on a Hi-C contact map using kernel convolution
@@ -23,6 +23,10 @@ Usage:
         detection and path pointing to kernel matrices files. Those matrices
         files are tsv files with numeric values ordered in a square dense matrix
         to use for convolution.
+    quantify:
+        Given a list of pairs of positions and a contact map, computes the
+        correlation coefficients between those positions and the kernel of the
+        selected pattern.
 
 Arguments for detect:
     -h, --help                  Display this help message.
@@ -91,6 +95,21 @@ Arguments for generate-config:
     -e, --preset=loops          Generate a preset config for the given pattern.
                                 Preset configs available are "loops" and 
                                 "borders". [default: loops]
+Arguments for quantify:
+    bed2d                       Tab-separated text files with columns chrom1, start1
+                                end1, chrom2, start2, end2. Each line correspond to
+                                a pair of positions (i.e. a position in the matrix).
+    contact_map                 Path to the contact map, in bedgraph2d or
+                                cool format.
+    output
+    -P, pattern=loops           
+    -W, --win-size=auto         Window size, in basepairs, in which to compute the
+                                correlation. The pattern kernel will be resized to
+                                match this size. If the pattern must be enlarged,
+                                linear interpolation is used to fill between pixels.
+                                If not specified, the default kernel size will
+                                be used instead. [default: auto]
+
 """
 import numpy as np
 import pandas as pd
@@ -115,11 +134,15 @@ def _override_kernel_config(param_name, param_value, param_type, config):
     """
 
     if param_value == "auto":
-        sys.stderr.write(
-            "{param_name} set to {default_val} based on config file.\n".format(
-                default_val=config[param_name], param_name=param_name
+        try:
+            sys.stderr.write(
+                f"{param_name} set to {config[param_name]} based on config file.\n"
             )
-        )
+        except KeyError:
+            raise KeyError(
+                f"{param_name} is not defined in the config. Please add it to "
+                f"the JSON config file, or provide it as a command line option."
+            )
     else:
         try:
             config[param_name] = param_type(param_value)
@@ -131,17 +154,40 @@ def _override_kernel_config(param_name, param_value, param_type, config):
     return config
 
 
+def cmd_quantify(arguments):
+    bed2d = arguments["<bed2d>"]
+    mat_path = arguments["<contact_map>"]
+    pattern = arguments["--pattern"]
+    win_size = arguments["--win-size"]
+    kernel_config = cio.load_kernel_config(pattern, False)
+    hic_genome = HicGenome(mat_path, inter=True, kernel_config=kernel_config)
+    positions = pd.read_csv(
+        bed2d,
+        sep="\t",
+        header=None,
+        names=["chrom1", "start1", "end1", "chrom2", "start2", "end2"],
+    )
+    for kernel_matrix in kernel_config["kernels"]:
+        if kernel_config != "auto":
+            kernel_matrix = resize_kernel(
+                kernel_matrix,
+                kernel_config["resolution"],
+                hic_genome.resolution,
+            )
+        for pattern in positions.iterrows():
+            pat = pattern[1]
+
+
 def cmd_generate_config(arguments):
     # Parse command line arguments for generate_config
     prefix = arguments["<prefix>"]
     pattern = arguments["--preset"]
-    arguments = docopt.docopt(__doc__, version=__version__)
 
     kernel_config = cio.load_kernel_config(pattern, False)
 
     # If prefix involves a directory, create it
     if os.path.dirname(prefix):
-        os.makedirs(os.path.dirname(prefix))
+        os.makedirs(os.path.dirname(prefix), exist_ok=True)
 
     # Write kernel matrices to files with input prefix and replace kernels
     # by their path in config
@@ -352,9 +398,13 @@ def cmd_detect(arguments):
     all_pattern_windows = np.concatenate(all_pattern_windows, axis=0)
 
     # Compute minimum separation in bins and make sure it has a reasonable value
-    separation_bins = int(kernel_config["min_separation"] // hic_genome.resolution)
-    if separation_bins < 1: separation_bins = 1
-    elif separation_bins > 100: separation_bins = 100
+    separation_bins = int(
+        kernel_config["min_separation"] // hic_genome.resolution
+    )
+    if separation_bins < 1:
+        separation_bins = 1
+    elif separation_bins > 100:
+        separation_bins = 100
     print(f"separation is : {separation_bins}")
     # Remove patterns with overlapping windows (smeared patterns)
     distinct_patterns = cid.remove_neighbours(
@@ -366,11 +416,11 @@ def cmd_detect(arguments):
     all_pattern_windows = all_pattern_windows[distinct_patterns, :, :]
 
     # Get from bins into basepair coordinates
-    coords_1 = hic_genome.bin_to_coords(all_pattern_coords.bin1).reset_index(
+    coords_1 = hic_genome.bins_to_coords(all_pattern_coords.bin1).reset_index(
         drop=True
     )
     coords_1.columns = [str(col) + "1" for col in coords_1.columns]
-    coords_2 = hic_genome.bin_to_coords(all_pattern_coords.bin2).reset_index(
+    coords_2 = hic_genome.bins_to_coords(all_pattern_coords.bin2).reset_index(
         drop=True
     )
     coords_2.columns = [str(col) + "2" for col in coords_2.columns]
