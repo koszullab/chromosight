@@ -115,11 +115,15 @@ def _override_kernel_config(param_name, param_value, param_type, config):
     """
 
     if param_value == "auto":
-        sys.stderr.write(
-            "{param_name} set to {default_val} based on config file.\n".format(
-                default_val=config[param_name], param_name=param_name
+        try:
+            sys.stderr.write(
+                f"{param_name} set to {config[param_name]} based on config file.\n"
             )
-        )
+        except KeyError:
+            raise KeyError(
+                f'{param_name} is not defined in the config. Please add it to '
+                f'the JSON config file, or provide it as a command line option.'
+            )
     else:
         try:
             config[param_name] = param_type(param_value)
