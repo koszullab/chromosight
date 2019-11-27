@@ -328,24 +328,88 @@ class HicGenome:
         full_patterns.bin2 += startB
         return full_patterns
 
-    def bin_to_coords(self, bin_idx):
+    def get_sub_mat_pattern(self, chr1, chr2, patterns):
         """
-        Converts a bin ID to a genomic coordinates based on the whole genome
+        Converts bin indices of a list of patterns from the whole genome matrix
+        into their value in the desired intra- or inter-chromosomal sub-matrix.
+
+        Parameters
+        ----------
+        chr1 : str
+            Name of the first chromosome of the sub matrix (rows).
+        chr2 : str
+            Name of the second chromosome of the sub matrix (cols).
+        pattern : pandas.DataFrame
+            A dataframme of pattern coordinates. Each row is a pattern and
+            columns should be bin1 and bin2, for row and column coordinates in
+            the Hi-C matrix, respectively.
+        
+        Returns
+        -------
+        full_patterns : pandas.DataFrame
+            A dataframe similar to the input, but with bins shifted to represent
+            coordinates in the target sub-matrix.
+        """
+        sub_patterns = patterns.copy()
+        # Get start bin for chromosomes of interest
+        startA = self.chroms.loc[self.chroms.name == chr1, "start_bin"].values[
+            0
+        ]
+        startB = self.chroms.loc[self.chroms.name == chr2, "start_bin"].values[
+            0
+        ]
+        # Shift index by start bin of chromosomes
+        sub_patterns.bin1 -= startA
+        sub_patterns.bin2 -= startB
+        return sub_patterns
+
+    def bins_to_coords(self, bin_idx):
+        """
+        Converts a list of bin IDs to genomic coordinates based on the whole genome
         contact map.
 
         Parameters
         ----------
-        bin_idx : int
-            A bin number corresponding to a row or column of the whole genome matrix.
+        bin_idx : numpy.array of ints
+            A list of bin numbers corresponding to rows or columns of the whole
+            genome matrix.
 
         Returns
         -------
-        tuple :
-            A tuple of the form (chrom, start, end) where chrom is the chromosome
-            name (str), and start and end are the genomic coordinates of the bin (int).
+        pandas.DataFrame :
+            A subset of the bins dataframe, with columns chrom, start, end where
+            chrom is the chromosome name (str), and start and end are the genomic
+            coordinates of the bin (int).
         
         """
         return self.bins.iloc[bin_idx, :]
+
+    def coords_to_bins(self, coords):
+        """
+        Converts genomic coordinates to a list of bin ids based on the whole genome
+        contact map.
+
+        Parameters
+        ----------
+        coords : pandas.DataFrame
+            Table of genomic coordinates, with columns chrom, pos.
+
+        Returns
+        -------
+        numpy.array of ints :
+            Indices in the whole genome matrix contact map.
+        
+        """
+        coords.pos = (coords.pos // self.resolution) * self.resolution
+        idx = (
+            self.bins.reset_index()
+            .merge(
+                coords, left_on=["chrom", "start"], right_on=["chrom", "pos"]
+            )
+            .set_index("index")
+            .index.values
+        )
+        return idx
 
 
 class ContactMap:

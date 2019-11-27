@@ -11,23 +11,21 @@ matrix:
     sudo: true
 os:
 - linux
-
 install:
 - pip install -v -Ur requirements.txt
 - pip install codecov nose2
--  pip install -e .
-
+- pip install -e .
 script:
 - nose2 --with-coverage -s tests/
 after_success:
 - codecov
 deploy:
-  on: 
+  on:
     branch: master
     tags: true
   provider: pypi
   skip_existing: true
   user: cmdoret
   password:
-    secure: gEc/Mf+t8lGlStSuCuQOIxLPXDaTzB42faB125+Sb9UMqIJr1slS9tKU7lqxRNgsH+40e9/lThSVVCggBUUzL6Gbhqa9IvI0IA9A71v9ohV5bbewDRoD+IJjNnCCj/Yj8H53rqticgtfb+QBHuyU7KHGxcTP8s55Yro/5WhwXl5XexvPYaafelv3ibZyvA0pXos48bD/emuedQhmOWLtkXhkH3CRVsyG3dqXIDK4h/4jqOE+VxclCBiYbCrRGbyuDeYLVQ82OyUL4QQQbnr7e2ejDRlgOiQODCU/ekU9pgDoSqVSvloehJffsBbqK4iKojDX2WrUu1KtXRuA8gSXcS3993wh1ppCEJZ05pgFnuht+PSc+SFca9HBP68iCowlGqmPmHumug62/QPtoUyqB83s/EYdoOI8TX8MhJK5bxnUnpT+PWLBey2CcFVZlYyWmNuFZgZBkkM07DNhfPqazgtx8NTQUZMYhmPjQYHszqfEjBanmAMCy8WbiflmkBRaXkhqPJH4h5GAVtbEbv1E1/B8J2CO6i9hPLWdohZ6vqzViubFlC69QUO1fnejReL21BduF6fkOhGXzOkaMA32NdhYGQACkNO9zKdOl6PnZl8xobusL0Hbkicz2mga+kozFAPChlTTln6GPgorRhmSv2DpJV7WrzRaGU0lVVy5PhA=
+    secure: L/eMxiGbYpYJcPGHRonWVFmfVQr57rdT5GEB6LmcgS6XKpGAqohu1sL27S51hTZF2i5uYefbSzdOFzBBw2wAXHVxGF4yPmTAfrek3sz0uk1aOrAcXYAMoQPevC8IjHBGoXejRdRxGDAdouUrcvbGbYAGZbgGtL1pcTJKzEUfjuLKvA5vldNhr3ERfPvyXVbVq3YNHfalYyBGeIjUFvDth4tz7AXIYOBXLp3AniVftIOrzK7N+JJLlfAU1RnncIJ0Udnu50LI8i71eEUft8xhDLHrnNc+q0SBlAtJqGdKEvopA6Xt7WvPzCdwo/u0QKlnwqE5j5EFmyUE8zKafKX5YQ674YJUzOCKctlW3uU/Xq3ZFkLjVa10eY364XMc2QXPHMhY7wXRGavDw2vkwsw/1ecCXhX25EI8tbOMsT5sDRk4bZjgjhDDwYPKFftIHid3er2vFVFO+Qe30vrq5wLpnpt2Cq/u5vyLeiTtlMHc7tZZE3Uyq7+crIRM4ta1lcyZyEAFWoSG5+THYn46a80f2kgJPwHByeVhghlM+o8Eq5hSagJhMhbDrBtDilCSIvw8heJRIkyJqNNwxFsOK8AT+k4r4ej91DjN7OmJ+Cf8WD2T1BrFfthJIQLkXFYpi0K5/CjIcv6F3Ow/R/NXSwuuamu/WQFb1vImf41hSaX2n9A=
   distributions: sdist bdist_wheel
