@@ -25,6 +25,7 @@ deploy:
     tags: true
   provider: pypi
   skip_existing: true
-  user: cmdoret
+  user: __token__
   password: $PYPI_API_TOKEN
+  server: https://test.pypi.org/legacy/
   distributions: sdist bdist_wheel
