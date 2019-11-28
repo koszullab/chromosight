@@ -159,7 +159,7 @@ def validate_patterns(
 
 def pileup_patterns(pattern_windows):
     """Generate a pileup from an input list of pattern coords and a Hi-C matrix"""
-    return np.apply_along_axis(np.median, 0, pattern_windows)
+    return np.apply_along_axis(np.nanmedian, 0, pattern_windows)
 
 
 def pattern_detector(contact_map, kernel_config, kernel_matrix, dump=None):

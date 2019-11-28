@@ -19,6 +19,13 @@ sudo pip3 install -e git+https://github.com/koszullab/chromosight.git@master#egg
 
 ## Usage
 
+`chromosight` has 3 subcommands: `detect`, `quantify` and `generate-config`. To get the list and description of thos subcommands, you can always run:
+
+```bash
+chromosight --help
+```
+Detailed help for each subcommand can be displayed by running e.g. `chromosight detect --help`. Pattern detection is done using the `detect` subcommand.
+
 ```
 chromosight detect <contact_maps> [<output>] [--kernels=None] [--loops]
                        [--borders] [--precision=4] [--iterations=auto]
@@ -31,8 +38,10 @@ Input Hi-C contact maps can be either in bedgraph2d or cool format. Bedgraph2d i
 
 ## Output
 Two files are generated in the output directory (replace pattern by the pattern used, e.g. loops or borders):
-  * pattern.txt: List of genomic coordinates, bin ids and correlation scores for the pattern identified
-  * pattern.json: JSON file containing the windows (of the same size as the kernel used) around the patterns from pattern.txt
+  * `pattern_out.txt`: List of genomic coordinates, bin ids and correlation scores for the pattern identified
+  * `pattern_out.json`: JSON file containing the windows (of the same size as the kernel used) around the patterns from pattern.txt
+
+Alternatively, one can set the `--win-fmt=npy` option to dump windows into a npy file instead of JSO. This format can easily be loaded into a 3D array using numpy's `np.load` function.
 
 ## Options
 
@@ -43,11 +52,15 @@ Explore and detect patterns (loops, borders, centromeres, etc.) in Hi-C contact
 maps with pattern matching.
 
 Usage:
-    chromosight detect <contact_map> [<output>] [--kernel-config FILE]
+    chromosight detect <contact_map> [<output>] [--kernel-config=FILE]
                         [--pattern=loops] [--precision=auto] [--iterations=auto]
-                        [--win-fmt={json,npy}] [--subsample=no]
-                        [--inter] [--max-dist=auto] [--no-plotting] [--threads 1]
+                        [--win-fmt={json,npy}] [--subsample=no] [--inter]
+                        [--min-dist=0] [--max-dist=auto] [--no-plotting] [--dump=DIR]
+                        [--min-separation=auto] [--threads=1] [--n-mads=5]
+                        [--resize-kernel] [--perc-undetected=auto]
     chromosight generate-config <prefix> [--preset loops]
+    chromosight quantify [--pattern=loops] [--inter] [--subsample=no] [--n-mads=5]
+                         [--win-size=auto] <bed2d> <contact_map> <output>
 
     detect: 
         performs pattern detection on a Hi-C contact map using kernel convolution
@@ -57,50 +70,9 @@ Usage:
         detection and path pointing to kernel matrices files. Those matrices
         files are tsv files with numeric values ordered in a square dense matrix
         to use for convolution.
+    quantify:
+        Given a list of pairs of positions and a contact map, computes the
+        correlation coefficients between those positions and the kernel of the
+        selected pattern.
 
-Arguments for detect:
-    -h, --help                  Display this help message.
-    --version                   Display the program's current version.
-    contact_map                 The Hi-C contact map to detect patterns on, in
-                                bedgraph2d or cool format. 
-    output                      name of the output directory
-    -I, --inter                 Enable to consider interchromosomal contacts.
-    -i, --iterations auto       How many iterations to perform after the first
-                                template-based pass. Auto sets an appropriate
-                                value loaded from the kernel configuration
-                                file. [default: auto]
-    -k, --kernel-config FILE    Optionally give a path to a custom JSON kernel
-                                config path. Use this to override pattern if 
-                                you do not want to use one of the preset 
-                                patterns.
-    -m, --max-dist auto         Maximum distance from the diagonal (in base pairs)
-                                at which pattern detection should operate. Auto
-                                sets a value based on the kernel configuration
-                                file and the signal to noise ratio. [default: auto]
-    -n, --no-plotting           Disable generation of pileup plots.
-    -P, --pattern loops         Which pattern to detect. This will use preset
-                                configurations for the given pattern. Possible
-                                values are: loops, borders, hairpin. [default: loops]
-    -p, --precision auto        Precision threshold when assessing pattern
-                                probability in the contact map. A lesser value
-                                leads to potentially more detections, but more
-                                false positives. [default: auto]
-    -s, --subsample=INT         Subsample contacts from the matrix to INT contacts.
-                                This is useful when comparing matrices with different
-                                coverages. [default: no]
-    -t, --threads 1             Number of CPUs to use in parallel. [default: 1]
-    -w, --win-fmt={json,npy}    File format used to store individual windows
-                                around each pattern. Window order match
-                                patterns inside the associated text file.
-                                Possible formats are json and npy. [default: json]
-
-Arguments for generate-config:
-    prefix                      Path prefix for config files. If prefix is a/b,
-                                files a/b.json and a/b.1.txt will be generated.
-                                If a given pattern has N kernel matrices, N txt
-                                files are created they will be named a/b.[1-N].txt.
-    -p, --preset loops          Generate a preset config for the given pattern.
-                                Preset configs available are "loops" and 
-                                "borders". [default: loops]
-                                
 ```

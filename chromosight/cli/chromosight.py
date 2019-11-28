@@ -13,7 +13,8 @@ Usage:
                         [--min-separation=auto] [--threads=1] [--n-mads=5]
                         [--resize-kernel] [--perc-undetected=auto]
     chromosight generate-config <prefix> [--preset loops]
-    chromosight quantify [--pattern=loops] [--subsample=no] [--n-mads=5] [--win-size=auto] <bed2d> <contact_map> <output>
+    chromosight quantify [--inter] [--pattern=loops] [--subsample=no]
+                         [--n-mads=5] [--win-size=auto] <bed2d> <contact_map> <output>
 
     detect: 
         performs pattern detection on a Hi-C contact map using kernel convolution
@@ -164,16 +165,28 @@ def cmd_quantify(arguments):
     inter = arguments["--inter"]
     win_size = arguments["--win-size"]
     subsample = arguments["--subsample"]
+    # Create directory if it does not exist
+    if not output.exists():
+        os.makedirs(output, exist_ok=True)
+    # Load 6 cols from 2D BED file and infer header
+    bed2d = cio.load_bed2d(bed2d_path)
+    # Warn user if --inter is disabled but list contains inter patterns
+    if not inter and len(bed2d.start1[bed2d.chrom1 != bed2d.chrom2]) > 0:
+        sys.stderr.write(
+            "Warning: The bed2d file contains interchromosomal patterns. "
+            "These patterns will not be scanned unless --inter is used.\n"
+        )
+    # Parse kernel config 
     kernel_config = cio.load_kernel_config(pattern, False)
+    # Instantiate and preprocess contact map
     hic_genome = HicGenome(mat_path, inter=inter, kernel_config=kernel_config)
+    # force full scanning distance in kernel config
     kernel_config["max_dist"] = (
         hic_genome.matrix.shape[0] * hic_genome.resolution
     )
     kernel_config["min_dist"] = 0
+    # Notify contact map instance of changes in scanning distance
     hic_genome.kernel_config = kernel_config
-    # Create directory if it does not exist
-    if not output.exists():
-        os.makedirs(output, exist_ok=True)
     # Subsample Hi-C contacts from the matrix, if requested
     if subsample != "no":
         hic_genome.subsample(subsample)
@@ -184,8 +197,6 @@ def cmd_quantify(arguments):
     # Split whole genome matrix into intra- and inter- sub matrices. Each sub
     # matrix is processed on the fly (obs / exp, trimming diagonals > max dist)
     hic_genome.make_sub_matrices()
-    # Load 6 cols from 2D BED file and infer header
-    bed2d = cio.load_bed2d(bed2d_path)
     # Initialize output structures
     bed2d["score"] = 0.0
     positions, windows = bed2d.copy(), []
@@ -207,6 +218,7 @@ def cmd_quantify(arguments):
             sub_pat = positions.loc[
                 (positions.chrom1 == mat.chr1) & (positions.chrom2 == mat.chr2)
             ]
+            sub_pat_idx = sub_pat.index.values
             # Convert genomic coordinates to bins for horizontal and vertical axes
             for ax in [1, 2]:
                 sub_pat_ax = sub_pat.loc[:, [f"chrom{ax}", f"pos{ax}"]].rename(
@@ -219,7 +231,8 @@ def cmd_quantify(arguments):
             )
             m = mat.contact_map.matrix.tocsr()
             # Iterate over patterns from the 2D BED file
-            for i, (x, y) in enumerate(zip(sub_pat.bin1, sub_pat.bin2)):
+            for i, x, y in zip(sub_pat_idx, sub_pat.bin1, sub_pat.bin2):
+                # Check if the window goes out of bound
                 if (
                     x - kh >= 0
                     and x + kh + 1 < m.shape[0]
@@ -229,7 +242,6 @@ def cmd_quantify(arguments):
                     # For each pattern, compute correlation score with all kernels
                     # but only keep the best
                     win = m[x - kh : x + kh + 1, y - kw : y + kw + 1].toarray()
-
                     score = ss.pearsonr(
                         win.flatten(), kernel_matrix.flatten()
                     )[0]
