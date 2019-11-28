@@ -3,9 +3,9 @@ import os
 import json
 import tempfile
 import nose.tools as nt
-from nose.tools import with_setup, assert_raises
 import numpy as np
 import pandas as pd
+from jsonschema import ValidationError
 import scipy.sparse as sp
 import cooler
 import chromosight.utils.io as cio
@@ -121,7 +121,10 @@ class TestIO:
         assert mat.sum() == pixels["count"].sum()
 
     def test_load_kernel_config(self):
-        """Check that json config files can be parsed properly"""
+        """
+        Check that json config files can be parsed properly and that bad
+        configs throw errors.
+        """
         # Generate dummy kernel
         m = np.random.random((17, 17))
         kernel_mat_path = self.tmp_path + "kernel"
@@ -133,15 +136,16 @@ class TestIO:
         exp_config = {
             "name": "test_pattern",
             "kernels": [kernel_mat_path],
+            "min_dist": 0,
             "max_dist": 10,
             "max_iterations": 1,
             "max_perc_undetected": 10,
+            "min_separation": 1,
             "precision": 4,
             "resolution": 1000,
         }
         # Write config to disk
-        with open(self.tmp_path, "w") as f:
-            json.dump(exp_config, f)
+        json.dump(exp_config, open(self.tmp_path, 'w'))
         # Load kernel configs and check if values are correct
         obs_config_raw = cio.load_kernel_config(self.tmp_path, custom=True)
         obs_kernel_raw = obs_config_raw["kernels"][0]
@@ -150,7 +154,33 @@ class TestIO:
                 assert exp_config[param] == obs_config_raw[param]
         # check if matrix is preserved
         assert np.all(obs_kernel_raw == m)
+
+        # Check if non-existing config yields explicit error
+        try:
+            cio.load_kernel_config(self.tmp_path + 'donotexist', custom=True)
+            assert False
+        except OSError:
+            assert True
+        # Check if wrong values in config yields explicit error
+        bad_config = exp_config.copy()
+        bad_config['max_dist'] = -1
+        json.dump(bad_config, open(self.tmp_path, 'w'))
+        try:
+            cio.load_kernel_config(self.tmp_path, custom=True)
+            assert False
+        except ValidationError:
+            assert True
+        # Check if missing parameters in config yields explicit error
+        bad_config = exp_config.copy()
+        bad_config.pop('precision')
+        json.dump(bad_config, open(self.tmp_path, 'w'))
+        try:
+            cio.load_kernel_config(self.tmp_path, custom=True)
+            assert False
+        except ValidationError:
+            assert True
         os.unlink(kernel_mat_path)
+
 
     def test_write_patterns(self):
         """Test if pattern coordinates are saved to disk as expected."""
@@ -209,7 +239,10 @@ class TestIO:
         os.unlink(self.tmp_path + "_out.npy")
 
         # Check if an inappropriate format raises appropriate exception.
-        with assert_raises(ValueError):
+        try:
             cio.save_windows(
                 tmp_wins, self.tmp_file, self.tmp_dir, format="wrong"
             )
+            assert False
+        except(ValueError):
+            assert True

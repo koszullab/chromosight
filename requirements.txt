@@ -1,6 +1,7 @@
-numpy
-scipy>= 1.3
-matplotlib
-docopt
 cooler
+docopt
+jsonschema
+matplotlib
+numpy
 scikit-learn
+scipy>= 1.3

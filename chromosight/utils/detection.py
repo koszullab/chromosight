@@ -159,7 +159,7 @@ def validate_patterns(
 
 def pileup_patterns(pattern_windows):
     """Generate a pileup from an input list of pattern coords and a Hi-C matrix"""
-    return np.apply_along_axis(np.median, 0, pattern_windows)
+    return np.apply_along_axis(np.nanmedian, 0, pattern_windows)
 
 
 def pattern_detector(contact_map, kernel_config, kernel_matrix, dump=None):
@@ -228,10 +228,10 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix, dump=None):
     chrom_pattern_coords, foci_mat = picker(
         mat_conv, kernel_config["precision"]
     )
-    if dump:
-        save_dump("foci", foci_mat)
     if chrom_pattern_coords is None:
         return None, None
+    if dump:
+        save_dump("foci", foci_mat)
     filtered_chrom_patterns, chrom_pattern_windows = validate_patterns(
         chrom_pattern_coords,
         contact_map.matrix,
