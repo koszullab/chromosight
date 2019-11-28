@@ -47,7 +47,7 @@ setup(
     license=LICENSE,
     classifiers=CLASSIFIERS,
     url="https://github.com/koszullab/chromosight",
-    package_data={"chromosight": ("kernels/*")},
+    package_data={"chromosight": ("kernels/*",)},
     packages=find_packages(),
     python_requires=">=3.6",
     install_requires=REQUIREMENTS,
