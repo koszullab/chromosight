@@ -9,6 +9,7 @@ import pathlib
 import sys
 import csv
 import json
+from jsonschema import validate, ValidationError
 from os.path import join
 from scipy.sparse import coo_matrix, lil_matrix, csc_matrix, csr_matrix, triu
 import warnings
@@ -167,6 +168,8 @@ def load_cool(cool_path):
         raise
 
     c = cooler.Cooler(cool_path)  # pylint: disable=undefined-variable
+    if c.binsize is None:
+        raise ValueError("The cool file must have equally sized bins")
     mat = c.pixels()[:]
     # Number of fragments  (bins) per chromosome
     bins = c.bins()[:]
@@ -247,7 +250,28 @@ def load_kernel_config(kernel, custom=False):
         A dictionary containing a key: value pair for each parameter as well as 
         list of kernel matrices under key 'kernels'.
     """
-
+    # Define a schema for kernel configuration validation
+    schema = {
+            'type': 'object',
+            'properties': {
+                'name': {'type': 'string'},
+                'kernels': {
+                    'type': 'array',
+                    'items': {'type': 'string'}
+                },
+                'min_dist': {'type': 'number', 'minimum': 0},
+                'max_dist': {'type': 'number', 'minimum': 0},
+                'max_iterations': {'type': 'number', 'minimum': 0},
+                'min_separation': {'type': 'number', 'minimum': 1},
+                'precision': {'type': 'number'},
+                'resolution': {'type': 'number'}
+            },
+            'required': [
+                'name', 'kernels', 'min_dist', 
+                'max_dist', 'max_iterations', 'min_separation', 
+                'precision', 'resolution'
+            ]
+    }
     # Custom kernel: use litteral path as config path
     if custom:
         config_path = kernel
@@ -265,13 +289,18 @@ def load_kernel_config(kernel, custom=False):
             kernel_config = json.load(config)
     except FileNotFoundError as e:
         if custom:
-            sys.stderr.write(
-                f"Error: Kernel configuration file {config_path} does not exist.\n"
-            )
+            err_msg = f"Error: Kernel configuration file {config_path} does not exist.\n"
         else:
             err_msg = f"Error: No preset configuration for pattern {kernel}.\n"
         sys.stderr.write(err_msg)
         raise e
+
+    # Check that JSON file is valid
+    try:
+        validate(kernel_config, schema)
+    except ValidationError:
+        sys.stderr.write("Invalid kernel configuration\n")
+        raise
 
     # Load kernel matrices using path in kernel config
     kernel_matrices = [None] * len(kernel_config["kernels"])
