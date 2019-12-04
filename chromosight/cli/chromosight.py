@@ -182,7 +182,7 @@ def cmd_quantify(arguments):
     hic_genome = HicGenome(mat_path, inter=inter, kernel_config=kernel_config)
     # force full scanning distance in kernel config
     kernel_config["max_dist"] = (
-        hic_genome.matrix.shape[0] * hic_genome.resolution
+        hic_genome.matrix.shape[0]
     )
     kernel_config["min_dist"] = 0
     # Notify contact map instance of changes in scanning distance

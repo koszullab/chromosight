@@ -210,7 +210,7 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix, dump=None):
         sym_upper=not contact_map.inter,
     )
     if dump:
-        save_dump("corrcoef2d", mat_conv)
+        save_dump("03_corrcoef2d", mat_conv)
     # Only trim diagonals for intra matrices (makes no sense for inter)
     mat_conv = mat_conv.tocoo()
     # Clean potential missing values
@@ -220,7 +220,7 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix, dump=None):
     if not contact_map.inter:
         mat_conv = preproc.diag_trim(mat_conv.todia(), contact_map.max_dist)
         if dump:
-            save_dump("diag_trim", mat_conv)
+            save_dump("04_diag_trim", mat_conv)
     mat_conv = mat_conv.tocoo()
     mat_conv.eliminate_zeros()
 
@@ -231,7 +231,7 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix, dump=None):
     if chrom_pattern_coords is None:
         return None, None
     if dump:
-        save_dump("foci", foci_mat)
+        save_dump("05_foci", foci_mat)
     filtered_chrom_patterns, chrom_pattern_windows = validate_patterns(
         chrom_pattern_coords,
         contact_map.matrix,
