@@ -176,14 +176,12 @@ def cmd_quantify(arguments):
             "Warning: The bed2d file contains interchromosomal patterns. "
             "These patterns will not be scanned unless --inter is used.\n"
         )
-    # Parse kernel config 
+    # Parse kernel config
     kernel_config = cio.load_kernel_config(pattern, False)
     # Instantiate and preprocess contact map
     hic_genome = HicGenome(mat_path, inter=inter, kernel_config=kernel_config)
     # force full scanning distance in kernel config
-    kernel_config["max_dist"] = (
-        hic_genome.matrix.shape[0]
-    )
+    kernel_config["max_dist"] = hic_genome.matrix.shape[0]
     kernel_config["min_dist"] = 0
     # Notify contact map instance of changes in scanning distance
     hic_genome.kernel_config = kernel_config
@@ -538,14 +536,12 @@ def cmd_detect(arguments):
     # Generate pileup visualisations if requested
     if plotting_enabled:
         # Compute and plot pileup
-        pileup_fname = (
-            "pileup_of_{n}_{pattern}"
-        ).format(
-            pattern=kernel_config["name"],
-            n=all_pattern_windows.shape[0],
+        pileup_fname = ("pileup_of_{n}_{pattern}").format(
+            pattern=kernel_config["name"], n=all_pattern_windows.shape[0]
         )
         windows_pileup = cid.pileup_patterns(all_pattern_windows)
         pileup_plot(windows_pileup, name=pileup_fname, output=output)
+
 
 def main():
     arguments = docopt.docopt(__doc__, version=__version__)

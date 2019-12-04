@@ -44,7 +44,13 @@ def pileup_plot(pileup_pattern, name="pileup_patterns", output=None):
     else:
         output = pathlib.Path(output)
 
-    plt.imshow(pileup_pattern, interpolation="none", vmin=0.0, vmax=2.0, cmap="seismic")
+    plt.imshow(
+        pileup_pattern,
+        interpolation="none",
+        vmin=0.0,
+        vmax=2.0,
+        cmap="seismic",
+    )
     plt.title("{} pileup".format(name))
     plt.colorbar()
     emplacement = output / pathlib.Path(name + ".pdf")
@@ -110,7 +116,8 @@ def plot_whole_matrix(
 
     pat = patterns.copy()
     pat = pat.loc[
-        (pat.bin1 > s1) & (pat.bin1 < e1) & (pat.bin2 > s2) & (pat.bin2 < e2), :
+        (pat.bin1 > s1) & (pat.bin1 < e1) & (pat.bin2 > s2) & (pat.bin2 < e2),
+        :,
     ]
     sub_mat = mat.tocsr()[s1:e1, s2:e2].todense()
     if log_transform:
@@ -118,10 +125,16 @@ def plot_whole_matrix(
     sub_mat[sub_mat == 0] = np.nan
     plt.figure(dpi=1200)
     plt.imshow(
-        sub_mat, cmap="Reds", vmax=np.percentile(sub_mat[~np.isnan(sub_mat)], 99)
+        sub_mat,
+        cmap="Reds",
+        vmax=np.percentile(sub_mat[~np.isnan(sub_mat)], 99),
     )
     plt.scatter(
-        pat.bin1 - s1, pat.bin2 - s2, facecolors="none", edgecolors="blue", s=0.05
+        pat.bin1 - s1,
+        pat.bin2 - s2,
+        facecolors="none",
+        edgecolors="blue",
+        s=0.05,
     )
     if out is None:
         plt.show()
