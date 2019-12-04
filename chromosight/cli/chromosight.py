@@ -450,22 +450,9 @@ def cmd_detect(arguments):
             # skip directly to the next one, skipping iterations
             except ValueError:
                 break
-            # Compute and plot pileup
-            pileup_fname = (
-                "pileup_of_{n}_{pattern}_kernel_{kernel}_iteration_{iter}"
-            ).format(
-                pattern=kernel_config["name"],
-                n=kernel_windows.shape[0],
-                kernel=kernel_id,
-                iter=i,
-            )
-            kernel_pileup = cid.pileup_patterns(kernel_windows)
 
             # Update kernel with patterns detected at current iteration
-            kernel_matrix = kernel_pileup
-            # Generate pileup visualisations if requested
-            if plotting_enabled:
-                pileup_plot(kernel_pileup, name=pileup_fname, output=output)
+            kernel_matrix = cid.pileup_patterns(kernel_windows)
             run_id += 1
     cio.progress(run_id, total_runs, f"Kernel: {kernel_id}, Iteration: {i}\n")
 
@@ -548,6 +535,17 @@ def cmd_detect(arguments):
         all_pattern_windows, kernel_config["name"], output, format=win_fmt
     )
 
+    # Generate pileup visualisations if requested
+    if plotting_enabled:
+        # Compute and plot pileup
+        pileup_fname = (
+            "pileup_of_{n}_{pattern}"
+        ).format(
+            pattern=kernel_config["name"],
+            n=all_pattern_windows.shape[0],
+        )
+        windows_pileup = cid.pileup_patterns(all_pattern_windows)
+        pileup_plot(windows_pileup, name=pileup_fname, output=output)
 
 def main():
     arguments = docopt.docopt(__doc__, version=__version__)
