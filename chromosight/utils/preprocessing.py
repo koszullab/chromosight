@@ -176,7 +176,7 @@ def distance_law(
     # Smooth the curve using isotonic regression: Find closest approximation with
     # the condition that point n+1 cannot be higher than point n. (i.e. contacts
     # can only decrease when increasing distance)
-    if smooth:
+    if smooth and mat_n > 2:
         ir = IsotonicRegression(increasing=False)
         dist[~np.isfinite(dist)] = 0
         dist = ir.fit_transform(range(len(dist)), dist)

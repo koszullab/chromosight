@@ -252,25 +252,27 @@ def load_kernel_config(kernel, custom=False):
     """
     # Define a schema for kernel configuration validation
     schema = {
-            'type': 'object',
-            'properties': {
-                'name': {'type': 'string'},
-                'kernels': {
-                    'type': 'array',
-                    'items': {'type': 'string'}
-                },
-                'min_dist': {'type': 'number', 'minimum': 0},
-                'max_dist': {'type': 'number', 'minimum': 0},
-                'max_iterations': {'type': 'number', 'minimum': 0},
-                'min_separation': {'type': 'number', 'minimum': 1},
-                'precision': {'type': 'number'},
-                'resolution': {'type': 'number'}
-            },
-            'required': [
-                'name', 'kernels', 'min_dist', 
-                'max_dist', 'max_iterations', 'min_separation', 
-                'precision', 'resolution'
-            ]
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "kernels": {"type": "array", "items": {"type": "string"}},
+            "min_dist": {"type": "number", "minimum": 0},
+            "max_dist": {"type": "number", "minimum": 0},
+            "max_iterations": {"type": "number", "minimum": 0},
+            "min_separation": {"type": "number", "minimum": 1},
+            "precision": {"type": "number"},
+            "resolution": {"type": "number"},
+        },
+        "required": [
+            "name",
+            "kernels",
+            "min_dist",
+            "max_dist",
+            "max_iterations",
+            "min_separation",
+            "precision",
+            "resolution",
+        ],
     }
     # Custom kernel: use litteral path as config path
     if custom:
