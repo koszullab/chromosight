@@ -263,30 +263,23 @@ def remove_neighbours(patterns, win_size=8):
         which are smears (False values)
     """
     # Sort patterns by scores
-    sorted_patterns = (
-        patterns.copy()
-        .sort_values("score", ascending=False)
-        .reset_index(drop=True)
-    )
+    sorted_patterns = patterns.copy().sort_values("score", ascending=False)
     # Keep track of patterns to drop
     blacklist = set()
     for i, p in sorted_patterns.iterrows():
         if i not in blacklist:
-            close_patterns_idx = np.where(
+            close_patterns = np.where(
                 (np.abs(sorted_patterns.bin1 - p.bin1) < win_size)
                 & (np.abs(sorted_patterns.bin2 - p.bin2) < win_size)
             )[0]
+            close_patterns_idx = sorted_patterns.index.values[close_patterns]
             close_patterns_idx = close_patterns_idx[close_patterns_idx != i]
             for idx in close_patterns_idx:
                 blacklist.add(idx)
+    # Get indices of valid patterns as a boolean mask
     whitelist_mask = np.ones(sorted_patterns.shape[0], dtype=bool)
     whitelist_mask[list(blacklist)] = False
-    sorted_patterns = sorted_patterns.iloc[whitelist_mask, :]
-    sorted_patterns = sorted_patterns.sort_values(
-        ["bin1", "bin2"]
-    ).reset_index(drop=True)
-
-    return sorted_patterns
+    return whitelist_mask
 
 
 def picker(mat_conv, precision=None):

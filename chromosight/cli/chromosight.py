@@ -474,7 +474,7 @@ def cmd_detect(arguments):
         separation_bins = 1
     elif separation_bins > 100:
         separation_bins = 100
-    print(f"separation is : {separation_bins}")
+    print(f"Minimum pattern separation is : {separation_bins}")
     # Remove patterns with overlapping windows (smeared patterns)
     distinct_patterns = cid.remove_neighbours(
         all_pattern_coords, win_size=separation_bins
