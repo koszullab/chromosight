@@ -262,37 +262,31 @@ def remove_neighbours(patterns, win_size=8):
         Boolean array indicating which patterns are valid (True values) and
         which are smears (False values)
     """
-    p = patterns.copy()
-    p["pattern_id"] = range(p.shape[0])
-    p = p.sort_values(["bin1", "bin2"])
-    all_phase_df = []
-    for phase_h in range(win_size):
-        for phase_v in range(win_size):
-            if phase_v != 0 and phase_h != 0:
-                phase_df = p.copy()
-                phase_df.bin1 += phase_h
-                phase_df.bin2 += phase_v
-                all_phase_df.append(phase_df)
-    p = pd.concat([p] + all_phase_df, axis=0)
-
-    # Divide each row / col by the window size to serve as a "hash"
-    p["round_row"] = p.bin1 // win_size
-    p["round_col"] = p.bin2 // win_size
-    # Group patterns by row-col combination and retrieve the index of the
-    # pattern with the best score in each group
-    pattern_ids = (
-        p.sort_values("score", ascending=False)
-        .drop_duplicates(subset=["round_row", "round_col"], keep="first")
-        .pattern_id.unique()
+    # Sort patterns by scores
+    sorted_patterns = (
+        patterns.copy()
+        .sort_values("score", ascending=False)
+        .reset_index(drop=True)
     )
+    # Keep track of patterns to drop
+    blacklist = set()
+    for i, p in sorted_patterns.iterrows():
+        if i not in blacklist:
+            close_patterns_idx = np.where(
+                (np.abs(sorted_patterns.bin1 - p.bin1) < win_size)
+                & (np.abs(sorted_patterns.bin2 - p.bin2) < win_size)
+            )[0]
+            close_patterns_idx = close_patterns_idx[close_patterns_idx != i]
+            for idx in close_patterns_idx:
+                blacklist.add(idx)
+    whitelist_mask = np.ones(sorted_patterns.shape[0], dtype=bool)
+    whitelist_mask[list(blacklist)] = False
+    sorted_patterns = sorted_patterns.iloc[whitelist_mask, :]
+    sorted_patterns = sorted_patterns.sort_values(
+        ["bin1", "bin2"]
+    ).reset_index(drop=True)
 
-    good_patterns_mask = np.zeros(patterns.shape[0], dtype=bool)
-    try:
-        good_patterns_mask[pattern_ids] = True
-    except IndexError:
-        # no input pattern
-        pass
-    return good_patterns_mask
+    return sorted_patterns
 
 
 def picker(mat_conv, precision=None):
