@@ -256,8 +256,11 @@ def get_detectable_bins(mat, n_mads=3, inter=False):
     if not inter:
         if matrix.shape[0] != matrix.shape[1]:
             raise ValueError("intrachromosomal matrices must be symmetric.")
+        # Replace nonzero pixels by ones to work on proportion of nonzero pixels
         matrix.data = np.ones(matrix.data.shape)
+        # Compute number of nonzero values in each bin
         sum_bins = sum_mat_bins(matrix)
+        # Compute variation in the number of nonzero pixels
         sum_mad = mad(sum_bins)
         # Find poor interacting rows and columns
         sum_med = np.median(sum_bins)
