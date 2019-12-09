@@ -210,6 +210,8 @@ class HicGenome:
                 f"Unknown format: {extension}. Must be one of {format_loader.keys()}\n"
             )
             raise e
+        if resolution is None:
+            raise ValueError("Input matrices must have a fixed genomic bin size.")
         return sub_mat_df, chroms, bins, resolution
 
     def make_sub_matrices(self):
