@@ -163,7 +163,7 @@ def cmd_quantify(arguments):
     n_mads = float(arguments["--n-mads"])
     pattern = arguments["--pattern"]
     inter = arguments["--inter"]
-    win_size = arguments["--win-size"]
+    win_size = int(arguments["--win-size"])
     subsample = arguments["--subsample"]
     # Create directory if it does not exist
     if not output.exists():
@@ -181,7 +181,9 @@ def cmd_quantify(arguments):
     # Instantiate and preprocess contact map
     hic_genome = HicGenome(mat_path, inter=inter, kernel_config=kernel_config)
     # force full scanning distance in kernel config
-    kernel_config["max_dist"] = hic_genome.matrix.shape[0]
+    kernel_config["max_dist"] = (
+        hic_genome.matrix.shape[0] * hic_genome.resolution
+    )
     kernel_config["min_dist"] = 0
     # Notify contact map instance of changes in scanning distance
     hic_genome.kernel_config = kernel_config
@@ -203,12 +205,13 @@ def cmd_quantify(arguments):
     positions["pos2"] = (positions.start2 + positions.end2) // 2
     # Use each kernel matrix available for the pattern
     for kernel_id, kernel_matrix in enumerate(kernel_config["kernels"]):
+        # Only resize kernel matrix if explicitely requested
+        if win_size != "auto":
+            km, kn = kernel_matrix.shape
+            kernel_matrix = resize_kernel(kernel_matrix, factor=win_size / km)
         km, kn = kernel_matrix.shape
         kh = (km - 1) // 2
         kw = (kn - 1) // 2
-        # Only resize kernel matrix if explicitely requested
-        if win_size != "auto":
-            kernel_matrix = resize_kernel(kernel_matrix, factor=win_size / km)
         # Iterate over intra- and inter-chromosomal sub-matrices
         for sub_mat in hic_genome.sub_mats.iterrows():
             mat = sub_mat[1]
@@ -255,6 +258,7 @@ def cmd_quantify(arguments):
             output / f"{pattern}_quant.txt", sep="\t", header=True, index=False
         )
         with open(output / f"{pattern}_quant.json", "w") as win_handle:
+            windows = {idx: win for idx, win in enumerate(windows)}
             json.dump(windows, win_handle, indent=4)
 
 
