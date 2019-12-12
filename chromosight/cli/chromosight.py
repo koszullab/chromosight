@@ -263,7 +263,10 @@ def cmd_quantify(arguments):
             output / f"{pattern}_quant.txt", sep="\t", header=True, index=False
         )
         cio.save_windows(
-            windows, pattern, output_dir=output, format=arguments["--win-fmt"]
+            windows,
+            f"{pattern}_quant",
+            output_dir=output,
+            format=arguments["--win-fmt"],
         )
         # with open(output / f"{pattern}_quant.json", "w") as win_handle:
         #    windows = {idx: win for idx, win in enumerate(windows)}
