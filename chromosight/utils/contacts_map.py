@@ -211,7 +211,9 @@ class HicGenome:
             )
             raise e
         if resolution is None:
-            raise ValueError("Input matrices must have a fixed genomic bin size.")
+            raise ValueError(
+                "Input matrices must have a fixed genomic bin size."
+            )
         return sub_mat_df, chroms, bins, resolution
 
     def make_sub_matrices(self):
@@ -403,12 +405,19 @@ class HicGenome:
         
         """
         coords.pos = (coords.pos // self.resolution) * self.resolution
+        # Coordinates are merged with bins, both indices are kept in memory so that
+        # the indices of matching bins can be returned in the order of the input
+        # coordinates
         idx = (
             self.bins.reset_index()
+            .rename(columns={"index": "bin_idx"})
             .merge(
-                coords, left_on=["chrom", "start"], right_on=["chrom", "pos"]
+                coords.reset_index().rename(columns={"index": "coord_idx"}),
+                left_on=["chrom", "start"],
+                right_on=["chrom", "pos"],
             )
-            .set_index("index")
+            .set_index("bin_idx")
+            .sort_values("coord_idx")
             .index.values
         )
         return idx

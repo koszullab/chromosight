@@ -306,13 +306,9 @@ def load_kernel_config(kernel, custom=False):
 
     # Load kernel matrices using path in kernel config
     kernel_matrices = [None] * len(kernel_config["kernels"])
-    # Keep track of the largest kernel
-    largest_kernel = 0
     for i, kernel_path in enumerate(kernel_config["kernels"]):
         kernel_path = join(pathlib.Path(config_path).parent, kernel_path)
         kernel_matrices[i] = np.loadtxt(kernel_path)
-        if kernel_matrices[i].shape[0] > largest_kernel:
-            largest_kernel = kernel_matrices[i].shape[0]
     # Replace matrices path by their content in the config dictionary
     kernel_config["kernels"] = kernel_matrices
 
@@ -362,14 +358,15 @@ def save_windows(windows, pattern_name, output_dir=".", format="json"):
         numpy's binary format, or json for a general purpose text
         format.
     """
+    # TODO: Adapt for windows of different sizes
     if format == "npy":
-        file_name = pattern_name + "_out.npy"
+        file_name = pattern_name + ".npy"
         file_path = join(output_dir, file_name)
         np.save(file_path, windows)
     elif format == "json":
         import json
 
-        file_name = pattern_name + "_out.json"
+        file_name = pattern_name + ".json"
         file_path = join(output_dir, file_name)
         json_wins = {idx: win.tolist() for idx, win in enumerate(windows)}
         with open(file_path, "w") as handle:

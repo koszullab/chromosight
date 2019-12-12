@@ -145,7 +145,7 @@ class TestIO:
             "resolution": 1000,
         }
         # Write config to disk
-        json.dump(exp_config, open(self.tmp_path, 'w'))
+        json.dump(exp_config, open(self.tmp_path, "w"))
         # Load kernel configs and check if values are correct
         obs_config_raw = cio.load_kernel_config(self.tmp_path, custom=True)
         obs_kernel_raw = obs_config_raw["kernels"][0]
@@ -157,14 +157,14 @@ class TestIO:
 
         # Check if non-existing config yields explicit error
         try:
-            cio.load_kernel_config(self.tmp_path + 'donotexist', custom=True)
+            cio.load_kernel_config(self.tmp_path + "donotexist", custom=True)
             assert False
         except OSError:
             assert True
         # Check if wrong values in config yields explicit error
         bad_config = exp_config.copy()
-        bad_config['max_dist'] = -1
-        json.dump(bad_config, open(self.tmp_path, 'w'))
+        bad_config["max_dist"] = -1
+        json.dump(bad_config, open(self.tmp_path, "w"))
         try:
             cio.load_kernel_config(self.tmp_path, custom=True)
             assert False
@@ -172,15 +172,14 @@ class TestIO:
             assert True
         # Check if missing parameters in config yields explicit error
         bad_config = exp_config.copy()
-        bad_config.pop('precision')
-        json.dump(bad_config, open(self.tmp_path, 'w'))
+        bad_config.pop("precision")
+        json.dump(bad_config, open(self.tmp_path, "w"))
         try:
             cio.load_kernel_config(self.tmp_path, custom=True)
             assert False
         except ValidationError:
             assert True
         os.unlink(kernel_mat_path)
-
 
     def test_write_patterns(self):
         """Test if pattern coordinates are saved to disk as expected."""
@@ -223,20 +222,20 @@ class TestIO:
         tmp_wins = np.random.random((100, 9, 9))
         # Check whether legit windows can be saved and loaded in both formats
         cio.save_windows(tmp_wins, self.tmp_file, self.tmp_dir, format="json")
-        with open(self.tmp_path + "_out.json", "r") as jwin:
+        with open(self.tmp_path + ".json", "r") as jwin:
             w = json.load(jwin)
             # Loaded as a dict, check number of keys
             assert len(w.keys()) == 100
             # Check dim of first value
             assert np.array(w["0"]).shape == (9, 9)
         # Remove json windows file
-        os.unlink(self.tmp_path + "_out.json")
+        os.unlink(self.tmp_path + ".json")
 
         cio.save_windows(tmp_wins, self.tmp_file, self.tmp_dir, format="npy")
-        w = np.load(self.tmp_path + "_out.npy")
+        w = np.load(self.tmp_path + ".npy")
         assert w.shape == (100, 9, 9)
         # Remove npy windows file
-        os.unlink(self.tmp_path + "_out.npy")
+        os.unlink(self.tmp_path + ".npy")
 
         # Check if an inappropriate format raises appropriate exception.
         try:
@@ -244,5 +243,6 @@ class TestIO:
                 tmp_wins, self.tmp_file, self.tmp_dir, format="wrong"
             )
             assert False
-        except(ValueError):
+        except (ValueError):
             assert True
+

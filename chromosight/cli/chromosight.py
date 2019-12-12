@@ -163,7 +163,9 @@ def cmd_quantify(arguments):
     n_mads = float(arguments["--n-mads"])
     pattern = arguments["--pattern"]
     inter = arguments["--inter"]
-    win_size = int(arguments["--win-size"])
+    win_size = arguments["--win-size"]
+    if win_size != "auto":
+        win_size = int(win_size)
     subsample = arguments["--subsample"]
     # Create directory if it does not exist
     if not output.exists():
@@ -199,7 +201,12 @@ def cmd_quantify(arguments):
     hic_genome.make_sub_matrices()
     # Initialize output structures
     bed2d["score"] = 0.0
-    positions, windows = bed2d.copy(), []
+    positions = bed2d.copy()
+    if win_size != "auto":
+        km = kn = win_size
+    else:
+        km, kn = kernel_config["kernels"][0].shape
+    windows = np.zeros((positions.shape[0], km, kn))
     # For each position, we use the center of the BED interval
     positions["pos1"] = (positions.start1 + positions.end1) // 2
     positions["pos2"] = (positions.start2 + positions.end2) // 2
@@ -207,9 +214,7 @@ def cmd_quantify(arguments):
     for kernel_id, kernel_matrix in enumerate(kernel_config["kernels"]):
         # Only resize kernel matrix if explicitely requested
         if win_size != "auto":
-            km, kn = kernel_matrix.shape
             kernel_matrix = resize_kernel(kernel_matrix, factor=win_size / km)
-        km, kn = kernel_matrix.shape
         kh = (km - 1) // 2
         kw = (kn - 1) // 2
         # Iterate over intra- and inter-chromosomal sub-matrices
@@ -253,13 +258,16 @@ def cmd_quantify(arguments):
                     win = np.zeros((km, kn))
                     bed2d["score"][i] = np.nan
                 if kernel_id == 0:
-                    windows.append(win.tolist())
+                    windows[i, :, :] = win
         bed2d.to_csv(
             output / f"{pattern}_quant.txt", sep="\t", header=True, index=False
         )
-        with open(output / f"{pattern}_quant.json", "w") as win_handle:
-            windows = {idx: win for idx, win in enumerate(windows)}
-            json.dump(windows, win_handle, indent=4)
+        cio.save_windows(
+            windows, pattern, output_dir=output, format=arguments["--win-fmt"]
+        )
+        # with open(output / f"{pattern}_quant.json", "w") as win_handle:
+        #    windows = {idx: win for idx, win in enumerate(windows)}
+        #    json.dump(windows, win_handle, indent=4)
 
 
 def cmd_generate_config(arguments):
@@ -386,7 +394,7 @@ def cmd_detect(arguments):
     # NOTE: Subsampling has to be done before normalisation
     hic_genome.subsample(subsample)
     # Normalize (balance) matrix using ICE
-    hic_genome.normalize(n_mads)
+    hic_genome.normalize(n_mads=n_mads)
     # Define how many diagonals should be used in intra-matrices
     hic_genome.compute_max_dist()
     # Split whole genome matrix into intra- and inter- sub matrices. Each sub
@@ -476,8 +484,6 @@ def cmd_detect(arguments):
     )
     if separation_bins < 1:
         separation_bins = 1
-    elif separation_bins > 100:
-        separation_bins = 100
     print(f"Minimum pattern separation is : {separation_bins}")
     # Remove patterns with overlapping windows (smeared patterns)
     distinct_patterns = cid.remove_neighbours(
@@ -531,10 +537,15 @@ def cmd_detect(arguments):
     ### 3: WRITE OUTPUT
     sys.stderr.write(f"{all_pattern_coords.shape[0]} patterns detected\n")
     # Save patterns and their coordinates in a tsv file
-    cio.write_patterns(all_pattern_coords, kernel_config["name"], output)
+    cio.write_patterns(
+        all_pattern_coords, kernel_config["name"] + "_out", output
+    )
     # Save windows as an array in an npy file
     cio.save_windows(
-        all_pattern_windows, kernel_config["name"], output, format=win_fmt
+        all_pattern_windows,
+        kernel_config["name"] + "_out",
+        output,
+        format=win_fmt,
     )
 
     # Generate pileup visualisations if requested
