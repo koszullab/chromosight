@@ -546,7 +546,6 @@ def corrcoef2d(
             sym_upper=sym_upper,
             scaling=scaling,
         )
-
     return corr
 
 

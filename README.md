@@ -76,3 +76,15 @@ Usage:
         selected pattern.
 
 ```
+
+### Contributing
+
+All contributions are welcome. We use the [numpy standard](https://numpydoc.readthedocs.io/en/latest/format.html) for docstrings when documenting functions.
+
+The code formatting standard we use is [black](https://github.com/psf/black), with --line-length=79 to follow PEP8 recommendations. We use `nose2` as our testing framework. Ideally, new functions should have associated unit tests, placed in the `tests` folder.
+
+To test the code, you can run:
+
+```bash
+nose2 -s tests/
+```
