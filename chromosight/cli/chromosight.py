@@ -248,9 +248,13 @@ def cmd_quantify(arguments):
                     # For each pattern, compute correlation score with all kernels
                     # but only keep the best
                     win = m[x - kh : x + kh + 1, y - kw : y + kw + 1].toarray()
-                    score = ss.pearsonr(
-                        win.flatten(), kernel_matrix.flatten()
-                    )[0]
+                    try:
+                        score = ss.pearsonr(
+                            win.flatten(), kernel_matrix.flatten()
+                        )[0]
+                    # In case of NaNs introduced by division by 0 during detrend
+                    except ValueError:
+                        score = 0
                     if score > bed2d["score"][i] or kernel_id == 0:
                         bed2d["score"][i] = score
                 # Pattern falls outside or at the edge of the matrix
