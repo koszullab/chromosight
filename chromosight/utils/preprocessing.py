@@ -120,7 +120,7 @@ def diag_trim(mat, n):
 
 
 def distance_law(
-    matrix, detectable_bins=None, max_dist=None, smooth=True, fun=np.nanmedian
+    matrix, detectable_bins=None, max_dist=None, smooth=True, fun=np.nanmean
 ):
     """
     Computes genomic distance law by averaging over each diagonal in
@@ -172,7 +172,8 @@ def distance_law(
         detect_mask_h = detect_mask[: (mat_n - diag)]
         detect_mask_v = detect_mask[mat_n - (mat_n - diag) :]
         detect_mask_diag = detect_mask_h & detect_mask_v
-        dist[diag] = fun(matrix.diagonal(diag)[detect_mask_diag])
+        detect_diag = matrix.diagonal(diag)[detect_mask_diag]
+        dist[diag] = fun(detect_diag[detect_diag > 0])
     # Smooth the curve using isotonic regression: Find closest approximation with
     # the condition that point n+1 cannot be higher than point n. (i.e. contacts
     # can only decrease when increasing distance)
@@ -283,7 +284,12 @@ def get_detectable_bins(mat, n_mads=3, inter=False):
 
 
 def detrend(
-    matrix, detectable_bins=None, max_dist=None, smooth=False, fun=np.nanmedian
+    matrix,
+    detectable_bins=None,
+    max_dist=None,
+    smooth=False,
+    fun=np.nanmedian,
+    max_val=10,
 ):
     """
     Detrends a Hi-C matrix by the distance law.
@@ -301,7 +307,10 @@ def detrend(
         Maximum number of bins from the diagonal at which to compute trend.
     smooth : bool
         Whether to use isotonic regression to smooth the trend.
-    fun : function to use on each diagonal to compute the trend.
+    fun : callable
+        Function to use on each diagonal to compute the trend.
+    max_val : float
+        Maximum value in the detrended matrix.
 
     Returns
     -------
@@ -323,12 +332,7 @@ def detrend(
     # clean_mat.data /= y_savgol[abs(clean_mat.row - clean_mat.col)]
     clean_mat.data /= y[abs(clean_mat.row - clean_mat.col)]
     clean_mat = clean_mat.tocsr()
-    # Set values in bad bins to 0
-    miss_bin_mask = np.ones(matrix.shape[0], dtype=bool)
-    miss_bin_mask[detectable_bins] = 0
-    clean_mat[np.ix_(miss_bin_mask, miss_bin_mask)] = 0.0
-    clean_mat.eliminate_zeros()
-
+    clean_mat[clean_mat >= max_val] = max_val
     return clean_mat
 
 
