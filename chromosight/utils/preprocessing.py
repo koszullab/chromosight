@@ -462,6 +462,71 @@ def subsample_contacts(M, n_contacts):
     )
 
 
+def sparse_division(m1, m2):
+    """Divide nonzero values of one sparse matrix by corresponding values in
+    another sparse matrix.
+
+    Parameters
+    ----------
+    m1 : scipy.sparse.coo_matrix
+        Matrix whose values should be divided.
+    m2 : scipy.sparse.coo_matrix
+        Matrix whose values should be the denominator.
+    
+    Returns
+    -------
+    scipy.sparse.coo_matrix
+    """
+    # Get coords of non-zero (nz) values in the numerator
+    nz_vals = m1.nonzero()
+    div = m1.copy()
+    # Divide them by corresponding entries in the numerator
+    denom = m2.tocsr()
+    try:
+        div.data /= denom[nz_vals].A1
+    # Case there are no nonzero values in m2
+    except AttributeError:
+        pass
+
+    return div
+
+
+def make_exterior_frame(signal_shape, kernel_shape, sym_upper=False):
+    """
+    Generate an empty matrix with a padding of size 1/2 kernel. This matrix
+    Is used to denote missing values as 1 and good values as 0.
+
+    Parameters
+    ----------
+    signal_shape : tuple of ints
+        The number of rows and columns in the input signal
+    kernels_shape : tuple of ints
+        The number of rows and kernel in the input kernel. Margins will be half
+        these values.
+    sym_upper : bool
+        Whether the signal is a symmetric upper triangle matrix. If so, values
+        on a margin below the diagonal will be masked.
+
+    Returns
+    -------
+    exterior_frame : scipy.sparse.lil_matrix
+    """
+    ms, ns = signal_shape
+    mk, nk = kernel_shape
+    # Generate exterior frame to act as margin when convolving borders
+    exterior_frame = sp.lil_matrix((ms + 2 * (mk - 1), ns + 2 * (nk - 1)))
+    # Up and down
+    exterior_frame[: mk - 1, :] = 1
+    exterior_frame[ms + (mk - 1) :, :] = 1
+    # Left and right
+    exterior_frame[:, : nk - 1] = 1
+    exterior_frame[:, ns + (nk - 1) :] = 1
+
+    for d in range(-mk // 2):
+        exterior_frame.setdiag(1, k=d)
+    return exterior_frame
+
+
 def resize_kernel(
     kernel,
     kernel_res=None,

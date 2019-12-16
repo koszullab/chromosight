@@ -497,7 +497,12 @@ def xcorr2(signal, kernel, threshold=1e-4):
 
 
 def corrcoef2d(
-    signal, kernel, max_dist=None, sym_upper=False, scaling="pearson"
+    signal,
+    kernel,
+    max_dist=None,
+    sym_upper=False,
+    scaling="pearson",
+    mode="full",
 ):
     """
     Signal-kernel 2D correlation
@@ -530,6 +535,9 @@ def corrcoef2d(
     if min(kernel.shape) >= max(signal.shape):
         raise ValueError("cannot have kernel bigger than signal")
 
+    if not (mode in ["full", "valid"]):
+        raise ValueError("mode must be either 'full' or 'valid'")
+
     if sp.issparse(signal):
         corr = _corrcoef2d_sparse(
             signal,
@@ -537,6 +545,7 @@ def corrcoef2d(
             max_dist=max_dist,
             sym_upper=sym_upper,
             scaling=scaling,
+            mode=mode,
         )
     else:
         corr = _corrcoef2d_dense(
@@ -545,6 +554,7 @@ def corrcoef2d(
             max_dist=max_dist,
             sym_upper=sym_upper,
             scaling=scaling,
+            mode=mode,
         )
     return corr
 
@@ -592,13 +602,15 @@ def _xcorr2_sparse(signal, kernel, threshold=1e-4):
     # Simplified convolution for the special case where kernel is constant:
     if np.isfinite(constant_kernel):
         l_subkernel_sp = sp.diags(
-            np.ones(km), np.arange(km), shape=(sm - km + 1, sm), format="csr"
+            constant_kernel * np.ones(km),
+            np.arange(km),
+            shape=(sm - km + 1, sm),
+            format="dia",
         )
         r_subkernel_sp = sp.diags(
-            np.ones(kn), -np.arange(kn), shape=(sn, sn - kn + 1), format="csr"
+            np.ones(kn), -np.arange(kn), shape=(sn, sn - kn + 1), format="dia"
         )
         out = (l_subkernel_sp @ signal) @ r_subkernel_sp
-        out *= constant_kernel
     # Convolution code for general case
     else:
         for kj in range(kn):
@@ -683,7 +695,13 @@ def _xcorr2_dense(signal, kernel, threshold=1e-4):
 
 
 def _corrcoef2d_sparse(
-    signal, kernel, max_dist=None, sym_upper=False, scaling="pearson"
+    signal,
+    kernel,
+    max_dist=None,
+    sym_upper=False,
+    scaling="pearson",
+    mode="valid",
+    missing_mask=None,
 ):
     """Implementation of signal-kernel 2D correlation for sparse matrices
     Pearson correlation coefficient between signal and sliding kernel. Convolutes
@@ -706,6 +724,8 @@ def _corrcoef2d_sparse(
     scaling : str
         Which metric to use when computing correlation coefficients. Either 'pearson'
         for Pearson correlation, or 'cross' for cross correlation.
+    missing_mask = scipy.sparse.coo_matrix of ints
+        Matrix defining which pixels are missing (1) or not (0).
 
     Returns
     -------
@@ -720,47 +740,95 @@ def _corrcoef2d_sparse(
         for i in range(1, kernel.shape[0]):
             signal.setdiag(signal.diagonal(i), -i)
     signal = signal.tocsr()
-    kernel_size = kernel.shape[0] * kernel.shape[1]
+    mk, nk = kernel.shape
+    ms, ns = signal.shape
 
-    if scaling == "cross":
-        # Compute convolution product
+    # Generate constant kernel
+    kernel1 = np.ones(kernel.shape)
+    kernel_size = mk * nk
+    # In full mode, we compute the convolution with all pixels in the input
+    # signal. We need to add a margin around the input to allow the kernel to
+    # be centered on the edges.
+    if mode == "full":
+        exterior_frame = preproc.make_exterior_frame(
+            (ms, ns), (mk, nk), sym_upper=sym_upper
+        )
+        # Create a vertical margin and use it to pad the signal
+        tmp = sp.csr_matrix((mk - 1, ns))
+        signal = sp.vstack([tmp, signal, tmp], format=signal.format)
+        # Same for the horizontal margin
+        tmp = sp.csr_matrix((ms + 2 * (mk - 1), nk - 1))
+        signal = sp.hstack([tmp, signal, tmp], format=signal.format)
+        # If a missing mask was specified, use it
+        if missing_mask is not None:
+            exterior_frame[mk - 1 : -mk + 1, nk - 1 : -nk + 1] = missing_mask
+        missing_mask = sp.csr_matrix(exterior_frame)
+        missing_mask.eliminate_zeros()
+
+    # Plain old convolution
+    if scaling is None:
         conv = xcorr2(signal, kernel)
-        # Generate constant kernel
-        kernel1 = np.ones(kernel.shape)
-        # Convolute squared signal with constant kernel
-        signal2 = xcorr2(signal.power(2), kernel1)
-        kernel2 = float(np.sum(np.power(kernel, 2)))
-        denom = signal2 * kernel2
-        denom = denom.sqrt()
-    elif scaling == "pearson":
-        mean_kernel = float(kernel.mean())
-        std_kernel = float(kernel.std())
-        if not (std_kernel > 0):
-            raise ValueError(
-                "Cannot have scaling=pearson when kernel"
-                "is flat. Use scaling=cross."
-            )
 
-        kernel1 = np.ones(kernel.shape)
-        mean_signal = xcorr2(signal, kernel1 / kernel_size)
-        std_signal = xcorr2(
-            signal.power(2), kernel1 / kernel_size
-        ) - mean_signal.power(2)
-        std_signal = std_signal.sqrt()
-        conv = xcorr2(signal, kernel / kernel_size) - mean_signal * mean_kernel
-        denom = std_signal * std_kernel
-    # Since elementwise sparse matrices division is not implemented, compute
-    # numerator and denominator and perform division on the 1D array of nonzero
-    # values.
-    # Get coords of non-zero (nz) values in the numerator
-    nz_vals = conv.nonzero()
-    # Divide them by corresponding entries in the numerator
-    denom = denom.tocsr()
-    try:
-        conv.data /= denom[nz_vals].A1
-    # Case there are no nonzero corrcoef
-    except AttributeError:
-        pass
+    # Cross-correlation
+    elif scaling == "cross":
+        if missing_mask is None:
+            denom = float(np.sum(kernel ** 2))
+        else:
+            denom = np.sum(kernel ** 2) - xcorr2(missing_mask, kernel ** 2)
+        denom *= xcorr2(signal.power(2), kernel1)
+        denom = denom.sqrt()
+        conv = preproc.sparse_division(xcorr2(signal, kernel), denom)
+
+    elif scaling == "pearson":
+        if missing_mask is None:
+            kernel_mean = float(kernel.mean())
+            kernel_std = float(kernel.std())
+            if not (kernel_std > 0):
+                raise ValueError(
+                    "Cannot have scaling=pearson when kernel"
+                    "is flat. Use scaling=cross."
+                )
+            signal_mean = xcorr2(signal, kernel1 / kernel_size)
+            signal_std = (
+                xcorr2(signal.power(2), kernel1 / kernel_size)
+                - signal_mean.power(2)
+            ).sqrt()
+            conv = (
+                xcorr2(signal, kernel / kernel_size)
+                - signal_mean * kernel_mean
+            )
+            conv = preproc.sparse_division(conv, signal_std * kernel_std)
+        else:
+            bigmat = lambda x: sp.coo_matrix(np.ones(missing_mask.shape) * x)
+            kernel_size_mat = bigmat(mk * nk)
+            kernel_size = kernel_size_mat - xcorr2(missing_mask, kernel1)
+            kernel_mean = preproc.sparse_division(
+                bigmat(kernel.sum()) - xcorr2(missing_mask, kernel),
+                kernel_size,
+            )
+            kernel_std = preproc.sparse_division(
+                bigmat(np.sum(kernel ** 2))
+                - xcorr2(missing_mask, kernel ** 2),
+                kernel_size,
+            )
+            kernel_std -= kernel_mean.power(2)
+            kernel_std = abs(kernel_std).sqrt()
+            signal_mean = preproc.sparse_division(
+                xcorr2(signal, kernel1), kernel_size
+            )
+            signal_std = (
+                abs(
+                    preproc.sparse_division(
+                        xcorr2(signal.power(2), kernel1), kernel_size
+                    )
+                    - signal.power(2)
+                )
+            ).sqrt()
+            conv = (
+                preproc.sparse_division(xcorr2(signal, kernel), kernel_size)
+                - signal_mean * kernel_mean
+            )
+            conv = preproc.sparse_division(conv, signal_std * kernel_std)
 
     if (max_dist is not None) and sym_upper:
         # Trim diagonals further than max_scan_distance
