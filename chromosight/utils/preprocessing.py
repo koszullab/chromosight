@@ -527,6 +527,41 @@ def make_exterior_frame(signal_shape, kernel_shape, sym_upper=False):
     return exterior_frame
 
 
+def missing_bins_mask(shape, valid_rows, valid_cols):
+    """
+    Given lists of valid rows and columnts, generate a sparse matrix mask with
+    missing pixels denoted as 1 and valid pixels as 0. The mask can only flag
+    entire rows or colums.
+
+    Parameters
+    ----------
+    shape : tuple of ints
+        Shape of the mask to generate.
+    valid_rows : numpy.array of ints
+        Array with the indices of valid rows that should be set to 0 in the mask.
+    valid_cols : numpy.array of ints
+        Array with the indices of valid rows that should be set to 0 in the mask.
+    
+    Returns
+    -------
+    scipy.sparse.coo_matrix
+    """
+
+    missing_rows = np.ones(shape[0])
+    missing_rows[valid_rows] = 0
+    missing_cols = np.ones(shape[1])
+    missing_cols[valid_cols] = 0
+
+    missing_rows = np.where(missing_rows == True)[0]
+    missing_cols = np.where(missing_cols == True)[0]
+
+    mask = sp.csr_matrix(shape)
+    mask[missing_rows, :] = 1
+    mask[:, missing_cols] = 1
+
+    return mask
+
+
 def resize_kernel(
     kernel,
     kernel_res=None,

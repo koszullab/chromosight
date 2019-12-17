@@ -129,7 +129,6 @@ def validate_patterns(
             # The pattern should not contain more missing pixels that the max
             # value defined in kernel config. This includes both pixels from
             # undetectable bins and zero valued pixels in detectable bins.
-
             if tot_missing_pixels / tot_pixels < max_undetected_perc / 100.0:
                 validated_coords.score[i] = conv_mat[l[0], l[1]]
                 pattern_windows[i, :, :] = pattern_window
@@ -203,11 +202,18 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix, dump=None):
     # only for symmetric matrices, use dense implementation for inter-matrices
     # This is very expensive in RAM
     # Pattern matching operate here
+    missing_mask = preproc.missing_bins_mask(
+        contact_map.matrix.shape,
+        valid_rows=contact_map.detectable_bins[0],
+        valid_cols=contact_map.detectable_bins[1],
+    )
     mat_conv = corrcoef2d(
         contact_map.matrix,
         kernel_matrix,
         max_dist=kernel_config["max_dist"],
         sym_upper=not contact_map.inter,
+        mode="full",
+        missing_mask=missing_mask,
     )
     if dump:
         save_dump("03_corrcoef2d", mat_conv)
@@ -503,6 +509,7 @@ def corrcoef2d(
     sym_upper=False,
     scaling="pearson",
     mode="full",
+    missing_mask=None,
 ):
     """
     Signal-kernel 2D correlation
@@ -526,6 +533,8 @@ def corrcoef2d(
     scaling : str
         Which metric to use when computing correlation coefficients. Either 'pearson'
         for Pearson correlation, or 'cross' for cross correlation.
+    missing_mask : scipy.sparse.coo_matrix of ints
+        Matrix defining which pixels are missing (1) or not (0).
 
     Returns
     -------
@@ -546,6 +555,7 @@ def corrcoef2d(
             sym_upper=sym_upper,
             scaling=scaling,
             mode=mode,
+            missing_mask=missing_mask,
         )
     else:
         corr = _corrcoef2d_dense(
@@ -724,7 +734,7 @@ def _corrcoef2d_sparse(
     scaling : str
         Which metric to use when computing correlation coefficients. Either 'pearson'
         for Pearson correlation, or 'cross' for cross correlation.
-    missing_mask = scipy.sparse.coo_matrix of ints
+    missing_mask : scipy.sparse.coo_matrix of ints
         Matrix defining which pixels are missing (1) or not (0).
 
     Returns
@@ -817,18 +827,17 @@ def _corrcoef2d_sparse(
                 xcorr2(signal, kernel1), kernel_size
             )
             signal_std = (
-                abs(
-                    preproc.sparse_division(
-                        xcorr2(signal.power(2), kernel1), kernel_size
-                    )
-                    - signal.power(2)
+                preproc.sparse_division(
+                    xcorr2(signal.power(2), kernel1), kernel_size
                 )
+                - signal_mean.power(2)
             ).sqrt()
-            conv = (
-                preproc.sparse_division(xcorr2(signal, kernel), kernel_size)
-                - signal_mean * kernel_mean
+            conv = preproc.sparse_division(
+                xcorr2(signal, kernel), kernel_size
+            ) - signal_mean.multiply(kernel_mean)
+            conv = preproc.sparse_division(
+                conv, signal_std.multiply(kernel_std)
             )
-            conv = preproc.sparse_division(conv, signal_std * kernel_std)
 
     if (max_dist is not None) and sym_upper:
         # Trim diagonals further than max_scan_distance
@@ -841,6 +850,13 @@ def _corrcoef2d_sparse(
     conv.data[conv.data < 0] = 0.0
     conv.eliminate_zeros()
     conv = conv.tocsr()
+    if mode == "full":
+        conv = conv.tocsr()[mk - 1 : -mk + 1, nk - 1 : -nk + 1]
+
+    import matplotlib.pyplot as plt
+
+    plt.imshow(conv.toarray())
+    plt.show()
     return conv
 
 
