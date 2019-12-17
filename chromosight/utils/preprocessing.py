@@ -181,6 +181,7 @@ def distance_law(
         ir = IsotonicRegression(increasing=False)
         dist[~np.isfinite(dist)] = 0
         dist = ir.fit_transform(range(len(dist)), dist)
+
     return dist
 
 

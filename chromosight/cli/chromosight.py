@@ -8,7 +8,7 @@ maps with pattern matching.
 Usage:
     chromosight detect <contact_map> [<output>] [--kernel-config=FILE]
                         [--pattern=loops] [--precision=auto] [--iterations=auto]
-                        [--win-fmt={json,npy}] [--subsample=no] [--inter]
+                        [--win-fmt={json,npy}] [--subsample=no] [--inter] [--smooth-trend]
                         [--min-dist=0] [--max-dist=auto] [--no-plotting] [--dump=DIR]
                         [--min-separation=auto] [--threads=1] [--n-mads=5]
                         [--resize-kernel] [--perc-undetected=auto]
@@ -82,6 +82,9 @@ Arguments for detect:
                                 distance in both axes, the one with the lowest
                                 score is discarded. [default: auto]
     -t, --threads=1             Number of CPUs to use in parallel. [default: 1]
+    -T, --smooth-trend          Use isotonic regression to reduce noise at long
+                                ranges caused by detrending. Do not enable this
+                                for circular genomes.
     -u, --perc-undetected=auto  Maximum percentage of empty pixels in windows
                                 allowed to keep detected patterns. [default: auto]
     -w, --win-fmt={json,npy}    File format used to store individual windows
@@ -338,6 +341,9 @@ def cmd_detect(arguments):
     if subsample == "no":
         subsample = None
     plotting_enabled = False if arguments["--no-plotting"] else True
+    smooth_trend = arguments["--smooth-trend"]
+    if smooth_trend is None:
+        smooth_trend = False
     # If output is not specified, use current directory
     if not output:
         output = pathlib.Path()
@@ -384,9 +390,12 @@ def cmd_detect(arguments):
             "WARNING: Detection on interchromosomal matrices is expensive in RAM\n"
         )
     hic_genome = HicGenome(
-        mat_path, inter=interchrom, kernel_config=kernel_config, dump=dump
+        mat_path,
+        inter=interchrom,
+        kernel_config=kernel_config,
+        dump=dump,
+        smooth=smooth_trend,
     )
-
     ### 1: Process input signal
     #  Adapt size of kernel matrices based on the signal resolution
     if resize:
