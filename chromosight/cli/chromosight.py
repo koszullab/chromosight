@@ -13,7 +13,7 @@ Usage:
                         [--min-separation=auto] [--threads=1] [--n-mads=5]
                         [--resize-kernel] [--perc-undetected=auto]
     chromosight generate-config <prefix> [--preset loops]
-    chromosight quantify [--inter] [--pattern=loops] [--subsample=no]
+    chromosight quantify [--inter] [--pattern=loops] [--subsample=no] [--win-fmt=json]
                          [--n-mads=5] [--win-size=auto] <bed2d> <contact_map> <output>
 
     detect: 
