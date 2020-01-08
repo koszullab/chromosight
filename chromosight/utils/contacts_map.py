@@ -94,10 +94,16 @@ class HicGenome:
         Maximum scanning distance for convolution during pattern detection.
     dump : str
         Base path where dump files will be generated. None means no dump.
-
+    smooth : bool
+        Whether isotonic regression should be used to smooth the signal for
+        detrending intrachromosomal sub matrices. This  will reduce noise at
+        long ranges but assumes contacts can only decrease with distance from
+        the diagonal. Do not use with circular chromosomes.
     """
 
-    def __init__(self, path, inter=False, kernel_config=None, dump=None):
+    def __init__(
+        self, path, inter=False, kernel_config=None, dump=None, smooth=False
+    ):
         # Load Hi-C matrix and associated metadata
         try:
             self.dump = Path(dump)
@@ -107,6 +113,7 @@ class HicGenome:
         self.matrix, self.chroms, self.bins, self.resolution = self.load_data(
             path
         )
+        self.smooth = smooth
         self.kernel_config = kernel_config
         self.sub_mats = None
         self.detectable_bins = np.array(range(self.matrix.shape[0]))
@@ -277,6 +284,7 @@ class HicGenome:
                             largest_kernel=self.largest_kernel,
                             dump=self.dump,
                             name=f"{r1['name']}-{r2['name']}",
+                            smooth=self.smooth,
                         )
                     else:
                         sub_mats.contact_map[sub_mat_idx] = ContactMap(
@@ -446,7 +454,11 @@ class ContactMap:
         Base path where dump files will be generated. None means no dump.
     name : str
         Name of the submatrix (used for dumping).
-    
+    smooth : bool
+        Whether isotonic regression should be used to smooth the signal for
+        detrending. This  will reduce noise at long ranges but assumes contacts
+        can only decrease with distance from the diagonal. Do not use with
+        circular chromosomes.
     """
 
     def __init__(
@@ -458,7 +470,9 @@ class ContactMap:
         max_dist=None,
         largest_kernel=0,
         dump=None,
+        smooth=False,
     ):
+        self.smooth = smooth
         self.despeckle = False
         self.snr = False
         self.matrix = matrix
@@ -494,7 +508,7 @@ class ContactMap:
         self.matrix = preproc.detrend(
             self.matrix,
             max_dist=self.keep_distance,
-            smooth=True,
+            smooth=self.smooth,
             detectable_bins=self.detectable_bins[0],
         )
 
