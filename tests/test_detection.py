@@ -187,7 +187,7 @@ def test_picker_nloci():
 
 
 @params(*gauss1_mats)
-def test_label_connected_pixels_sparse(matrix):
+def test_label_gauss(matrix):
     """Check if correct pixels are members and if no more than 1 focus was found."""
     n_labs, lab_mat = cud.label_connected_pixels_sparse(
         matrix, min_focus_size=2
@@ -197,6 +197,21 @@ def test_label_connected_pixels_sparse(matrix):
     exp_rows, exp_cols = matrix.nonzero()
     assert np.all(exp_rows == obs_rows)
     assert np.all(exp_cols == obs_cols)
+
+def test_label_spec():
+    # Generate a matrix with 4- and 8-way adjacencies to ensure consistent patch
+    # labelling.
+    label_test_mat = sp.coo_matrix(np.array(
+        [
+            [1, 0, 0, 0, 1, 1],
+            [1, 0, 1, 0, 0, 0],
+            [1, 0, 1, 1, 0, 0],
+            [0, 1, 0, 0, 0, 1]
+        ]
+    ))
+    n_labs, lab_mat = cud.label_connected_pixels_sparse(
+        label_test_mat, min_focus_size=2
+    )
 
 
 @params(*gauss1_mats)
