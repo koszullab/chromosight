@@ -189,29 +189,49 @@ def test_picker_nloci():
 @params(*gauss1_mats)
 def test_label_gauss(matrix):
     """Check if correct pixels are members and if no more than 1 focus was found."""
-    n_labs, lab_mat = cud.label_connected_pixels_sparse(
-        matrix, min_focus_size=2
-    )
+    n_labs, lab_mat = cud.label_foci(matrix)
     assert n_labs == 1
     obs_rows, obs_cols = lab_mat.nonzero()
     exp_rows, exp_cols = matrix.nonzero()
     assert np.all(exp_rows == obs_rows)
     assert np.all(exp_cols == obs_cols)
 
+
 def test_label_spec():
+    """Test label_foci and filter_foci on rectangle matrix with 8-way adjacencies."""
+
     # Generate a matrix with 4- and 8-way adjacencies to ensure consistent patch
     # labelling.
-    label_test_mat = sp.coo_matrix(np.array(
-        [
-            [1, 0, 0, 0, 1, 1],
-            [1, 0, 1, 0, 0, 0],
-            [1, 0, 1, 1, 0, 0],
-            [0, 1, 0, 0, 0, 1]
-        ]
-    ))
-    n_labs, lab_mat = cud.label_connected_pixels_sparse(
-        label_test_mat, min_focus_size=2
+    label_test_mat = sp.coo_matrix(
+        np.array(
+            [
+                [1, 0, 0, 0, 1, 1],
+                [1, 0, 1, 0, 0, 0],
+                [1, 0, 1, 1, 0, 0],
+                [0, 1, 0, 0, 0, 1],
+            ]
+        )
     )
+    exp_labels = sp.coo_matrix(
+        np.array(
+            [
+                [1, 0, 0, 0, 2, 2],
+                [1, 0, 3, 0, 0, 0],
+                [1, 0, 3, 3, 0, 0],
+                [0, 4, 0, 0, 0, 5],
+            ]
+        )
+    )
+    n_labs, lab_mat = cud.label_foci(label_test_mat)
+    # Check if foci have been separated properly
+    assert np.all(exp_labels.data == lab_mat.data)
+    assert n_labs == 5
+    # Check filtering with min_size >=2 pixels
+    num_filt2, _ = cud.filter_foci(lab_mat, min_size=2)
+    assert num_filt2 == 3
+    # Check filtering with min_size >=3 pixels
+    num_filt2, _ = cud.filter_foci(lab_mat, min_size=3)
+    assert num_filt2 == 2
 
 
 @params(*gauss1_mats)
