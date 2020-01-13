@@ -8,15 +8,13 @@ import numpy as np
 import pathlib
 import sys
 import csv
+import itertools as it
 import json
 from jsonschema import validate, ValidationError
 from os.path import join
 from scipy.sparse import coo_matrix, lil_matrix, csc_matrix, csr_matrix, triu
 import warnings
-
-with warnings.catch_warnings():
-    warnings.filterwarnings("ignore", category=FutureWarning)
-    import h5py
+import h5py
 
 
 def load_bedgraph2d(mat_path):
@@ -134,6 +132,62 @@ def load_bedgraph2d(mat_path):
     mat = triu(mat)
     bins = bins[["chrom", "start", "end"]]
     return mat, chroms, bins, bin_size
+
+
+def bedgraph2_to_h5(bg2, h5, inter=False):
+    """
+    Load a bedgraph2 file by chunk, each chunk being a sub-matrix (chr1-chr2
+    combination) and write each chunk to a subgroup of the /raw group in a h5
+    file. The file hierarchy will resemble this:
+    
+    └ /raw
+        ├── chr1-chr1
+        ├── chr1-chr2
+        ├── chr1-chr3
+        ...
+    """
+    # Read bedgraph2 by chunk to spare RAM and convert to h5 file
+    for chunk in df.read_csv(bg2, sep="\t", chunksize=10 ** 3):
+        pd.DataFrame(chunk).to_hdf(
+            h5, "/tmp", format="table", data_columns=True, mode="a"
+        )
+
+    for chunk_id, chunk_df in iter_chunk_by_id(bg2, inter=inter):
+        sub_mat = sp.coo_matrix()
+
+    return
+
+
+def cool_to_h5(cool, h5, inter=False):
+    """
+    Split intra- (and optionally, inter-) chromosomal sub-matrices from a cool
+    file and store them into separate subgroups of the /raw group in a 
+    h5 file. The file hierarchy will resemble this:
+    
+    └ /raw
+        ├── chr1-chr1
+        ├── chr1-chr2
+        ├── chr1-chr3
+        ...
+    """
+    try:
+        import cooler
+    except ImportError:
+        print(
+            "The cooler package is required to use cool files. Please install it first."
+        )
+        raise
+    # Connect to cool file and initialize h5 file
+    c = cooler.Cooler(cool)
+    db = pd.HDFStore(h5)
+    chroms = c.chroms()[:]
+    # Iterate over all chromosome combination and store their sub matrices into
+    # the h5 file in
+    for chrom1, chrom2 in it.combinations(chroms["name"]):
+        if chrom1 != chrom2 and not inter:
+            continue
+        submat = c.matrix(sparse=True, balance=False).fetch(chrom1, chrom2)
+        db.put(f"{chrom1}-{chrom2}", submat)
 
 
 def load_cool(cool_path):
