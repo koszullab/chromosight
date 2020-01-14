@@ -14,7 +14,7 @@ pip3 install --user chromosight
 ```
 Stable version with conda:
 ```sh
-conda install -c bioconda chromosight
+conda install -c bioconda -c conda-forge chromosight
 ```
 
 or, if you want to get the latest development version:
