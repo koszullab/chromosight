@@ -1,20 +1,26 @@
 # Chromosight
 <img src="docs/chromosight.gif" alt="animated logo" width="200"/>
 
-[![PyPI version](https://badge.fury.io/py/chromosight.svg)](https://badge.fury.io/py/chromosight) [![Build Status](https://travis-ci.com/koszullab/chromosight.svg?branch=master)](https://travis-ci.com/koszullab/chromosight) [![codecov](https://codecov.io/gh/koszullab/chromosight/branch/master/graph/badge.svg)](https://codecov.io/gh/koszullab/chromosight) [![Read the docs](https://readthedocs.org/projects/chromosight/badge)](https://chromosight.readthedocs.io) [![License: GPLv3](https://img.shields.io/badge/License-GPL%203-0298c3.svg)](https://opensource.org/licenses/GPL-3.0) [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/ambv/black) 
+[![PyPI version](https://badge.fury.io/py/chromosight.svg)](https://badge.fury.io/py/chromosight) [![Anaconda cloud](https://anaconda.org/bioconda/chromosight/badges/version.svg)](https://anaconda.org/bioconda/chromosight)] [![Build Status](https://travis-ci.com/koszullab/chromosight.svg?branch=master)](https://travis-ci.com/koszullab/chromosight) [![codecov](https://codecov.io/gh/koszullab/chromosight/branch/master/graph/badge.svg)](https://codecov.io/gh/koszullab/chromosight) [![Read the docs](https://readthedocs.org/projects/chromosight/badge)](https://chromosight.readthedocs.io) [![License: GPLv3](https://img.shields.io/badge/License-GPL%203-0298c3.svg)](https://opensource.org/licenses/GPL-3.0) [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/ambv/black) 
 
 Detect chromatin loops (and other patterns) in Hi-C contact maps.
 
 ## Installation
 
+Stable version with pip:
+
 ```sh
-pip3 install -U chromosight
+pip3 install --user chromosight
+```
+Stable version with conda:
+```sh
+conda install -c bioconda chromosight
 ```
 
-or, if you want to get the very latest version:
+or, if you want to get the latest development version:
 
 ```
-sudo pip3 install -e git+https://github.com/koszullab/chromosight.git@master#egg=chromosight
+pip3 install --user -e git+https://github.com/koszullab/chromosight.git@master#egg=chromosight
 ```
 
 ## Usage
