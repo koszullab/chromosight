@@ -23,7 +23,7 @@ name = "chromosight"
 
 MAJOR = 0
 MINOR = 3
-MAINTENANCE = 0
+MAINTENANCE = 1
 VERSION = "{}.{}.{}".format(MAJOR, MINOR, MAINTENANCE)
 
 LICENSE = "GPLv3"
