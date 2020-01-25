@@ -90,8 +90,6 @@ def validate_patterns(
     for i, l in enumerate(coords):
         p1 = int(l[0])
         p2 = int(l[1])
-        if p1 > p2:
-            p1, p2 = p2, p1
         # Check for out of bounds errors
         if (
             p1 - half_h >= 0

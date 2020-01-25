@@ -444,6 +444,7 @@ def cmd_detect(arguments):
                 [dump for i in range(n_sub_mats)],
             )
             sub_mat_results = pool.map(_detect_sub_mat, sub_mat_data)
+            #sub_mat_results = map(_detect_sub_mat, sub_mat_data)
             # Convert coordinates from chromosome to whole genome bins
             kernel_coords = [
                 hic_genome.get_full_mat_pattern(
