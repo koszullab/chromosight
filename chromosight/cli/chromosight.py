@@ -433,7 +433,7 @@ def cmd_detect(arguments):
         # Adjust kernel iteratively
         for i in range(kernel_config["max_iterations"]):
             cio.progress(
-                run_id, total_runs, f"Kernel: {kernel_id}, Iteration: {i}"
+                run_id, total_runs, f"Kernel: {kernel_id}, Iteration: {i}\n"
             )
 
             # Apply detection procedure to all sub matrices in parallel
@@ -443,7 +443,14 @@ def cmd_detect(arguments):
                 [kernel_matrix for i in range(n_sub_mats)],
                 [dump for i in range(n_sub_mats)],
             )
-            sub_mat_results = pool.map(_detect_sub_mat, sub_mat_data)
+            # Run detection in parallel on different sub matrices, and show progress when
+            # gathering results
+            sub_mat_results = []
+            for i, result in enumerate(pool.imap_unordered(_detect_sub_mat, sub_mat_data, 1)):
+                chr1 = hic_genome.sub_mats.chr1[i]
+                chr2 = hic_genome.sub_mats.chr2[i]
+                cio.progress(i, n_sub_mats, f"{chr1}-{chr2}")
+                sub_mat_results.append(result)
             #sub_mat_results = map(_detect_sub_mat, sub_mat_data)
             # Convert coordinates from chromosome to whole genome bins
             kernel_coords = [
