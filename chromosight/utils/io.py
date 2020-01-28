@@ -393,8 +393,10 @@ def progress(count, total, status=""):
 
     percents = round(100.0 * count / float(total), 1)
     bar = "=" * filled_len + "-" * (bar_len - filled_len)
-
-    sys.stderr.write(" [%s] %s%s %s\r" % (bar, percents, "%", status))
+    
+    # Clear current line, write status and erase everything to the end of
+    # the line using ANSI code
+    sys.stderr.write("\r [%s] %s%s %s\033[K" % (bar, percents, "%", status))
     sys.stderr.flush()
 
 
