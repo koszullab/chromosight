@@ -423,6 +423,7 @@ class HicGenome:
                 coords.reset_index().rename(columns={"index": "coord_idx"}),
                 left_on=["chrom", "start"],
                 right_on=["chrom", "pos"],
+                how='right',
             )
             .set_index("bin_idx")
             .sort_values("coord_idx")

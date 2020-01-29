@@ -233,7 +233,17 @@ def cmd_quantify(arguments):
                 sub_pat_ax = sub_pat.loc[:, [f"chrom{ax}", f"pos{ax}"]].rename(
                     columns={f"chrom{ax}": "chrom", f"pos{ax}": "pos"}
                 )
-                sub_pat[f"bin{ax}"] = hic_genome.coords_to_bins(sub_pat_ax)
+                sub_pat_bins = hic_genome.coords_to_bins(sub_pat_ax)
+                sub_pat[f"bin{ax}"] = sub_pat_bins
+
+            # Check for nan bins (coords that do not match any Hi-C fragments
+            fall_out = np.isnan(sub_pat['bin1']) | np.isnan(sub_pat['bin2'])
+            if np.any(fall_out):
+                n_out = len(sub_pat_bins[fall_out])
+                sys.stderr.write(
+                    f"{n_out} entr{'ies' if n_out > 1 else 'y'} outside "
+                    "genomic coordinates of the Hi-C matrix will be ignored.\n"
+                )
             # Convert bins from whole genome matrix to sub matrix
             sub_pat = hic_genome.get_sub_mat_pattern(
                 mat.chr1, mat.chr2, sub_pat
@@ -242,12 +252,14 @@ def cmd_quantify(arguments):
             # Iterate over patterns from the 2D BED file
             for i, x, y in zip(sub_pat_idx, sub_pat.bin1, sub_pat.bin2):
                 # Check if the window goes out of bound
-                if (
+                if  np.all(np.isfinite([x, y])) and (
                     x - kh >= 0
                     and x + kh + 1 < m.shape[0]
                     and y - kw >= 0
                     and y + kw + 1 < m.shape[1]
                 ):
+                    x = int(x)
+                    y = int(y)
                     # For each pattern, compute correlation score with all kernels
                     # but only keep the best
                     win = m[x - kh : x + kh + 1, y - kw : y + kw + 1].toarray()
