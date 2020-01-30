@@ -330,12 +330,15 @@ def cmd_generate_config(arguments):
         )
         # Normalize (balance) the whole genome matrix
         hic_genome.normalize(n_mads=n_mads)
+        # enforce full scanning distance in kernel config
+        cfg["max_dist"] = (
+            hic_genome.matrix.shape[0] * hic_genome.resolution
+        )
         # Process each sub-matrix individually (detrend diag for intra)
         hic_genome.make_sub_matrices()
         processed_mat = hic_genome.gather_sub_matrices().tocsr()
         windows = click_finder(processed_mat, half_w=int((win_size - 1) / 2))
         # Pileup all recorded windows and convert to JSON serializable list
-        import scipy.ndimage as ndi
         pileup = cid.pileup_patterns(windows)
         cfg['kernels'] = [pileup.tolist()]
         # Show the newly generate kernel to the user, use zscore to highlight contrast
