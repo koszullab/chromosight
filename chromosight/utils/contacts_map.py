@@ -305,6 +305,21 @@ class HicGenome:
         self.sub_mats = sub_mats
         print("Sub matrices extracted")
 
+    def gather_sub_matrices(self):
+        """Gathers all processed sub_matrices into a whole genome matrix """
+        gathered = sp.csr_matrix(self.matrix.shape)
+        # Define shortcut to extract bins for each chromosome
+        c = self.chroms.set_index('name')
+        chr_extent = lambda n: c.loc[n, ['start_bin', 'end_bin']].values
+        # Fill empty whole genome matrix with processed submatrices
+        for i1, r1 in self.sub_mats.iterrows():
+            s1, e1 = chr_extent(r1.chr1)
+            s2, e2 = chr_extent(r1.chr2)
+            # Use each chromosome pair's sub matrix to fill the whole genome matrix
+            gathered[s1:e1, s2:e2] = r1.contact_map.matrix
+        gathered = sp.triu(gathered)
+        return gathered
+
     def get_full_mat_pattern(self, chr1, chr2, patterns):
         """
         Converts bin indices of a list of patterns from an submatrix into their

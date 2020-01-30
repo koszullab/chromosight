@@ -1,3 +1,4 @@
+import sys
 import pathlib
 import functools
 import numpy as np
@@ -143,3 +144,72 @@ def plot_whole_matrix(
     # cvs = ds.Canvas(plot_width=1000, plot_height=1000)
     # agg = cvs.points(df, "bin1", "bin2", ds.sum("contacts"))
     # img = tf.shade(agg, cmap=["white", "darkred"], how="log")
+
+def click_finder(mat, half_w=8):
+    """
+    Given an input Hi-C matrix, show an interactive window and record coordinates
+    where the user double-clicks. When the interactive window is closed, the stack
+    of windows around recorded coordinates is returned.
+
+    Parameters
+    ----------
+    mat : scipy.sparse.csr_matrix
+        The input Hi-C matrix to display interactively.
+    half_w : int
+        Half width of the windows to return. The resulting windows
+
+    Returns
+    -------
+    numpy.array :
+        3D stack of images around coordinates recorded interactively. The shape of
+        the stack is (N, w, w) where N is the number of coordinates and w is 2*half_w.
+    """
+    global coords
+    coords = []
+    def onclick(event):
+        global ix, iy
+        global coords
+        try:
+            ix, iy = int(event.xdata), int(event.ydata)
+        except TypeError:
+            return None
+        try:
+            if coords[-1] == (ix, iy):
+                print(f'x = {ix}, y = {iy}')
+        except IndexError:
+            pass
+        coords.append((ix, iy))
+        return coords
+
+    fig = plt.figure()
+    plt.imshow(mat.toarray(), cmap='afmhot_r', vmax = np.percentile(mat.data, 95))
+    plt.title('Double click to record pattern positions')
+    # Setup click listener
+    cid = fig.canvas.mpl_connect('button_press_event', onclick)
+    plt.show()
+    fig.canvas.mpl_disconnect(cid)
+    # Keep coordinates that were clicked twice consecutively (double-click)
+    double_clicked = set()
+    for c in range(1, len(coords)):
+        if coords[c-1] == coords[c]:
+            double_clicked.add(coords[c])
+    # initialize empty image stack, will store windows around coords
+    img_stack = np.zeros((len(double_clicked), half_w * 2 + 1, half_w * 2 + 1))
+    bad_coords = np.zeros(len(double_clicked), dtype=bool)
+    # Fill the image stack with windows around each coord
+    for i, (center_v, center_h) in enumerate(double_clicked):
+            high, low = center_h - half_w, center_h + half_w + 1
+            left, right = center_v - half_w, center_v + half_w + 1
+            try:
+                img_stack[i] = mat[high:low, left:right].toarray()
+            except ValueError:
+                bad_coords[i] = True
+                sys.stderr.write(
+                    f"Discarding {(center_v, center_h)}: Too close "
+                    "to the edge of the matrix\n"
+                )
+    # Discard images associated with coords too close to the edge
+    img_stack = img_stack[~bad_coords]
+    return img_stack
+
+

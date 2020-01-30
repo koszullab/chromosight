@@ -90,20 +90,19 @@ def validate_patterns(
     for i, l in enumerate(coords):
         p1 = int(l[0])
         p2 = int(l[1])
+        high, low = p1 - half_h + 1, p1 + half_h
+        left, right = p2 - half_w + 1, p2 + half_w
         # Check for out of bounds errors
         if (
-            p1 - half_h >= 0
-            and p1 + half_h + 1 < matrix.shape[0]
-            and p2 - half_w >= 0
-            and p2 + half_w + 1 < matrix.shape[1]
+            high >= 0
+            and low < matrix.shape[0]
+            and left >= 0
+            and right < matrix.shape[1]
         ):
             # Get bin ids to use in window
-            win_rows, win_cols = (
-                range(p1 - half_h + 1, p1 + half_h),
-                range(p2 - half_w + 1, p2 + half_w),
-            )
+            win_rows, win_cols = (range(high, low), range(left, right))
             # Subset window from chrom matrix
-            pattern_window = matrix[np.ix_(win_rows, win_cols)].todense()
+            pattern_window = matrix[high:low, left:right].toarray()
 
             n_rows, n_cols = pattern_window.shape
             tot_pixels = n_rows * n_cols
@@ -122,7 +121,7 @@ def validate_patterns(
                 - n_bad_rows * n_bad_cols
             )
             # Number of uncovered pixels
-            tot_zero_pixels = len(pattern_window[pattern_window == 0].A1)
+            tot_zero_pixels = len(pattern_window[pattern_window == 0])
             tot_missing_pixels = max(tot_undetected_pixels, tot_zero_pixels)
             # The pattern should not contain more missing pixels that the max
             # value defined in kernel config. This includes both pixels from

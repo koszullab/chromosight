@@ -6,13 +6,13 @@ Explore and detect patterns (loops, borders, centromeres, etc.) in Hi-C contact
 maps with pattern matching.
 
 Usage:
-    chromosight detect <contact_map> [<output>] [--kernel-config=FILE]
-                        [--pattern=loops] [--precision=auto] [--iterations=auto]
-                        [--win-fmt={json,npy}] [--subsample=no] [--inter] [--smooth-trend]
-                        [--min-dist=0] [--max-dist=auto] [--no-plotting] [--dump=DIR]
-                        [--min-separation=auto] [--threads=1] [--n-mads=5]
-                        [--resize-kernel] [--perc-undetected=auto]
-    chromosight generate-config <prefix> [--preset loops]
+    chromosight detect  [--kernel-config=FILE] [--pattern=loops] [--precision=auto]
+                        [--iterations=auto] [--resize-kernel] [--win-fmt={json,npy}]
+                        [--subsample=no] [--inter] [--smooth-trend] [--n-mads=5]
+                        [--min-dist=0] [--max-dist=auto] [--no-plotting]
+                        [--min-separation=auto] [--threads=1] [--dump=DIR]
+                        [--perc-undetected=auto] <contact_map> [<output>]
+    chromosight generate-config <prefix> [--preset loops] [--click contact_map] [--win-size=auto]
     chromosight quantify [--inter] [--pattern=loops] [--subsample=no] [--win-fmt=json]
                          [--n-mads=5] [--win-size=auto] <bed2d> <contact_map> <output>
 
@@ -100,6 +100,10 @@ Arguments for generate-config:
     -e, --preset=loops          Generate a preset config for the given pattern.
                                 Preset configs available are "loops" and 
                                 "borders". [default: loops]
+    -c, --click contact_map     Show input contact map and uses double clicks from
+                                user to build the kernel. Warning: memory-heavy,
+                                reserve for small genomes or subsetted matrices.
+                                
 Arguments for quantify:
     bed2d                       Tab-separated text files with columns chrom1, start1
                                 end1, chrom2, start2, end2. Each line correspond to
@@ -127,15 +131,16 @@ from chromosight.version import __version__
 from chromosight.utils.contacts_map import HicGenome
 import chromosight.utils.io as cio
 import chromosight.utils.detection as cid
-from chromosight.utils.plotting import pileup_plot
+from chromosight.utils.plotting import pileup_plot, click_finder
 from chromosight.utils.preprocessing import resize_kernel
 import scipy.stats as ss
+import matplotlib.pyplot as plt
 
 
 def _override_kernel_config(param_name, param_value, param_type, config):
     """
-    Helper function to determine if config file value should be overriden by
-    user.
+    Helper function to determine if a config file value should be overriden
+    by the user.
     """
 
     if param_value == "auto":
@@ -185,7 +190,7 @@ def cmd_quantify(arguments):
     kernel_config = cio.load_kernel_config(pattern, False)
     # Instantiate and preprocess contact map
     hic_genome = HicGenome(mat_path, inter=inter, kernel_config=kernel_config)
-    # force full scanning distance in kernel config
+    # enforce full scanning distance in kernel config
     kernel_config["max_dist"] = (
         hic_genome.matrix.shape[0] * hic_genome.resolution
     )
@@ -296,23 +301,63 @@ def cmd_generate_config(arguments):
     # Parse command line arguments for generate_config
     prefix = arguments["<prefix>"]
     pattern = arguments["--preset"]
+    click_find = arguments["--click"]
+    n_mads = float(arguments["--n-mads"])
+    win_size = arguments["--win-size"]
 
-    kernel_config = cio.load_kernel_config(pattern, False)
+    cfg = cio.load_kernel_config(pattern, False)
 
     # If prefix involves a directory, create it
     if os.path.dirname(prefix):
         os.makedirs(os.path.dirname(prefix), exist_ok=True)
 
+    # If a specific window size if requested, resize all kernels 
+    if win_size != "auto":
+        win_size = int(win_size)
+        resize = lambda m: resize_kernel(m, factor=win_size / m.shape[0])
+        cfg['kernels'] = [resize(k) for k in cfg['kernels']]
+    # Otherwise, just inherit window size from the kernel config
+    else:
+        win_size = cfg["kernels"][0].shape[0]
+
+    # If click mode is enabled, build a kernel from scratch using
+    # graphical display, otherwise, just inherit the pattern's kernel
+    if click_find:
+        hic_genome = HicGenome(
+            click_find,
+            inter=True,
+            kernel_config=cfg,
+        )
+        # Normalize (balance) the whole genome matrix
+        hic_genome.normalize(n_mads=n_mads)
+        # Process each sub-matrix individually (detrend diag for intra)
+        hic_genome.make_sub_matrices()
+        processed_mat = hic_genome.gather_sub_matrices().tocsr()
+        windows = click_finder(processed_mat, half_w=int((win_size - 1) / 2))
+        # Pileup all recorded windows and convert to JSON serializable list
+        import scipy.ndimage as ndi
+        pileup = cid.pileup_patterns(windows)
+        cfg['kernels'] = [pileup.tolist()]
+        # Show the newly generate kernel to the user, use zscore to highlight contrast
+        hm = plt.imshow(
+                np.log(pileup),
+                vmax=np.percentile(pileup, 99),
+                cmap='afmhot_r',
+        )
+        cbar = plt.colorbar(hm)
+        cbar.set_label('Log10 Hi-C contacts')
+        plt.title("Manually generated kernel")
+        plt.show()
     # Write kernel matrices to files with input prefix and replace kernels
     # by their path in config
-    for mat_id, mat in enumerate(kernel_config["kernels"]):
+    for mat_id, mat in enumerate(cfg["kernels"]):
         mat_path = f"{prefix}.{mat_id+1}.txt"
         np.savetxt(mat_path, mat)
-        kernel_config["kernels"][mat_id] = mat_path
+        cfg["kernels"][mat_id] = mat_path
 
     # Write config to JSON file using prefix
     with open(f"{prefix}.json", "w") as config_handle:
-        json.dump(kernel_config, config_handle, indent=4)
+        json.dump(cfg, config_handle, indent=4)
 
 
 def _detect_sub_mat(data):
