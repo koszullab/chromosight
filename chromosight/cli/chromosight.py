@@ -12,7 +12,7 @@ Usage:
                         [--min-dist=0] [--max-dist=auto] [--no-plotting]
                         [--min-separation=auto] [--threads=1] [--dump=DIR]
                         [--perc-undetected=auto] <contact_map> [<output>]
-    chromosight generate-config <prefix> [--preset loops] [--click contact_map] [--win-size=auto]
+    chromosight generate-config <prefix> [--preset loops] [--click contact_map] [--win-size=auto] [--n-mads=INT]
     chromosight quantify [--inter] [--pattern=loops] [--subsample=no] [--win-fmt=json]
                          [--n-mads=5] [--win-size=auto] <bed2d> <contact_map> <output>
 
@@ -134,6 +134,7 @@ import chromosight.utils.detection as cid
 from chromosight.utils.plotting import pileup_plot, click_finder
 from chromosight.utils.preprocessing import resize_kernel
 import scipy.stats as ss
+import scipy.ndimage as ndi
 import matplotlib.pyplot as plt
 
 
@@ -331,15 +332,14 @@ def cmd_generate_config(arguments):
         # Normalize (balance) the whole genome matrix
         hic_genome.normalize(n_mads=n_mads)
         # enforce full scanning distance in kernel config
-        cfg["max_dist"] = (
-            hic_genome.matrix.shape[0] * hic_genome.resolution
-        )
+        
+        hic_genome.max_dist = hic_genome.matrix.shape[0] * hic_genome.resolution
         # Process each sub-matrix individually (detrend diag for intra)
         hic_genome.make_sub_matrices()
         processed_mat = hic_genome.gather_sub_matrices().tocsr()
         windows = click_finder(processed_mat, half_w=int((win_size - 1) / 2))
         # Pileup all recorded windows and convert to JSON serializable list
-        pileup = cid.pileup_patterns(windows)
+        pileup = ndi.gaussian_filter(cid.pileup_patterns(windows), 1)
         cfg['kernels'] = [pileup.tolist()]
         # Show the newly generate kernel to the user, use zscore to highlight contrast
         hm = plt.imshow(
