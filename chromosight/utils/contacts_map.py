@@ -200,9 +200,17 @@ class HicGenome:
     def load_data(self, mat_path):
         """Load contact, bin and chromosome informations from input path"""
         # Define functions to use for each format
-        format_loader = {"bg2": cio.load_bedgraph2d, "cool": cio.load_cool}
+        format_loader = {
+            "bg2": cio.load_bedgraph2d,
+            "cool": cio.load_cool,
+            "iobg2": cio.load_bedgraph2d,
+        }
         # Guess file format fron file name
-        extension = os.path.splitext(mat_path)[-1].lstrip(".")
+        try:
+            extension = os.path.splitext(mat_path)[-1].lstrip(".")
+        except TypeError:
+            # if mat_path isn't an actual file path but a file object
+            extension = "iobg2"
         if not len(extension) and re.search(r"mcool::", mat_path):
             extension = "cool"
         print("loading: ", mat_path)

@@ -15,6 +15,7 @@ Usage:
     chromosight generate-config <prefix> [--preset loops]
     chromosight quantify [--inter] [--pattern=loops] [--subsample=no] [--win-fmt=json]
                          [--n-mads=5] [--win-size=auto] <bed2d> <contact_map> <output>
+    chromosight test
 
     detect: 
         performs pattern detection on a Hi-C contact map using kernel convolution
@@ -28,6 +29,8 @@ Usage:
         Given a list of pairs of positions and a contact map, computes the
         correlation coefficients between those positions and the kernel of the
         selected pattern.
+    test:                       
+        Download example data and run the program on it.
 
 Arguments for detect:
     -h, --help                  Display this help message.
@@ -119,6 +122,7 @@ import numpy as np
 import pandas as pd
 import pathlib
 import os
+import io
 import sys
 import json
 import docopt
@@ -130,6 +134,11 @@ import chromosight.utils.detection as cid
 from chromosight.utils.plotting import pileup_plot
 from chromosight.utils.preprocessing import resize_kernel
 import scipy.stats as ss
+
+URL_EXAMPLE_DATASET = (
+    "https://raw.githubusercontent.com/koszullab/"
+    "chromosight/master/data_test/example.bg2"
+)
 
 
 def _override_kernel_config(param_name, param_value, param_type, config):
@@ -574,12 +583,31 @@ def cmd_detect(arguments):
         pileup_plot(windows_pileup, name=pileup_fname, output=output)
 
 
+def cmd_test(arguments):
+
+    sys.stderr.write(f"Fetching test dataset at {URL_EXAMPLE_DATASET}...")
+    test_data = pd.read_csv(URL_EXAMPLE_DATASET, sep="\t")
+
+    # Turn dataframe into file like object for the detector to parse
+    test_stream = io.StringIO()
+    test_data.to_csv(test_stream)
+    test_stream.seek(0)
+
+    sys.stderr.write(f"Running detection on test dataset...")
+
+    arguments["<contact_map>"] = test_stream
+    cmd_detect(arguments)
+
+
 def main():
     arguments = docopt.docopt(__doc__, version=__version__)
     detect = arguments["detect"]
     generate_config = arguments["generate-config"]
     quantify = arguments["quantify"]
-    if detect:
+    test = arguments["test"]
+    if test:
+        cmd_test(arguments)
+    elif detect:
         cmd_detect(arguments)
     elif generate_config:
         cmd_generate_config(arguments)
