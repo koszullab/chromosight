@@ -127,6 +127,7 @@ import pandas as pd
 import pathlib
 import os
 import io
+from contextlib import contextmanager
 import sys
 import json
 import docopt
@@ -145,6 +146,22 @@ URL_EXAMPLE_DATASET = (
     "https://raw.githubusercontent.com/koszullab/"
     "chromosight/master/data_test/example.bg2"
 )
+
+TEST_LOG = f"""Fetching test dataset at {URL_EXAMPLE_DATASET}...
+Running detection on test dataset...
+precision set to 3 based on config file.
+max_dist set to 500000 based on config file.
+min_dist set to 5000 based on config file.
+min_separation set to 5000 based on config file.
+max_perc_undetected set to 10.0 based on config file.
+Found 690 / 720 detectable bins
+Whole genome matrix normalized
+Preprocessing sub-matrices...
+Sub matrices extracted
+Detecting patterns...
+Minimum pattern separation is : 5
+56 patterns detected
+"""
 
 
 def _override_kernel_config(param_name, param_value, param_type, config):
@@ -653,7 +670,7 @@ def cmd_detect(arguments):
 
 def cmd_test(arguments):
 
-    sys.stderr.write(f"Fetching test dataset at {URL_EXAMPLE_DATASET}...")
+    sys.stderr.write(f"Fetching test dataset at {URL_EXAMPLE_DATASET}...\n")
     test_data = pd.read_csv(URL_EXAMPLE_DATASET, sep="\t")
 
     # Turn dataframe into file like object for the detector to parse
@@ -661,10 +678,30 @@ def cmd_test(arguments):
     test_data.to_csv(test_stream)
     test_stream.seek(0)
 
-    sys.stderr.write(f"Running detection on test dataset...")
+    sys.stderr.write(f"Running detection on test dataset...\n")
 
     arguments["<contact_map>"] = test_stream
     cmd_detect(arguments)
+
+
+@contextmanager
+def capture_ouput(stderr_to=None):
+    """Capture the stderr of the test run. Inspired from
+    http://sametmax.com/capturer-laffichage-des-prints-dun-code-python/
+    """
+
+    try:
+        stderr = sys.stderr
+        sys.stderr = c2 = stderr_to or io.StringIO()
+        yield c2
+
+    finally:
+        sys.stderr = stderr
+        try:
+            c2.flush()
+            c2.seek(0)
+        except (ValueError, IOError):
+            pass
 
 
 def main():
@@ -674,7 +711,27 @@ def main():
     quantify = arguments["quantify"]
     test = arguments["test"]
     if test:
-        cmd_test(arguments)
+        with capture_ouput() as stderr:
+            cmd_test(arguments)
+
+        actual_log = stderr.read()
+        sys.stderr.write(actual_log)
+
+        # remove progress bars and \r chars
+        actual_log_lines = {
+            u.strip("\r") for u in set(actual_log.split("\n")) if "[" not in u
+        }
+        expected_log_lines = set(TEST_LOG.split("\n"))
+
+        if expected_log_lines not in actual_log_lines:
+            sys.stderr.write(
+                "\nWarning, the test log differed from the "
+                "expected one. This means the program changed its output from"
+                "previous versions. You may ignore this if you are not a "
+                "developer.\n\n"
+                f"Here is the expected log:\n\n{TEST_LOG}\n"
+            )
+
     elif detect:
         cmd_detect(arguments)
     elif generate_config:
