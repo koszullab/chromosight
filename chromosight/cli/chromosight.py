@@ -649,6 +649,7 @@ def main():
         actual_log = stderr.read()
         sys.stderr.write(actual_log)
 
+        # remove progress bars and \r chars
         actual_log_lines = {
             u.strip("\r") for u in set(actual_log.split("\n")) if "[" not in u
         }
