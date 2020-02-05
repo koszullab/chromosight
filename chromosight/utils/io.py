@@ -29,7 +29,7 @@ def load_bedgraph2d(mat_path):
 
     Parameters
     ----------
-    mat_path : str
+    mat_path : str, file-like object
         Path to the matrix in 2D bedgraph format.
 
     Returns
@@ -45,7 +45,13 @@ def load_bedgraph2d(mat_path):
     bin_size : int
         Matrix resolution. Corresponds to the number of base pairs per matrix bin.
     """
-    bg2 = pd.read_csv(mat_path, delimiter="\t", header=None)
+
+    # Check if input is file-like object containing a csv (which has 8 columns
+    # instead of 7 and whose 0th column needs to be trimmed)
+    if hasattr(mat_path, "read"):
+        bg2 = pd.read_csv(mat_path, header=None, usecols=list(range(1, 8)))
+    else:
+        bg2 = pd.read_csv(mat_path, delimiter="\t", header=None)
     bg2.head()
     bg2.columns = [
         "chr1",
