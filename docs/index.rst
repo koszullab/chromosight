@@ -5,6 +5,7 @@
 
 Welcome to chromosight's documentation!
 =======================================
+Chromosight is a command line tool that uses computer vision to detect patterns on Hi-C chromosomal contact maps. It also exposes a python API for interoperability with other python packages. You can follow chromosight developoment on `Github <https://github.com/koszullab/chromosight>`_ .
 
 .. toctree::
    :maxdepth: 2
