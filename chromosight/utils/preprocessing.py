@@ -463,12 +463,63 @@ def subsample_contacts(M, n_contacts):
     )
 
 
+def crop_kernel(kernel, target_size):
+    """
+    Crop a kernel matrix to target size horizontally and vertically. If the target size
+    is even, 
+
+    Parameters
+    ----------
+    kernel : numpy.array of floats
+        Image to crop.
+    target_size : tuple of ints
+        Tuple defining the target shape of the kernel, takes the form (rows, cols)
+        where rows and cols are odd numbers.
+
+    Returns
+    -------
+    cropped : numpy.array of floats
+        New image no larger than target dimensions
+    """
+    # Use list for mutability
+    target = [d for d in target_size]
+    adjusted = False
+    for dim in range(len(target)):
+        if not target[dim] % 2:
+            target[dim] +=1
+            adjusted = True
+    if adjusted:
+        sys.stderr.write(
+            'WARNING: Cropped kernel size adjusted to '
+            f'{target[0]}x{target[1]} to keep odd dimensions.\n'
+        )
+
+    source_m, source_n = kernel.shape
+    target_m, target_n = target
+    # Define horizontal and vertical margins to trim
+    if source_m > target_m:
+        margin_rows = (source_m - target_m) // 2
+    else:
+        margin_rows = 0
+    if source_n > target_n:
+        margin_cols = (source_n - target_n) // 2
+    else:
+        margin_cols = 0
+
+    cropped = kernel[
+        margin_rows: (source_m - margin_rows),
+        margin_cols: (source_n - margin_cols)
+    ]
+
+    return cropped
+
+
 def resize_kernel(
     kernel,
     kernel_res=None,
     signal_res=None,
     factor=None,
-    min_size=5,
+    min_size=7,
     max_size=101,
 ):
     """

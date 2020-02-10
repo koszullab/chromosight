@@ -55,8 +55,10 @@ Arguments for detect:
                                 config path. Use this to override pattern if 
                                 you do not want to use one of the preset 
                                 patterns.
-    -m, --min-dist=auto         Filter out patterns closer than a target base
-                                pair distance from the diagonal. [default: auto]
+    -m, --min-dist=auto         Minimum distance from the diagonal (in base pairs).
+                                If this value is smaller than the kernel size, the
+                                kernel will be cropped to avoid overlapping the
+                                diagonal, up to a min.size of 7x7. [default: auto]
     -M, --max-dist=auto         Maximum distance from the diagonal (in base pairs)
                                 at which pattern detection should operate. Auto
                                 sets a value based on the kernel configuration
@@ -137,7 +139,7 @@ from chromosight.utils.contacts_map import HicGenome
 import chromosight.utils.io as cio
 import chromosight.utils.detection as cid
 from chromosight.utils.plotting import pileup_plot, click_finder
-from chromosight.utils.preprocessing import resize_kernel
+from chromosight.utils.preprocessing import resize_kernel, crop_kernel
 import scipy.stats as ss
 import scipy.ndimage as ndi
 import matplotlib.pyplot as plt
@@ -214,16 +216,16 @@ def cmd_quantify(arguments):
             "These patterns will not be scanned unless --inter is used.\n"
         )
     # Parse kernel config
-    kernel_config = cio.load_kernel_config(pattern, False)
+    cfg = cio.load_kernel_config(pattern, False)
     # Instantiate and preprocess contact map
-    hic_genome = HicGenome(mat_path, inter=inter, kernel_config=kernel_config)
+    hic_genome = HicGenome(mat_path, inter=inter, kernel_config=cfg)
     # enforce full scanning distance in kernel config
-    kernel_config["max_dist"] = (
+    cfg["max_dist"] = (
         hic_genome.matrix.shape[0] * hic_genome.resolution
     )
-    kernel_config["min_dist"] = 0
+    cfg["min_dist"] = 0
     # Notify contact map instance of changes in scanning distance
-    hic_genome.kernel_config = kernel_config
+    hic_genome.kernel_config = cfg
     # Subsample Hi-C contacts from the matrix, if requested
     if subsample != "no":
         hic_genome.subsample(subsample)
@@ -240,13 +242,13 @@ def cmd_quantify(arguments):
     if win_size != "auto":
         km = kn = win_size
     else:
-        km, kn = kernel_config["kernels"][0].shape
+        km, kn = cfg["kernels"][0].shape
     windows = np.zeros((positions.shape[0], km, kn))
     # For each position, we use the center of the BED interval
     positions["pos1"] = (positions.start1 + positions.end1) // 2
     positions["pos2"] = (positions.start2 + positions.end2) // 2
     # Use each kernel matrix available for the pattern
-    for kernel_id, kernel_matrix in enumerate(kernel_config["kernels"]):
+    for kernel_id, kernel_matrix in enumerate(cfg["kernels"]):
         # Only resize kernel matrix if explicitely requested
         if win_size != "auto":
             kernel_matrix = resize_kernel(kernel_matrix, factor=win_size / km)
@@ -464,13 +466,12 @@ def cmd_detect(arguments):
         "min_separation": (min_separation, int),
         "max_perc_undetected": (perc_undetected, float),
     }
-    kernel_config = cio.load_kernel_config(config_path, custom)
+    cfg = cio.load_kernel_config(config_path, custom)
     for param_name, (param_value, param_type) in params.items():
-        kernel_config = _override_kernel_config(
-            param_name, param_value, param_type, kernel_config
+        cfg = _override_kernel_config(
+            param_name, param_value, param_type, cfg
         )
 
-    # NOTE: Temporary warning
     if interchrom:
         sys.stderr.write(
             "WARNING: Detection on interchromosomal matrices is expensive in RAM\n"
@@ -478,20 +479,44 @@ def cmd_detect(arguments):
     hic_genome = HicGenome(
         mat_path,
         inter=interchrom,
-        kernel_config=kernel_config,
+        kernel_config=cfg,
         dump=dump,
         smooth=smooth_trend,
     )
     ### 1: Process input signal
-    #  Adapt size of kernel matrices based on the signal resolution
-    if resize:
-        for i, mat in enumerate(kernel_config["kernels"]):
-            kernel_config["kernels"][i] = resize_kernel(
+    # Make necessary kernel adjustments
+    for i, mat in enumerate(cfg["kernels"]):
+        min_size, max_size = 7, 101
+        new_kernel = mat
+        # Adapt size of kernel matrices based on the signal resolution if requested
+        if resize:
+            new_kernel = resize_kernel(
                 mat,
-                kernel_res=kernel_config["resolution"],
+                kernel_res=cfg["resolution"],
                 signal_res=hic_genome.resolution,
+                min_size=min_size,
+                max_size=max_size
             )
-    hic_genome.kernel_config = kernel_config
+        # Crop the kernel if it is larger than min-dist and goes over diagonal
+        # Do not trim if patterns of interest are on the diagonal (e.g. borders, hairpins)
+        min_dist_diag = int(np.ceil(cfg['min_dist'] / hic_genome.resolution))
+        # Make sure kernel is not too small or too large
+        min_dist_diag = max(min_size, min_dist_diag)
+        min_dist_diag = min(max_size, min_dist_diag)
+
+        if min_dist_diag < max(mat.shape) and min_dist_diag > 0:
+            new_kernel = crop_kernel(
+                new_kernel,
+                target_size=(min_dist_diag, min_dist_diag)
+            )
+            m, n = new_kernel.shape
+            sys.stderr.write(
+                'WARNING: --min-dist smaller than kernel size. Kernel has '
+                f'been cropped to {m}x{n} to avoid overlapping the diagonal.\n'
+            )
+        cfg["kernels"][i] = new_kernel
+
+    hic_genome.kernel_config = cfg
     # Subsample Hi-C contacts from the matrix, if requested
     # NOTE: Subsampling has to be done before normalisation
     hic_genome.subsample(subsample)
@@ -512,12 +537,12 @@ def cmd_detect(arguments):
     # Loop over the different kernel matrices for input pattern
     run_id = 0
     total_runs = (
-        len(kernel_config["kernels"]) * kernel_config["max_iterations"]
+        len(cfg["kernels"]) * cfg["max_iterations"]
     )
     sys.stderr.write("Detecting patterns...\n")
-    for kernel_id, kernel_matrix in enumerate(kernel_config["kernels"]):
+    for kernel_id, kernel_matrix in enumerate(cfg["kernels"]):
         # Adjust kernel iteratively
-        for i in range(kernel_config["max_iterations"]):
+        for i in range(cfg["max_iterations"]):
             cio.progress(
                 run_id, total_runs, f"Kernel: {kernel_id}, Iteration: {i}\n"
             )
@@ -525,7 +550,7 @@ def cmd_detect(arguments):
             # Apply detection procedure to all sub matrices in parallel
             sub_mat_data = zip(
                 hic_genome.sub_mats.iterrows(),
-                [kernel_config for i in range(n_sub_mats)],
+                [cfg for i in range(n_sub_mats)],
                 [kernel_matrix for i in range(n_sub_mats)],
                 [dump for i in range(n_sub_mats)],
             )
@@ -590,7 +615,7 @@ def cmd_detect(arguments):
 
     # Compute minimum separation in bins and make sure it has a reasonable value
     separation_bins = int(
-        kernel_config["min_separation"] // hic_genome.resolution
+        cfg["min_separation"] // hic_genome.resolution
     )
     if separation_bins < 1:
         separation_bins = 1
@@ -623,7 +648,7 @@ def cmd_detect(arguments):
         all_pattern_coords.chrom1 == all_pattern_coords.chrom2
     ) & (
         np.abs(all_pattern_coords.start2 - all_pattern_coords.start1)
-        < int(kernel_config["min_dist"])
+        < cfg["min_dist"]
     )
     # Reorder columns at the same time
     all_pattern_coords = all_pattern_coords.loc[
@@ -648,12 +673,12 @@ def cmd_detect(arguments):
     sys.stderr.write(f"{all_pattern_coords.shape[0]} patterns detected\n")
     # Save patterns and their coordinates in a tsv file
     cio.write_patterns(
-        all_pattern_coords, kernel_config["name"] + "_out", output
+        all_pattern_coords, cfg["name"] + "_out", output
     )
     # Save windows as an array in an npy file
     cio.save_windows(
         all_pattern_windows,
-        kernel_config["name"] + "_out",
+        cfg["name"] + "_out",
         output,
         format=win_fmt,
     )
@@ -662,7 +687,7 @@ def cmd_detect(arguments):
     if plotting_enabled:
         # Compute and plot pileup
         pileup_fname = ("pileup_of_{n}_{pattern}").format(
-            pattern=kernel_config["name"], n=all_pattern_windows.shape[0]
+            pattern=cfg["name"], n=all_pattern_windows.shape[0]
         )
         windows_pileup = cid.pileup_patterns(all_pattern_windows)
         pileup_plot(windows_pileup, name=pileup_fname, output=output)

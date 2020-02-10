@@ -132,6 +132,35 @@ def test_resize_kernel():
             assert np.max(obs_kernel) == obs_kernel[obs_dim // 2, obs_dim // 2]
 
 
+def test_crop_kernel():
+    """
+    Ensure cropped kernels are of appropriate size and centered and contain
+    expected values.
+    """
+    m = 15
+    # Use a simple point to check if result is centered
+    point_kernel = np.zeros((m, m))
+    point_kernel[m // 2, m // 2] = 10
+    # Try with different combinations of source and target resolutions
+    dim_list = range(20)
+    for targ in dim_list:
+        # Kernel should be made larger to keep odd dimensions
+        if targ % 2:
+            exp_dim = targ
+        else:
+            exp_dim = targ + 1
+        # If target dimensions is larger than input, cropping is not performed
+        if exp_dim > m:
+            exp_dim = m
+        obs_kernel = preproc.crop_kernel(
+            point_kernel,
+            target_size=(targ, targ)
+        )
+        obs_dim = obs_kernel.shape[0]
+        assert obs_dim == exp_dim
+
+
+
 def test_distance_law():
     """Test if the distance law array has the right dimensions and expected values"""
     m = np.ones((3, 3))
