@@ -25,17 +25,28 @@ pip3 install --user -e git+https://github.com/koszullab/chromosight.git@master#e
 
 ## Usage
 
-`chromosight` has 3 subcommands: `detect`, `quantify` and `generate-config`. To get the list and description of thos subcommands, you can always run:
+`chromosight` has 3 subcommands: `detect`, `quantify` and `generate-config`. To get the list and description of those subcommands, you can always run:
 
 ```bash
 chromosight --help
 ```
-Detailed help for each subcommand can be displayed by running e.g. `chromosight detect --help`. Pattern detection is done using the `detect` subcommand.
+Pattern detection is done using the `detect` subcommand. The generate-config subcommand is used to create a new type of pattern that can then be fed to `detect` using the `--custom-kernel` option. The `quantify` subcommand is used to compute pattern matching scores for a list of 2D coordinates on a Hi-C matrix.
 
-```
-chromosight detect <contact_maps> [<output>] [--kernels=None] [--loops]
-                       [--borders] [--precision=4] [--iterations=auto]
-                       [--output]
+### Get started
+To get a first look at a chromosight run, you can run `chromosight test`, which will download a test dataset from the github repository and run `chromosight detect` on it.
+
+### Important options
+
+* `--min-dist`: Minimum distance from which to detect patterns.
+* `--max-dist`: Maximum distance from which to detect patterns. Increasing also increases runtime and memory use.
+* `--precision`: Decrease to allow a greater number of pattern detected (with potentially more false positives).
+* `--perc-undetected`: Proportion of empty pixels allowed in a window for detection.
+
+### Example
+
+To detect all chromosome loops with sizes between 2kb and 200kb using 8 parallel threads:
+```bash
+chromosight detect --threads 8 --min-dist 20000 --max-dist 200000 hic_data.cool out_dir
 ```
 
 ## Input
@@ -58,15 +69,16 @@ Explore and detect patterns (loops, borders, centromeres, etc.) in Hi-C contact
 maps with pattern matching.
 
 Usage:
-    chromosight detect <contact_map> [<output>] [--kernel-config=FILE]
-                        [--pattern=loops] [--precision=auto] [--iterations=auto]
-                        [--win-fmt={json,npy}] [--subsample=no] [--inter]
-                        [--min-dist=0] [--max-dist=auto] [--no-plotting] [--dump=DIR]
-                        [--min-separation=auto] [--threads=1] [--n-mads=5]
-                        [--resize-kernel] [--perc-undetected=auto]
-    chromosight generate-config <prefix> [--preset loops]
-    chromosight quantify [--pattern=loops] [--inter] [--subsample=no] [--n-mads=5]
-                         [--win-size=auto] <bed2d> <contact_map> <output>
+    chromosight detect  [--kernel-config=FILE] [--pattern=loops] [--precision=auto]
+                        [--iterations=auto] [--resize-kernel] [--win-fmt={json,npy}]
+                        [--subsample=no] [--inter] [--smooth-trend] [--n-mads=5]
+                        [--min-dist=0] [--max-dist=auto] [--no-plotting]
+                        [--min-separation=auto] [--threads=1] [--dump=DIR]
+                        [--perc-undetected=auto] <contact_map> [<output>]
+    chromosight generate-config <prefix> [--preset loops] [--click contact_map] [--win-size=auto] [--n-mads=INT]
+    chromosight quantify [--inter] [--pattern=loops] [--subsample=no] [--win-fmt=json]
+                         [--n-mads=5] [--win-size=auto] <bed2d> <contact_map> <output>
+    chromosight test
 
     detect: 
         performs pattern detection on a Hi-C contact map using kernel convolution
@@ -80,6 +92,8 @@ Usage:
         Given a list of pairs of positions and a contact map, computes the
         correlation coefficients between those positions and the kernel of the
         selected pattern.
+    test:                       
+        Download example data and run the program on it.
 
 ```
 
