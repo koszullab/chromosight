@@ -2,3 +2,4 @@ notebook
 sphinx
 nbsphinx
 recommonmark
+chromosight
