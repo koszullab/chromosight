@@ -26,4 +26,8 @@ Which will write the coordinates of borders in `results/borders_out.txt`.
 
 At this point, the `results` folder will also contain files `loops_out.json` and `borders_out.json`, which contain images of the matrix region around each detected loop or border, respectively. These files are in JSON format, which can be natively loaded in most programming languages.
 
-chromosight has many command line options which can affect the output format or filter the output based on different criteria. All parameters have default parameter values defined for each pattern, but these can be overriden by the user to optimize results if needed.
+chromosight has many command line options which can affect the output format or filter the output based on different criteria. All parameters have default parameter values defined for each pattern, which are printed during the run, but these can be overriden by the user to optimize results if needed. The list of command line options can be shown using:
+
+```bash
+chromosight --help
+```
