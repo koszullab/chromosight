@@ -512,7 +512,9 @@ def cmd_detect(arguments):
             m, n = new_kernel.shape
             sys.stderr.write(
                 'WARNING: --min-dist smaller than kernel size. Kernel has '
-                f'been cropped to {m}x{n} to avoid overlapping the diagonal.\n'
+                f'been cropped to {m}x{n} to avoid overlapping the diagonal. '
+                f'Increase --min-dist to {mat.shape[0] * hic_genome.resolution} '
+                'if you want to prevent cropping.\n'
             )
         cfg["kernels"][i] = new_kernel
 
