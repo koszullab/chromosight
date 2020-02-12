@@ -26,7 +26,7 @@ Demo
 .. toctree::
     :maxdepth: 2
 
-    notebooks/detected_patterns_analysis
+    notebooks/g1_metaphase_yeast_example.ipynb
 
 
 Reference API
