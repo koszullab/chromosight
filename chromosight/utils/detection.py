@@ -33,15 +33,15 @@ def validate_patterns(
     max_undetected_perc,
 ):
     """
-    Filters detected patterns to remove those in noisy regions or too close to
-    matrix boundaries. Also returns the surrounding window of Hi-C contacts around
-    each detected pattern.
+    Given a list of pattern coordinates and a contact map, remove patterns in low
+    detectability regions or too close to matrix boundaries. Also returns the
+    surrounding window of Hi-C contacts around each detected pattern.
 
     Parameters
     ----------
-    coords : numpy.array of int
+    coords : numpy.array of ints
         Coordinates of all detected patterns in the sub matrix. One pattern per
-        row, the first column is the row number, second column is the col number.
+        row, the first column is the matrix row, second column is the matrix col.
     matrix : scipy.sparse.csr_matrix
         Hi-C contact map of the sub matrix.
     conv_mat : scipy.sparse.csr_matrix
@@ -155,15 +155,28 @@ def validate_patterns(
 
 
 def pileup_patterns(pattern_windows):
-    """Generate a pileup from an input list of pattern coords and a Hi-C matrix"""
+    """
+    Generate a pileup from an stack of pattern windows.
+
+    Parameters
+    ----------
+    pattern_windows : numpy.array of floats
+        3D numpy array of detected windows. Shape is (N, H, W)
+        where N is the number of windows, H the height, and W
+        the width of each window.
+    Returns
+    -------
+    numpy.array of floats :
+        2D numpy array containing the pileup (arithmetic mean) of
+        input windows.
+    """
     return np.apply_along_axis(np.nanmean, 0, pattern_windows)
 
 
 def pattern_detector(contact_map, kernel_config, kernel_matrix, dump=None):
-    """Pattern detector
-
-    Detect patterns by iterated kernel matching, and extract windows around the
-    detected patterns.
+    """
+    Detect patterns in a contact map by kernel matching, and extract windows
+    around the detected patterns.
 
     Parameters
     ----------
@@ -243,8 +256,7 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix, dump=None):
 def remove_neighbours(patterns, win_size=8):
     """
     Identify patterns that are too close from each other to exclude them.
-    This can happen when patterns smear over several pixels and are detected twice.
-    When that happens, the pattern with the highest score in the smear will be kept.
+    The pattern with the highest score in the group will be kept.
 
     Parameters
     ----------
@@ -257,7 +269,7 @@ def remove_neighbours(patterns, win_size=8):
     -------
     numpy.array of bool :
         Boolean array indicating which patterns are valid (True values) and
-        which are smears (False values)
+        which are overlapping neighbours (False values)
     """
     # Sort patterns by scores
     sorted_patterns = patterns.copy().sort_values("score", ascending=False)
@@ -280,22 +292,27 @@ def remove_neighbours(patterns, win_size=8):
 
 
 def picker(mat_conv, precision=None):
-    """Pick pixels out of a convolution map
-    Given a correlation heat map, pick (i, j) of local maxima
+    """
+    Pick coordinates of local maxima in a sparse 2D convolution heatmap. A threshold
+    computed based on the precision argument is applied to the heatmap. All values below
+    that threshold are set to 0. The coordinate of the maximum value in each focus is
+    returned.
+
     Parameters
     ----------
-    mat_conv : scipy.sparse.coo_matrix
-        A float array assigning a correlation to each pixel (i,j)
-        with the input kernel (e.g. loops).
+    mat_conv : scipy.sparse.coo_matrix of floats
+        A 2D sparse convolution heatmap.
     precision : float, optional
-        Increasing this value reduces the amount of false positive patterns.
-        This is the minimum number of standard deviations above the median of
+        Minimum number of median absolute deviations above the median of
         correlation coefficients required to consider a pixel as candidate.
+        The threshold to define candidate pixels (foci) is given by
+        median(c) + mad(c) * precision, where c are nonzero correlation coefficients.
+        Increasing this value reduces the amount of false positive patterns.
     Returns
     -------
     foci_coords : numpy.array of ints
-        2D array of coordinates for identified patterns. None is no pattern was
-        detected.
+        2D array of coordinates for identified patterns corresponding to foci maxima.
+        None is no pattern was detected.
     labelled_mat : scipy.sparse.coo_matrix
         The map of detected foci. Pixels which were assigned to a focus are given
         an integer as their focus ID. Pixels not assigned to a focus are set to 0.
@@ -359,7 +376,7 @@ def label_foci(matrix):
 
     Parameters
     ----------
-    matrix : scipy.sparse.coo_matrix
+    matrix : scipy.sparse.coo_matrix of ints
         The input matrix where to label foci. Should be filled with 1
         and 0s.
     
@@ -488,6 +505,27 @@ def filter_foci(foci_mat, min_size=2):
 
 
 def xcorr2(signal, kernel, threshold=1e-4):
+    """
+    Signal-kernel 2D convolution
+
+    Convolution of a 2-dimensional signal (the contact map) with a kernel
+    (the pattern template).
+
+    Parameters
+    ----------
+    signal: scipy.sparse.csr_matrix or numpy.array of floats
+        A 2-dimensional numpy array Ms x Ns acting as the detrended Hi-C map.
+    kernel: numpy.array of floats
+        A 2-dimensional numpy array Mk x Nk acting as the pattern template.
+    threshold : float
+        Convolution score below which pixels will be set back to zero to save
+        on time and memory.
+    Returns
+    -------
+    out: scipy.sparse.coo_matrix or numpy.array
+        Convolution product of signal by kernel. Same type as the input signal.
+    """
+
     if sp.issparse(signal):
         conv = _xcorr2_sparse(signal.tocsr(), kernel, threshold=threshold)
     else:
@@ -524,7 +562,7 @@ def corrcoef2d(
     Returns
     -------
     scipy.sparse.csr_matrix or numpy.array
-        The sparse matrix of correlation coefficients
+        The sparse matrix of correlation coefficients. Same type as the input signal.
     """
     if min(kernel.shape) >= max(signal.shape):
         raise ValueError("cannot have kernel bigger than signal")
