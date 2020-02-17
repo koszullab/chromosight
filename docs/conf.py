@@ -19,14 +19,16 @@
 
 # -- Project information -----------------------------------------------------
 
-project = "declooptor"
-copyright = "2018, Axel Cournac, Axel Breuer, Lyam Baudry, Rémi Montagne"
-author = "Axel Cournac, Axel Breuer, Lyam Baudry, Rémi Montagne"
+project = "chromosight"
+copyright = (
+    "2020, Axel Cournac, Lyam Baudry, Cyril Matthey-Doret, Nadège Guielguimoni"
+)
+author = "Axel Cournac, Lyam Baudry, Cyril Matthey-Doret, Nadège Guielguimoni"
 
 # The short X.Y version
-version = "0.1"
+version = "0.4"
 # The full version, including alpha/beta/rc tags
-release = "0.1.0"
+release = "0.4.0"
 
 
 # -- General configuration ---------------------------------------------------
@@ -39,10 +41,10 @@ release = "0.1.0"
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
+    "sphinx.ext.napoleon",
     "sphinx.ext.autodoc",
     "sphinx.ext.doctest",
     "sphinx.ext.intersphinx",
-    "sphinx.ext.napoleon",
     "sphinx.ext.coverage",
     "sphinx.ext.imgmath",
     "sphinx.ext.ifconfig",
@@ -58,7 +60,7 @@ templates_path = ["_templates"]
 # You can specify multiple suffix as a list of string:
 #
 # source_suffix = ['.rst', '.md']
-source_suffix = ".rst"
+source_suffix = [".rst", ".md"]
 
 # The master toctree document.
 master_doc = "index"
@@ -84,7 +86,7 @@ pygments_style = None
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-html_theme = "sphinx_rtd_theme"
+html_theme = "alabaster"
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
@@ -111,7 +113,7 @@ html_static_path = ["_static"]
 # -- Options for HTMLHelp output ---------------------------------------------
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = "declooptordoc"
+htmlhelp_basename = "chromosightdoc"
 
 
 # -- Options for LaTeX output ------------------------------------------------
@@ -137,11 +139,11 @@ latex_elements = {
 latex_documents = [
     (
         master_doc,
-        "declooptor.tex",
-        "declooptor Documentation",
-        "Axel Cournac, Axel Breuer, Lyam Baudry, Rémi Montagne",
+        "chromosight.tex",
+        "chromosight Documentation",
+        "Axel Cournac, Lyam Baudry, Cyril Matthey-Doret, Nadège Guielguimoni",
         "manual",
-    )
+    ),
 ]
 
 
@@ -150,7 +152,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    (master_doc, "declooptor", "declooptor Documentation", [author], 1)
+    (master_doc, "chromosight", "chromosight Documentation", [author], 1)
 ]
 
 
@@ -162,13 +164,13 @@ man_pages = [
 texinfo_documents = [
     (
         master_doc,
-        "declooptor",
-        "declooptor Documentation",
+        "chromosight",
+        "chromosight Documentation",
         author,
-        "declooptor",
-        "One line description of project.",
+        "chromosight",
+        "Detect patterns in Hi-C maps",
         "Miscellaneous",
-    )
+    ),
 ]
 
 
@@ -195,5 +197,9 @@ epub_exclude_files = ["search.html"]
 # -- Options for intersphinx extension ---------------------------------------
 
 # Example configuration for intersphinx: refer to the Python standard library.
-intersphinx_mapping = {"https://docs.python.org/": None}
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/", None),
+    "numpy": ("https://docs.scipy.org/doc/numpy/", None),
+}
 
+source_parsers = {".md": "recommonmark.parser.CommonMarkParser"}

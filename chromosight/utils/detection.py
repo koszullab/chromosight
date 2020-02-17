@@ -33,15 +33,15 @@ def validate_patterns(
     max_undetected_perc,
 ):
     """
-    Filters detected patterns to remove those in noisy regions or too close to
-    matrix boundaries. Also returns the surrounding window of Hi-C contacts around
-    each detected pattern.
+    Given a list of pattern coordinates and a contact map, remove patterns in low
+    detectability regions or too close to matrix boundaries. Also returns the
+    surrounding window of Hi-C contacts around each detected pattern.
 
     Parameters
     ----------
-    coords : numpy.array of int
+    coords : numpy.array of ints
         Coordinates of all detected patterns in the sub matrix. One pattern per
-        row, the first column is the row number, second column is the col number.
+        row, the first column is the matrix row, second column is the matrix col.
     matrix : scipy.sparse.csr_matrix
         Hi-C contact map of the sub matrix.
     conv_mat : scipy.sparse.csr_matrix
@@ -90,22 +90,19 @@ def validate_patterns(
     for i, l in enumerate(coords):
         p1 = int(l[0])
         p2 = int(l[1])
-        if p1 > p2:
-            p1, p2 = p2, p1
+        high, low = p1 - half_h + 1, p1 + half_h
+        left, right = p2 - half_w + 1, p2 + half_w
         # Check for out of bounds errors
         if (
-            p1 - half_h >= 0
-            and p1 + half_h + 1 < matrix.shape[0]
-            and p2 - half_w >= 0
-            and p2 + half_w + 1 < matrix.shape[1]
+            high >= 0
+            and low < matrix.shape[0]
+            and left >= 0
+            and right < matrix.shape[1]
         ):
             # Get bin ids to use in window
-            win_rows, win_cols = (
-                range(p1 - half_h + 1, p1 + half_h),
-                range(p2 - half_w + 1, p2 + half_w),
-            )
+            win_rows, win_cols = (range(high, low), range(left, right))
             # Subset window from chrom matrix
-            pattern_window = matrix[np.ix_(win_rows, win_cols)].todense()
+            pattern_window = matrix[high:low, left:right].toarray()
 
             n_rows, n_cols = pattern_window.shape
             tot_pixels = n_rows * n_cols
@@ -124,7 +121,7 @@ def validate_patterns(
                 - n_bad_rows * n_bad_cols
             )
             # Number of uncovered pixels
-            tot_zero_pixels = len(pattern_window[pattern_window == 0].A1)
+            tot_zero_pixels = len(pattern_window[pattern_window == 0])
             tot_missing_pixels = max(tot_undetected_pixels, tot_zero_pixels)
             # The pattern should not contain more missing pixels that the max
             # value defined in kernel config. This includes both pixels from
@@ -157,15 +154,28 @@ def validate_patterns(
 
 
 def pileup_patterns(pattern_windows):
-    """Generate a pileup from an input list of pattern coords and a Hi-C matrix"""
+    """
+    Generate a pileup from an stack of pattern windows.
+
+    Parameters
+    ----------
+    pattern_windows : numpy.array of floats
+        3D numpy array of detected windows. Shape is (N, H, W)
+        where N is the number of windows, H the height, and W
+        the width of each window.
+    Returns
+    -------
+    numpy.array of floats :
+        2D numpy array containing the pileup (arithmetic mean) of
+        input windows.
+    """
     return np.apply_along_axis(np.nanmean, 0, pattern_windows)
 
 
 def pattern_detector(contact_map, kernel_config, kernel_matrix, dump=None):
-    """Pattern detector
-
-    Detect patterns by iterated kernel matching, and extract windows around the
-    detected patterns.
+    """
+    Detect patterns in a contact map by kernel matching, and extract windows
+    around the detected patterns.
 
     Parameters
     ----------
@@ -252,8 +262,7 @@ def pattern_detector(contact_map, kernel_config, kernel_matrix, dump=None):
 def remove_neighbours(patterns, win_size=8):
     """
     Identify patterns that are too close from each other to exclude them.
-    This can happen when patterns smear over several pixels and are detected twice.
-    When that happens, the pattern with the highest score in the smear will be kept.
+    The pattern with the highest score in the group will be kept.
 
     Parameters
     ----------
@@ -266,7 +275,7 @@ def remove_neighbours(patterns, win_size=8):
     -------
     numpy.array of bool :
         Boolean array indicating which patterns are valid (True values) and
-        which are smears (False values)
+        which are overlapping neighbours (False values)
     """
     # Sort patterns by scores
     sorted_patterns = patterns.copy().sort_values("score", ascending=False)
@@ -289,22 +298,27 @@ def remove_neighbours(patterns, win_size=8):
 
 
 def picker(mat_conv, precision=None):
-    """Pick pixels out of a convolution map
-    Given a correlation heat map, pick (i, j) of local maxima
+    """
+    Pick coordinates of local maxima in a sparse 2D convolution heatmap. A threshold
+    computed based on the precision argument is applied to the heatmap. All values below
+    that threshold are set to 0. The coordinate of the maximum value in each focus is
+    returned.
+
     Parameters
     ----------
-    mat_conv : scipy.sparse.coo_matrix
-        A float array assigning a correlation to each pixel (i,j)
-        with the input kernel (e.g. loops).
+    mat_conv : scipy.sparse.coo_matrix of floats
+        A 2D sparse convolution heatmap.
     precision : float, optional
-        Increasing this value reduces the amount of false positive patterns.
-        This is the minimum number of standard deviations above the median of
+        Minimum number of median absolute deviations above the median of
         correlation coefficients required to consider a pixel as candidate.
+        The threshold to define candidate pixels (foci) is given by
+        median(c) + mad(c) * precision, where c are nonzero correlation coefficients.
+        Increasing this value reduces the amount of false positive patterns.
     Returns
     -------
     foci_coords : numpy.array of ints
-        2D array of coordinates for identified patterns. None is no pattern was
-        detected.
+        2D array of coordinates for identified patterns corresponding to foci maxima.
+        None is no pattern was detected.
     labelled_mat : scipy.sparse.coo_matrix
         The map of detected foci. Pixels which were assigned to a focus are given
         an integer as their focus ID. Pixels not assigned to a focus are set to 0.
@@ -327,7 +341,8 @@ def picker(mat_conv, precision=None):
 
     # Check if at least one candidate pixel was found
     if len(candidate_mat.data) > 0:
-        num_foci, labelled_mat = label_connected_pixels_sparse(candidate_mat)
+        num_foci, labelled_mat = label_foci(candidate_mat)
+        num_foci, labelled_mat = filter_foci(labelled_mat)
         if num_foci == 0:
             return None, None
         mat_conv = mat_conv.tocsr()
@@ -358,20 +373,18 @@ def picker(mat_conv, precision=None):
     return foci_coords, labelled_mat
 
 
-def label_connected_pixels_sparse(matrix, min_focus_size=2):
+def label_foci(matrix):
     """
     Given a sparse matrix of 1 and 0 values, find
     all foci of continuously neighbouring positive pixels
-    and assign them a label according to their focus. Diagonal,
-    horizontal and vertical (8-way) adjacency is considered.
+    and assign them a label according to their focus. Horizontal 
+    and vertical (4-way) adjacency is considered.
 
     Parameters
     ----------
-    matrix : scipy.sparse.coo_matrix
+    matrix : scipy.sparse.coo_matrix of ints
         The input matrix where to label foci. Should be filled with 1
         and 0s.
-    min_focus_size: int
-        Minimum number of members required to keep a focus.
     
     Returns
     -------
@@ -397,104 +410,128 @@ def label_connected_pixels_sparse(matrix, min_focus_size=2):
            [1 0 2 2]
            [0 0 0 0]])
     """
+    # step 1 : ensure that coo format is double ranked (row, col).
+    # TODO: we could find a trick to avoid this conversion step
+    matrix_sp = sp.coo_matrix(sp.csr_matrix(matrix))
 
-    candidates = matrix.copy()
-    n_candidates = len(candidates.data)
-    candidates.data = candidates.data.astype(bool)
+    nb_row, nb_col = matrix_sp.shape
+    nb_nodes = matrix_sp.nnz
 
-    def get_1d_foci_transition(m):
-        """
-        Get a boolean array indicating if the next neighbour of
-        each nonzero pixel will be in the same focus.
-        """
-        # Compute row and col index shifts between candidate pixels.
-        # absolute value is used; left/right or up/down does not matter
-        row_shift = np.abs(np.diff(m.row))
-        col_shift = np.abs(np.diff(m.col))
-        # Transform shifts to binary data: shifted by more than 1
-        # from previous nonzero pixel ? Invert so that True means we
-        # stay in the same focus.
-        row_shift[row_shift < 2] = 0
-        stay_foci_row = np.invert(row_shift.astype(bool))
-        col_shift[col_shift < 2] = 0
-        stay_foci_col = np.invert(col_shift.astype(bool))
-        # Bitwise AND between row and col "stay arrays" to get
-        # indices where neither the rows nor cols shift by more than 1
-        # True at index i means: pixel i+1 in same focus as pixel i.
-        stay_foci = np.bitwise_and(stay_foci_row, stay_foci_col)
-        # Append False since there is no pixel after the last
-        stay_foci = np.append(stay_foci, False)
-        return stay_foci
+    # step 2: prepare structured array 'coo' for later double sorting
+    dtype = [("row", int), ("col", int)]
+    coo = np.zeros(matrix_sp.nnz, dtype=dtype)
+    coo["row"] = matrix_sp.row
+    coo["col"] = matrix_sp.col
 
-    # Since we are using neighborhood with next nonzero pixel,
-    # and nonzero pixels are sorted by rows, we need to do
-    # the whole operation on the matrix and the transpose
-    # (nonzero pixels sorted by columns). This will give both
-    # the horizontal and vertical neighbourhood informations.
-    stay_foci_hori = get_1d_foci_transition(candidates)
-    stay_foci_verti = get_1d_foci_transition(candidates.T.tocsr().tocoo())
-    # Candidates are sorted by rows in stay_foci_hori, but by col in
-    # stay_foci_verti. We need to reorder stay_foci_verti to have them
-    # in same order.
-    ori_ids = candidates.copy()
-    # store candidate ids in data
-    ori_ids.data = np.array(range(len(ori_ids.row)), dtype=np.int)
-    trans_ids = ori_ids.T  # Transposed matrix: candidates now sorted by column
-    # Order is only updated if we convert types
-    trans_ids = trans_ids.tocsr().tocoo()
-    # Data can now be used as a transposed to original candidate id converter
-    # e.g. if trans_idx.data[2] = 1, that  means the third (2) nonzero
-    # value in transpose was the second (1) in original matrix
-    # stay_foci_verti = stay_foci_verti[trans_ids.data]
-    # Initialize adjacency matrix between candidate pixels
-    adj_mat = sp.lil_matrix((n_candidates, n_candidates))
-    # Fill adjacency matrix using a stay_foci array
+    # step 3: find neigbors to the right
+    coo_rc = np.argsort(coo, order=["row", "col"])
+    row_rc = coo["row"][coo_rc]
+    col_rc = coo["col"][coo_rc]
 
-    def fill_adjacency_1d(adj, stay_foci, verti=False):
-        """Fills adjacency matrix for all neighborhoods on 1 dimension"""
-        for candidate_id, next_candidate_in_focus in enumerate(stay_foci):
-            # If the next candidate will also be in focus, add fill connection
-            # between current and next candidate in adjacency matrix
-            if next_candidate_in_focus:
-                if verti:
-                    adj_from = trans_ids.data[candidate_id]
-                    adj_to = trans_ids.data[candidate_id + 1]
-                else:
-                    adj_from = candidate_id
-                    adj_to = candidate_id + 1
-                adj[adj_from, adj_to] = 1
-        return adj
+    # sanity check
+    if not (np.all(coo_rc == np.arange(len(coo_rc)))):
+        raise ValueError("matrix_sp is not properly double sorted")
 
-    # Add horizontal-adjacency info
-    adj_mat = fill_adjacency_1d(adj_mat, stay_foci_hori)
-    # Add vertical-adjacency info.
-    adj_mat = fill_adjacency_1d(adj_mat, stay_foci_verti, verti=True)
-    # Now label foci by finding connected components
-    num_foci, foci = sp.csgraph.connected_components(adj_mat)
-    foci += 1  # We add 1 so that first spot is not 0
-    foci = foci.astype(np.int64)
-    # Remove foci with a single pixel
-    for focus_num in range(1, num_foci + 1):
-        if len(foci[foci == focus_num]) < min_focus_size:
-            foci[foci == focus_num] = 0
-    # mask small foci for removal
-    good_foci = foci > 0
-    # generate a new matrix, similar to the input, but where pixel values
-    # are the foci ID of the pixel.
+    # Compute row and col indices shift between right-neighbors
+    diff_row_rc = row_rc[1:] - row_rc[:-1]
+    diff_col_rc = col_rc[1:] - col_rc[:-1]
+    # Right connected pixels are on the same row and neighboring cols
+    right_connected_p = (diff_row_rc == 0) & (diff_col_rc == 1)
+    right_connected_k = np.where(right_connected_p)[0]
+
+    right_node1 = right_connected_k
+    right_node2 = right_connected_k + 1
+
+    # step 4: find neigbors beneath
+    coo_cr = np.argsort(coo, order=["col", "row"])
+    row_cr = coo["row"][coo_cr]
+    col_cr = coo["col"][coo_cr]
+
+    diff_row_cr = row_cr[1:] - row_cr[:-1]
+    diff_col_cr = col_cr[1:] - col_cr[:-1]
+
+    lower_connected_p = (diff_row_cr == 1) & (diff_col_cr == 0)
+    lower_connected_k = np.where(lower_connected_p)[0]
+
+    cr2rc = np.arange(len(coo_cr))[coo_cr]
+    lower_node1 = cr2rc[lower_connected_k]
+    lower_node2 = cr2rc[lower_connected_k + 1]
+
+    # step 5: build adjacency matrix
+    node1 = np.concatenate([right_node1, lower_node1])
+    node2 = np.concatenate([right_node2, lower_node2])
+    data = np.ones(len(node1), int)
+    adj_mat = sp.coo_matrix((data, (node1, node2)), shape=(nb_nodes, nb_nodes))
+
+    # step 6: find connected components
+    num_foci, foci = sp.csgraph.connected_components(adj_mat, directed=False)
     foci_mat = sp.coo_matrix(
-        (
-            foci[good_foci],
-            (candidates.row[good_foci], candidates.col[good_foci]),
-        ),
-        shape=candidates.shape,
-        dtype=np.int64,
+        (foci + 1, (matrix_sp.row, matrix_sp.col)), shape=(nb_row, nb_col)
     )
-    # Update number after removal of small foci
-    num_foci = len(np.unique(foci_mat.data))
+
     return num_foci, foci_mat
 
 
+def filter_foci(foci_mat, min_size=2):
+    """
+    Given an input matrix of labelled foci (continuous islands of equal nonzero
+    values), filters out foci consisting of fewer pixels than min_size.
+
+    Parameters
+    ----------
+    foci_mat : scipy.sparse.coo_matrix
+        Input matrix of labelled foci. Pixels are numbered according to their
+        respective foci. Pixels that are not assigned to a focus are 0.
+    min_size : int
+        Minimum number of pixels required to keep a focus. Pixels belonging to
+        smaller foci will be set to 0.
+    
+    Returns
+    -------
+    num_filtered : int
+        Number of foci remaining after filtering.
+    filtered_mat : scipy.sparse.coo_matrix
+        Matrix of filtered foci.
+    """
+    foci_data = foci_mat.data
+    focus_id, focus_size = np.unique(foci_data, return_counts=True)
+    # Remove foci smaller than min_size
+    small_foci = focus_id[focus_size < min_size]
+    # mask small foci for removal
+    for focus_id in small_foci:
+        foci_data[foci_data == focus_id] = 0
+    # Copy input matrix and replace data with filtered foci
+    filtered_mat = foci_mat.copy()
+    filtered_mat.data = foci_data
+    # Force updating to make explicit zeros implicit
+    filtered_mat.eliminate_zeros()
+    num_filtered = len(focus_size[focus_size >= min_size])
+
+    return num_filtered, filtered_mat
+
+
 def xcorr2(signal, kernel, threshold=1e-4):
+    """
+    Signal-kernel 2D convolution
+
+    Convolution of a 2-dimensional signal (the contact map) with a kernel
+    (the pattern template).
+
+    Parameters
+    ----------
+    signal: scipy.sparse.csr_matrix or numpy.array of floats
+        A 2-dimensional numpy array Ms x Ns acting as the detrended Hi-C map.
+    kernel: numpy.array of floats
+        A 2-dimensional numpy array Mk x Nk acting as the pattern template.
+    threshold : float
+        Convolution score below which pixels will be set back to zero to save
+        on time and memory.
+    Returns
+    -------
+    out: scipy.sparse.coo_matrix or numpy.array
+        Convolution product of signal by kernel. Same type as the input signal.
+    """
+
     if sp.issparse(signal):
         conv = _xcorr2_sparse(signal.tocsr(), kernel, threshold=threshold)
     else:
@@ -539,7 +576,7 @@ def corrcoef2d(
     Returns
     -------
     scipy.sparse.csr_matrix or numpy.array
-        The sparse matrix of correlation coefficients
+        The sparse matrix of correlation coefficients. Same type as the input signal.
     """
     if min(kernel.shape) >= max(signal.shape):
         raise ValueError("cannot have kernel bigger than signal")

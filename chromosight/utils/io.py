@@ -29,7 +29,7 @@ def load_bedgraph2d(mat_path):
 
     Parameters
     ----------
-    mat_path : str
+    mat_path : str, file-like object
         Path to the matrix in 2D bedgraph format.
 
     Returns
@@ -45,7 +45,13 @@ def load_bedgraph2d(mat_path):
     bin_size : int
         Matrix resolution. Corresponds to the number of base pairs per matrix bin.
     """
-    bg2 = pd.read_csv(mat_path, delimiter="\t", header=None)
+
+    # Check if input is file-like object containing a csv (which has 8 columns
+    # instead of 7 and whose 0th column needs to be trimmed)
+    if hasattr(mat_path, "read"):
+        bg2 = pd.read_csv(mat_path, header=None, usecols=list(range(1, 8)))
+    else:
+        bg2 = pd.read_csv(mat_path, delimiter="\t", header=None)
     bg2.head()
     bg2.columns = [
         "chr1",
@@ -332,7 +338,7 @@ def write_patterns(coords, pattern_name, output_dir, dec=5):
     dec : int
         Number of decimals to keep in correlation scores.
     """
-    file_name = pattern_name + "_out.txt"
+    file_name = pattern_name + ".txt"
     file_path = join(output_dir, file_name)
     coords.score = np.round(coords.score, dec)
     coords.to_csv(file_path, sep="\t", index=None)
@@ -393,8 +399,10 @@ def progress(count, total, status=""):
 
     percents = round(100.0 * count / float(total), 1)
     bar = "=" * filled_len + "-" * (bar_len - filled_len)
-
-    sys.stderr.write(" [%s] %s%s %s\r" % (bar, percents, "%", status))
+    
+    # Clear current line, write status and erase everything to the end of
+    # the line using ANSI code
+    sys.stderr.write("\r [%s] %s%s %s\033[K" % (bar, percents, "%", status))
     sys.stderr.flush()
 
 
@@ -428,4 +436,11 @@ def load_bed2d(path):
             names=["chrom1", "start1", "end1", "chrom2", "start2", "end2"],
             usecols=range(6),
         )
+    # Make sure start1 is always the left anchor for intrachromosomal pairs
+    inverted = (bed2d.start2 < bed2d.start1) & (bed2d.chrom1 == bed2d.chrom2)
+    bed2d.start1[inverted], bed2d.start2[inverted] = (
+        bed2d.start2[inverted],
+        bed2d.start1[inverted]
+    )
+
     return bed2d

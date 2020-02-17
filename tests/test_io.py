@@ -48,7 +48,7 @@ class TestIO:
         chr_groups = df.groupby("chrom1")
         # Compute the number of bins in each chromosome and make a range (0 -> nbins)
         start_per_chrom = chr_groups.apply(
-            lambda g: np.array(range(g.shape[0]))
+            lambda g: range(g.shape[0])
         )
 
         # Concatenate ranges to have start values from 0 to n bins
@@ -210,12 +210,12 @@ class TestIO:
             cio.write_patterns(
                 tmp_coords, self.tmp_file, self.tmp_dir, dec=dec
             )
-            obs_coords = pd.read_csv(self.tmp_path + "_out.txt", sep="\t")
+            obs_coords = pd.read_csv(self.tmp_path + ".txt", sep="\t")
             assert obs_coords.shape == tmp_coords.shape
             assert np.all(
                 np.isclose(obs_coords.score, np.round(tmp_coords.score, dec))
             )
-            os.unlink(self.tmp_path + "_out.txt")
+            os.unlink(self.tmp_path + ".txt")
 
     def test_save_windows(self):
         """Check that windows around detected patterns can be saved to disk in JSON and npy."""

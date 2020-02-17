@@ -94,10 +94,16 @@ class HicGenome:
         Maximum scanning distance for convolution during pattern detection.
     dump : str
         Base path where dump files will be generated. None means no dump.
-
+    smooth : bool
+        Whether isotonic regression should be used to smooth the signal for
+        detrending intrachromosomal sub matrices. This  will reduce noise at
+        long ranges but assumes contacts can only decrease with distance from
+        the diagonal. Do not use with circular chromosomes.
     """
 
-    def __init__(self, path, inter=False, kernel_config=None, dump=None):
+    def __init__(
+        self, path, inter=False, kernel_config=None, dump=None, smooth=False
+    ):
         # Load Hi-C matrix and associated metadata
         try:
             self.dump = Path(dump)
@@ -107,6 +113,7 @@ class HicGenome:
         self.matrix, self.chroms, self.bins, self.resolution = self.load_data(
             path
         )
+        self.smooth = smooth
         self.kernel_config = kernel_config
         self.sub_mats = None
         self.detectable_bins = np.array(range(self.matrix.shape[0]))
@@ -193,9 +200,17 @@ class HicGenome:
     def load_data(self, mat_path):
         """Load contact, bin and chromosome informations from input path"""
         # Define functions to use for each format
-        format_loader = {"bg2": cio.load_bedgraph2d, "cool": cio.load_cool}
+        format_loader = {
+            "bg2": cio.load_bedgraph2d,
+            "cool": cio.load_cool,
+            "iobg2": cio.load_bedgraph2d,
+        }
         # Guess file format fron file name
-        extension = os.path.splitext(mat_path)[-1].lstrip(".")
+        try:
+            extension = os.path.splitext(mat_path)[-1].lstrip(".")
+        except TypeError:
+            # if mat_path isn't an actual file path but a file object
+            extension = "iobg2"
         if not len(extension) and re.search(r"mcool::", mat_path):
             extension = "cool"
         print("loading: ", mat_path)
@@ -277,6 +292,7 @@ class HicGenome:
                             largest_kernel=self.largest_kernel,
                             dump=self.dump,
                             name=f"{r1['name']}-{r2['name']}",
+                            smooth=self.smooth,
                         )
                     else:
                         sub_mats.contact_map[sub_mat_idx] = ContactMap(
@@ -296,6 +312,21 @@ class HicGenome:
         )
         self.sub_mats = sub_mats
         print("Sub matrices extracted")
+
+    def gather_sub_matrices(self):
+        """Gathers all processed sub_matrices into a whole genome matrix """
+        gathered = sp.csr_matrix(self.matrix.shape)
+        # Define shortcut to extract bins for each chromosome
+        c = self.chroms.set_index('name')
+        chr_extent = lambda n: c.loc[n, ['start_bin', 'end_bin']].values
+        # Fill empty whole genome matrix with processed submatrices
+        for i1, r1 in self.sub_mats.iterrows():
+            s1, e1 = chr_extent(r1.chr1)
+            s2, e2 = chr_extent(r1.chr2)
+            # Use each chromosome pair's sub matrix to fill the whole genome matrix
+            gathered[s1:e1, s2:e2] = r1.contact_map.matrix
+        gathered = sp.triu(gathered)
+        return gathered
 
     def get_full_mat_pattern(self, chr1, chr2, patterns):
         """
@@ -415,6 +446,7 @@ class HicGenome:
                 coords.reset_index().rename(columns={"index": "coord_idx"}),
                 left_on=["chrom", "start"],
                 right_on=["chrom", "pos"],
+                how='right',
             )
             .set_index("bin_idx")
             .sort_values("coord_idx")
@@ -446,7 +478,11 @@ class ContactMap:
         Base path where dump files will be generated. None means no dump.
     name : str
         Name of the submatrix (used for dumping).
-    
+    smooth : bool
+        Whether isotonic regression should be used to smooth the signal for
+        detrending. This  will reduce noise at long ranges but assumes contacts
+        can only decrease with distance from the diagonal. Do not use with
+        circular chromosomes.
     """
 
     def __init__(
@@ -458,7 +494,9 @@ class ContactMap:
         max_dist=None,
         largest_kernel=0,
         dump=None,
+        smooth=False,
     ):
+        self.smooth = smooth
         self.despeckle = False
         self.snr = False
         self.matrix = matrix
@@ -494,7 +532,7 @@ class ContactMap:
         self.matrix = preproc.detrend(
             self.matrix,
             max_dist=self.keep_distance,
-            smooth=True,
+            smooth=self.smooth,
             detectable_bins=self.detectable_bins[0],
         )
 

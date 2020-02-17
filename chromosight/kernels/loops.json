@@ -3,11 +3,11 @@
   "kernels": [
     "artificial_template_loops_type1.txt"
   ],
-  "min_dist": 5000,
-  "max_dist": 500000,
+  "min_dist": 20000,
+  "max_dist": 2000000,
   "max_iterations": 3,
   "max_perc_undetected": 10.0,
   "min_separation": 5000,
   "precision": 3,
-  "resolution": 1000
+  "resolution": 2000
 }
