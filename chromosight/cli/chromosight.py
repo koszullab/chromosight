@@ -220,9 +220,7 @@ def cmd_quantify(arguments):
     # Instantiate and preprocess contact map
     hic_genome = HicGenome(mat_path, inter=inter, kernel_config=cfg)
     # enforce full scanning distance in kernel config
-    cfg["max_dist"] = (
-        hic_genome.matrix.shape[0] * hic_genome.resolution
-    )
+    cfg["max_dist"] = hic_genome.matrix.shape[0] * hic_genome.resolution
     cfg["min_dist"] = 0
     # Notify contact map instance of changes in scanning distance
     hic_genome.kernel_config = cfg
@@ -271,7 +269,7 @@ def cmd_quantify(arguments):
                 sub_pat[f"bin{ax}"] = sub_pat_bins
 
             # Check for nan bins (coords that do not match any Hi-C fragments
-            fall_out = np.isnan(sub_pat['bin1']) | np.isnan(sub_pat['bin2'])
+            fall_out = np.isnan(sub_pat["bin1"]) | np.isnan(sub_pat["bin2"])
             if np.any(fall_out):
                 n_out = len(sub_pat_bins[fall_out])
                 sys.stderr.write(
@@ -286,7 +284,7 @@ def cmd_quantify(arguments):
             # Iterate over patterns from the 2D BED file
             for i, x, y in zip(sub_pat_idx, sub_pat.bin1, sub_pat.bin2):
                 # Check if the window goes out of bound
-                if  np.all(np.isfinite([x, y])) and (
+                if np.all(np.isfinite([x, y])) and (
                     x - kh >= 0
                     and x + kh + 1 < m.shape[0]
                     and y - kw >= 0
@@ -340,11 +338,11 @@ def cmd_generate_config(arguments):
     if os.path.dirname(prefix):
         os.makedirs(os.path.dirname(prefix), exist_ok=True)
 
-    # If a specific window size if requested, resize all kernels 
+    # If a specific window size if requested, resize all kernels
     if win_size != "auto":
         win_size = int(win_size)
         resize = lambda m: resize_kernel(m, factor=win_size / m.shape[0])
-        cfg['kernels'] = [resize(k) for k in cfg['kernels']]
+        cfg["kernels"] = [resize(k) for k in cfg["kernels"]]
     # Otherwise, just inherit window size from the kernel config
     else:
         win_size = cfg["kernels"][0].shape[0]
@@ -352,31 +350,27 @@ def cmd_generate_config(arguments):
     # If click mode is enabled, build a kernel from scratch using
     # graphical display, otherwise, just inherit the pattern's kernel
     if click_find:
-        hic_genome = HicGenome(
-            click_find,
-            inter=True,
-            kernel_config=cfg,
-        )
+        hic_genome = HicGenome(click_find, inter=True, kernel_config=cfg)
         # Normalize (balance) the whole genome matrix
         hic_genome.normalize(n_mads=n_mads)
         # enforce full scanning distance in kernel config
-        
-        hic_genome.max_dist = hic_genome.matrix.shape[0] * hic_genome.resolution
+
+        hic_genome.max_dist = (
+            hic_genome.matrix.shape[0] * hic_genome.resolution
+        )
         # Process each sub-matrix individually (detrend diag for intra)
         hic_genome.make_sub_matrices()
         processed_mat = hic_genome.gather_sub_matrices().tocsr()
         windows = click_finder(processed_mat, half_w=int((win_size - 1) / 2))
         # Pileup all recorded windows and convert to JSON serializable list
         pileup = ndi.gaussian_filter(cid.pileup_patterns(windows), 1)
-        cfg['kernels'] = [pileup.tolist()]
+        cfg["kernels"] = [pileup.tolist()]
         # Show the newly generate kernel to the user, use zscore to highlight contrast
         hm = plt.imshow(
-                np.log(pileup),
-                vmax=np.percentile(pileup, 99),
-                cmap='afmhot_r',
+            np.log(pileup), vmax=np.percentile(pileup, 99), cmap="afmhot_r"
         )
         cbar = plt.colorbar(hm)
-        cbar.set_label('Log10 Hi-C contacts')
+        cbar.set_label("Log10 Hi-C contacts")
         plt.title("Manually generated kernel")
         plt.show()
     # Write kernel matrices to files with input prefix and replace kernels
@@ -468,9 +462,7 @@ def cmd_detect(arguments):
     }
     cfg = cio.load_kernel_config(config_path, custom)
     for param_name, (param_value, param_type) in params.items():
-        cfg = _override_kernel_config(
-            param_name, param_value, param_type, cfg
-        )
+        cfg = _override_kernel_config(param_name, param_value, param_type, cfg)
 
     if interchrom:
         sys.stderr.write(
@@ -495,26 +487,25 @@ def cmd_detect(arguments):
                 kernel_res=cfg["resolution"],
                 signal_res=hic_genome.resolution,
                 min_size=min_size,
-                max_size=max_size
+                max_size=max_size,
             )
         # Crop the kernel if it is larger than min-dist and goes over diagonal
         # Do not trim if patterns of interest are on the diagonal (e.g. borders, hairpins)
-        min_dist_diag = int(np.ceil(cfg['min_dist'] / hic_genome.resolution))
+        min_dist_diag = int(np.ceil(cfg["min_dist"] / hic_genome.resolution))
         # Make sure kernel is not too small or too large
         min_dist_diag = max(min_size, min_dist_diag)
         min_dist_diag = min(max_size, min_dist_diag)
 
         if min_dist_diag < max(mat.shape) and min_dist_diag > 0:
             new_kernel = crop_kernel(
-                new_kernel,
-                target_size=(min_dist_diag, min_dist_diag)
+                new_kernel, target_size=(min_dist_diag, min_dist_diag)
             )
             m, n = new_kernel.shape
             sys.stderr.write(
-                'WARNING: --min-dist smaller than kernel size. Kernel has '
-                f'been cropped to {m}x{n} to avoid overlapping the diagonal. '
-                f'Increase --min-dist to {mat.shape[0] * hic_genome.resolution} '
-                'if you want to prevent cropping.\n'
+                "WARNING: --min-dist smaller than kernel size. Kernel has "
+                f"been cropped to {m}x{n} to avoid overlapping the diagonal. "
+                f"Increase --min-dist to {mat.shape[0] * hic_genome.resolution} "
+                "if you want to prevent cropping.\n"
             )
         cfg["kernels"][i] = new_kernel
 
@@ -538,9 +529,7 @@ def cmd_detect(arguments):
     n_sub_mats = hic_genome.sub_mats.shape[0]
     # Loop over the different kernel matrices for input pattern
     run_id = 0
-    total_runs = (
-        len(cfg["kernels"]) * cfg["max_iterations"]
-    )
+    total_runs = len(cfg["kernels"]) * cfg["max_iterations"]
     sys.stderr.write("Detecting patterns...\n")
     for kernel_id, kernel_matrix in enumerate(cfg["kernels"]):
         # Adjust kernel iteratively
@@ -559,12 +548,15 @@ def cmd_detect(arguments):
             # Run detection in parallel on different sub matrices, and show progress when
             # gathering results
             sub_mat_results = []
-            for i, result in enumerate(pool.imap_unordered(_detect_sub_mat, sub_mat_data, 1)):
+            for i, result in enumerate(
+                pool.imap_unordered(_detect_sub_mat, sub_mat_data, 1)
+            ):
                 chr1 = hic_genome.sub_mats.chr1[i]
                 chr2 = hic_genome.sub_mats.chr2[i]
                 cio.progress(i, n_sub_mats, f"{chr1}-{chr2}")
                 sub_mat_results.append(result)
-            #sub_mat_results = map(_detect_sub_mat, sub_mat_data)
+
+            # sub_mat_results = list(map(_detect_sub_mat, sub_mat_data))
             # Convert coordinates from chromosome to whole genome bins
             kernel_coords = [
                 hic_genome.get_full_mat_pattern(
@@ -602,7 +594,6 @@ def cmd_detect(arguments):
             kernel_matrix = cid.pileup_patterns(kernel_windows)
             run_id += 1
     cio.progress(run_id, total_runs, f"Kernel: {kernel_id}, Iteration: {i}\n")
-
     # If no pattern detected on any chromosome, with any kernel, exit gracefully
     if len(all_pattern_coords) == 0:
         sys.stderr.write("No pattern detected ! Exiting.\n")
@@ -616,9 +607,7 @@ def cmd_detect(arguments):
     all_pattern_windows = np.concatenate(all_pattern_windows, axis=0)
 
     # Compute minimum separation in bins and make sure it has a reasonable value
-    separation_bins = int(
-        cfg["min_separation"] // hic_genome.resolution
-    )
+    separation_bins = int(cfg["min_separation"] // hic_genome.resolution)
     if separation_bins < 1:
         separation_bins = 1
     print(f"Minimum pattern separation is : {separation_bins}")
@@ -674,15 +663,10 @@ def cmd_detect(arguments):
     ### 3: WRITE OUTPUT
     sys.stderr.write(f"{all_pattern_coords.shape[0]} patterns detected\n")
     # Save patterns and their coordinates in a tsv file
-    cio.write_patterns(
-        all_pattern_coords, cfg["name"] + "_out", output
-    )
+    cio.write_patterns(all_pattern_coords, cfg["name"] + "_out", output)
     # Save windows as an array in an npy file
     cio.save_windows(
-        all_pattern_windows,
-        cfg["name"] + "_out",
-        output,
-        format=win_fmt,
+        all_pattern_windows, cfg["name"] + "_out", output, format=win_fmt
     )
 
     # Generate pileup visualisations if requested
@@ -713,9 +697,7 @@ def cmd_test(arguments):
 
 @contextmanager
 def capture_ouput(stderr_to=None):
-    """Capture the stderr of the test run. Inspired from
-    http://sametmax.com/capturer-laffichage-des-prints-dun-code-python/
-    """
+    """Capture the stderr of the test run. """
 
     try:
         stderr = sys.stderr
