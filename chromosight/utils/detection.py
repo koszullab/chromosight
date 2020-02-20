@@ -795,29 +795,21 @@ def _corrcoef2d_sparse(
     # signal. We need to add a margin around the input to allow the kernel to
     # be centered on the edges.
     if mode == "full":
-        exterior_frame = preproc.make_exterior_frame(
-            (ms, ns), (mk, nk), sym_upper=sym_upper
-        )
         # Create a vertical margin and use it to pad the signal
         tmp = sp.csr_matrix((mk - 1, ns))
         signal = sp.vstack([tmp, signal, tmp], format=signal.format)
         # Same for the horizontal margin
         tmp = sp.csr_matrix((ms + 2 * (mk - 1), nk - 1))
         signal = sp.hstack([tmp, signal, tmp], format=signal.format)
-        ms, ns = signal.shape
         # If a missing mask was specified, use it
         if missing_mask is not None:
-            # Resize mask: increment rows and cols by margin and set shape == frame 
-            # matrix, effectively adding margins.
-            missing_mask = missing_mask.tocoo()
-            rows, cols = missing_mask.row + mk -1, missing_mask.col + nk -1
-            missing_mask = sp.coo_matrix(
-                (missing_mask.data, (rows, cols)), shape=(ms, ns), dtype=bool
-            )
-            exterior_frame += missing_mask
-        missing_mask = exterior_frame.tocsr()
-        missing_mask.eliminate_zeros()
-        del exterior_frame
+            # Add margins around missing mask.
+            missing_mask = missing_mask.tocsr()
+            tmp = sp.csr_matrix(np.ones([mk-1, ns]), dtype=bool)
+            missing_mask = sp.vstack([tmp, missing_mask, tmp], format='csr')
+            tmp = sp.csr_matrix(np.ones([ms+2*(mk-1), nk-1]))
+            missing_mask = sp.hstack([tmp, missing_mask, tmp], format='csr')
+            missing_mask.eliminate_zeros()
 
     # Plain old convolution
     if scaling is None:
@@ -871,7 +863,7 @@ def _corrcoef2d_sparse(
                 # Compute pearson terms with margin taken into account
                 kernel_size_wm = kernel_size - ker1_coo.data
                 ker1_coo_row, ker1_coo_col = ker1_coo.row, ker1_coo.col
-                del ker1_coo  # Spare memory, we only need coords
+                ker1_coo = None; del ker1_coo  # Spare memory, we only need coords
                 ker_coo = get_kermat(kernel)
                 # kernel size (w)ith (m)issing data
                 kernel_mean_wm = (
@@ -880,7 +872,7 @@ def _corrcoef2d_sparse(
                         sp.csr_matrix(ker_coo)[ker1_coo_row, ker1_coo_col]
                     )
                 ) / kernel_size_wm
-                del ker_coo
+                ker_coo = None; del ker_coo
                 ker2_coo = get_kermat(kernel ** 2)
                 kernel2_mean_wm = (
                     kernel2_sum
@@ -888,7 +880,7 @@ def _corrcoef2d_sparse(
                         sp.csr_matrix(ker2_coo)[ker1_coo_row, ker1_coo_col]
                     )
                 ) / kernel_size_wm
-                del ker2_coo
+                ker2_coo = None; del ker2_coo
             else:
                 kernel_size_wm = kernel_size
                 kernel_mean_wm = kernel_mean
@@ -944,8 +936,6 @@ def _corrcoef2d_sparse(
     conv = conv.tocsr()
     if mode == "full":
         conv = conv.tocsr()[mk - 1 : -mk + 1, nk - 1 : -nk + 1]
-    import matplotlib.pyplot as plt
-    plt.imshow(conv.toarray()); plt.show()
     return conv
 
 
