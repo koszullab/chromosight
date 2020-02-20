@@ -808,8 +808,9 @@ def _corrcoef2d_sparse(
         # If a missing mask was specified, use it
         if missing_mask is not None:
             exterior_frame[mk - 1 : -mk + 1, nk - 1 : -nk + 1] = missing_mask
-        missing_mask = sp.csr_matrix(exterior_frame)
+        missing_mask = exterior_frame.tocsr()
         missing_mask.eliminate_zeros()
+        del exterior_frame
 
     # Plain old convolution
     if scaling is None:

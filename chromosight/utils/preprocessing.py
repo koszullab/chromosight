@@ -515,7 +515,7 @@ def make_exterior_frame(signal_shape, kernel_shape, sym_upper=False):
     ms, ns = signal_shape
     mk, nk = kernel_shape
     # Generate exterior frame to act as margin when convolving borders
-    exterior_frame = sp.lil_matrix((ms + 2 * (mk - 1), ns + 2 * (nk - 1)))
+    exterior_frame = sp.lil_matrix((ms + 2 * (mk - 1), ns + 2 * (nk - 1)), dtype=bool)
     # Up and down
     exterior_frame[: mk - 1, :] = 1
     exterior_frame[ms + (mk - 1) :, :] = 1
@@ -556,7 +556,7 @@ def missing_bins_mask(shape, valid_rows, valid_cols):
     missing_rows = np.where(missing_rows == True)[0]
     missing_cols = np.where(missing_cols == True)[0]
 
-    mask = sp.csr_matrix(shape)
+    mask = sp.csr_matrix(shape, dtype=bool)
     mask[missing_rows, :] = 1
     mask[:, missing_cols] = 1
 
