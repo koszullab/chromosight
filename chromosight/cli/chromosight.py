@@ -13,7 +13,7 @@ Usage:
                         [--min-separation=auto] [--threads=1] [--dump=DIR]
                         [--perc-undetected=auto] <contact_map> [<output>]
     chromosight generate-config <prefix> [--preset loops] [--click contact_map] [--win-size=auto] [--n-mads=INT]
-    chromosight quantify [--inter] [--pattern=loops] [--subsample=no] [--win-fmt=json]
+    chromosight quantify [--inter] [--pattern=loops] [--subsample=no] [--win-fmt=json] [--kernel-config=FILE]
                          [--n-mads=5] [--win-size=auto] <bed2d> <contact_map> <output>
     chromosight test
 
@@ -186,9 +186,7 @@ def _override_kernel_config(param_name, param_value, param_type, config):
         try:
             config[param_name] = param_type(param_value)
         except ValueError:
-            raise ValueError(
-                f'Error: {param_name} must be a {param_type} or "auto"'
-            )
+            raise ValueError(f'Error: {param_name} must be a {param_type} or "auto"')
 
     return config
 
@@ -201,6 +199,7 @@ def cmd_quantify(arguments):
     pattern = arguments["--pattern"]
     inter = arguments["--inter"]
     win_size = arguments["--win-size"]
+    kernel_config_path = arguments["--kernel-config"]
     if win_size != "auto":
         win_size = int(win_size)
     subsample = arguments["--subsample"]
@@ -215,8 +214,15 @@ def cmd_quantify(arguments):
             "Warning: The bed2d file contains interchromosomal patterns. "
             "These patterns will not be scanned unless --inter is used.\n"
         )
-    # Parse kernel config
-    cfg = cio.load_kernel_config(pattern, False)
+    if kernel_config_path is not None:
+        custom = True
+        # Loading input path as config
+        config_path = kernel_config_path
+    else:
+        custom = False
+        # Will use a preset config file matching pattern name
+        config_path = pattern
+    cfg = cio.load_kernel_config(config_path, custom)
     # Instantiate and preprocess contact map
     hic_genome = HicGenome(mat_path, inter=inter, kernel_config=cfg)
     # enforce full scanning distance in kernel config
@@ -277,9 +283,7 @@ def cmd_quantify(arguments):
                     "genomic coordinates of the Hi-C matrix will be ignored.\n"
                 )
             # Convert bins from whole genome matrix to sub matrix
-            sub_pat = hic_genome.get_sub_mat_pattern(
-                mat.chr1, mat.chr2, sub_pat
-            )
+            sub_pat = hic_genome.get_sub_mat_pattern(mat.chr1, mat.chr2, sub_pat)
             m = mat.contact_map.matrix.tocsr()
             # Iterate over patterns from the 2D BED file
             for i, x, y in zip(sub_pat_idx, sub_pat.bin1, sub_pat.bin2):
@@ -296,9 +300,7 @@ def cmd_quantify(arguments):
                     # but only keep the best
                     win = m[x - kh : x + kh + 1, y - kw : y + kw + 1].toarray()
                     try:
-                        score = ss.pearsonr(
-                            win.flatten(), kernel_matrix.flatten()
-                        )[0]
+                        score = ss.pearsonr(win.flatten(), kernel_matrix.flatten())[0]
                     # In case of NaNs introduced by division by 0 during detrend
                     except ValueError:
                         score = 0
@@ -355,9 +357,7 @@ def cmd_generate_config(arguments):
         hic_genome.normalize(n_mads=n_mads)
         # enforce full scanning distance in kernel config
 
-        hic_genome.max_dist = (
-            hic_genome.matrix.shape[0] * hic_genome.resolution
-        )
+        hic_genome.max_dist = hic_genome.matrix.shape[0] * hic_genome.resolution
         # Process each sub-matrix individually (detrend diag for intra)
         hic_genome.make_sub_matrices()
         processed_mat = hic_genome.gather_sub_matrices().tocsr()
@@ -366,9 +366,7 @@ def cmd_generate_config(arguments):
         pileup = ndi.gaussian_filter(cid.pileup_patterns(windows), 1)
         cfg["kernels"] = [pileup.tolist()]
         # Show the newly generate kernel to the user, use zscore to highlight contrast
-        hm = plt.imshow(
-            np.log(pileup), vmax=np.percentile(pileup, 99), cmap="afmhot_r"
-        )
+        hm = plt.imshow(np.log(pileup), vmax=np.percentile(pileup, 99), cmap="afmhot_r")
         cbar = plt.colorbar(hm)
         cbar.set_label("Log10 Hi-C contacts")
         plt.title("Manually generated kernel")
@@ -469,11 +467,7 @@ def cmd_detect(arguments):
             "WARNING: Detection on interchromosomal matrices is expensive in RAM\n"
         )
     hic_genome = HicGenome(
-        mat_path,
-        inter=interchrom,
-        kernel_config=cfg,
-        dump=dump,
-        smooth=smooth_trend,
+        mat_path, inter=interchrom, kernel_config=cfg, dump=dump, smooth=smooth_trend
     )
     ### 1: Process input signal
     # Make necessary kernel adjustments
@@ -534,9 +528,7 @@ def cmd_detect(arguments):
     for kernel_id, kernel_matrix in enumerate(cfg["kernels"]):
         # Adjust kernel iteratively
         for i in range(cfg["max_iterations"]):
-            cio.progress(
-                run_id, total_runs, f"Kernel: {kernel_id}, Iteration: {i}\n"
-            )
+            cio.progress(run_id, total_runs, f"Kernel: {kernel_id}, Iteration: {i}\n")
 
             # Apply detection procedure to all sub matrices in parallel
             sub_mat_data = zip(
@@ -555,13 +547,10 @@ def cmd_detect(arguments):
                 chr2 = hic_genome.sub_mats.chr2[i]
                 cio.progress(i, n_sub_mats, f"{chr1}-{chr2}")
                 sub_mat_results.append(result)
-
-            # sub_mat_results = list(map(_detect_sub_mat, sub_mat_data))
+            # sub_mat_results = map(_detect_sub_mat, sub_mat_data)
             # Convert coordinates from chromosome to whole genome bins
             kernel_coords = [
-                hic_genome.get_full_mat_pattern(
-                    d["chr1"], d["chr2"], d["coords"]
-                )
+                hic_genome.get_full_mat_pattern(d["chr1"], d["chr2"], d["coords"])
                 for d in sub_mat_results
                 if d["coords"] is not None
             ]
@@ -570,11 +559,7 @@ def cmd_detect(arguments):
             try:
                 # Extract surrounding windows for each sub_matrix
                 kernel_windows = np.concatenate(
-                    [
-                        w["windows"]
-                        for w in sub_mat_results
-                        if w["windows"] is not None
-                    ],
+                    [w["windows"] for w in sub_mat_results if w["windows"] is not None],
                     axis=0,
                 )
                 all_pattern_coords.append(
@@ -600,9 +585,7 @@ def cmd_detect(arguments):
         sys.exit(0)
 
     # Combine patterns of all kernel matrices into a single array
-    all_pattern_coords = pd.concat(all_pattern_coords, axis=0).reset_index(
-        drop=True
-    )
+    all_pattern_coords = pd.concat(all_pattern_coords, axis=0).reset_index(drop=True)
     # Combine all windows from different kernels into a single pile of windows
     all_pattern_windows = np.concatenate(all_pattern_windows, axis=0)
 
@@ -621,13 +604,9 @@ def cmd_detect(arguments):
     all_pattern_windows = all_pattern_windows[distinct_patterns, :, :]
 
     # Get from bins into basepair coordinates
-    coords_1 = hic_genome.bins_to_coords(all_pattern_coords.bin1).reset_index(
-        drop=True
-    )
+    coords_1 = hic_genome.bins_to_coords(all_pattern_coords.bin1).reset_index(drop=True)
     coords_1.columns = [str(col) + "1" for col in coords_1.columns]
-    coords_2 = hic_genome.bins_to_coords(all_pattern_coords.bin2).reset_index(
-        drop=True
-    )
+    coords_2 = hic_genome.bins_to_coords(all_pattern_coords.bin2).reset_index(drop=True)
     coords_2.columns = [str(col) + "2" for col in coords_2.columns]
 
     all_pattern_coords = pd.concat(
@@ -635,11 +614,8 @@ def cmd_detect(arguments):
     )
 
     # Filter patterns closer than minimum distance from the diagonal if any
-    min_dist_drop_mask = (
-        all_pattern_coords.chrom1 == all_pattern_coords.chrom2
-    ) & (
-        np.abs(all_pattern_coords.start2 - all_pattern_coords.start1)
-        < cfg["min_dist"]
+    min_dist_drop_mask = (all_pattern_coords.chrom1 == all_pattern_coords.chrom2) & (
+        np.abs(all_pattern_coords.start2 - all_pattern_coords.start1) < cfg["min_dist"]
     )
     # Reorder columns at the same time
     all_pattern_coords = all_pattern_coords.loc[
@@ -665,9 +641,7 @@ def cmd_detect(arguments):
     # Save patterns and their coordinates in a tsv file
     cio.write_patterns(all_pattern_coords, cfg["name"] + "_out", output)
     # Save windows as an array in an npy file
-    cio.save_windows(
-        all_pattern_windows, cfg["name"] + "_out", output, format=win_fmt
-    )
+    cio.save_windows(all_pattern_windows, cfg["name"] + "_out", output, format=win_fmt)
 
     # Generate pileup visualisations if requested
     if plotting_enabled:
