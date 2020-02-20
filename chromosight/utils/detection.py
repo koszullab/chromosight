@@ -739,7 +739,6 @@ def _xcorr2_dense(signal, kernel, threshold=1e-4):
     out[out < threshold] = 0
     return out
 
-
 def _corrcoef2d_sparse(
     signal,
     kernel,
@@ -805,9 +804,17 @@ def _corrcoef2d_sparse(
         # Same for the horizontal margin
         tmp = sp.csr_matrix((ms + 2 * (mk - 1), nk - 1))
         signal = sp.hstack([tmp, signal, tmp], format=signal.format)
+        ms, ns = signal.shape
         # If a missing mask was specified, use it
         if missing_mask is not None:
-            exterior_frame[mk - 1 : -mk + 1, nk - 1 : -nk + 1] = missing_mask
+            # Resize mask: increment rows and cols by margin and set shape == frame 
+            # matrix, effectively adding margins.
+            missing_mask = missing_mask.tocoo()
+            rows, cols = missing_mask.row + mk -1, missing_mask.col + nk -1
+            missing_mask = sp.coo_matrix(
+                (missing_mask.data, (rows, cols)), shape=(ms, ns), dtype=bool
+            )
+            exterior_frame += missing_mask
         missing_mask = exterior_frame.tocsr()
         missing_mask.eliminate_zeros()
         del exterior_frame
@@ -855,65 +862,70 @@ def _corrcoef2d_sparse(
             get_kermat = lambda k: sp.coo_matrix(
                 _xcorr2_sparse(missing_mask, k)
             )
-            # Compute convolution of kernel with missing mask to get overlap
+            # Compute convolution of uniform kernel with missing mask to get overlap
             # information into pearson later
-            ker_coo = get_kermat(kernel)
             ker1_coo = get_kermat(kernel1)
-            ker2_coo = get_kermat(kernel ** 2)
             # Basically, true if there is a margin
             if len(ker1_coo.data) > 0:
                 # TODO: handle cases where kernel_size_wm = 0 !!!
                 # Compute pearson terms with margin taken into account
                 kernel_size_wm = kernel_size - ker1_coo.data
+                ker1_coo_row, ker1_coo_col = ker1_coo.row, ker1_coo.col
+                del ker1_coo  # Spare memory, we only need coords
+                ker_coo = get_kermat(kernel)
                 # kernel size (w)ith (m)issing data
                 kernel_mean_wm = (
                     kernel_sum
                     - np.array(
-                        sp.csr_matrix(ker_coo)[ker1_coo.row, ker1_coo.col]
+                        sp.csr_matrix(ker_coo)[ker1_coo_row, ker1_coo_col]
                     )
                 ) / kernel_size_wm
+                del ker_coo
+                ker2_coo = get_kermat(kernel ** 2)
                 kernel2_mean_wm = (
                     kernel2_sum
                     - np.array(
-                        sp.csr_matrix(ker2_coo)[ker1_coo.row, ker1_coo.col]
+                        sp.csr_matrix(ker2_coo)[ker1_coo_row, ker1_coo_col]
                     )
                 ) / kernel_size_wm
+                del ker2_coo
             else:
                 kernel_size_wm = kernel_size
                 kernel_mean_wm = kernel_mean
                 kernel2_mean_wm = kernel2_mean
 
+
             # Compute signal mean by convoluting uniform kernel and dividing by mean
-            signal_mean = (xcorr2(signal, kernel1) / kernel_size).tocsr()
+            signal_mean = xcorr2(signal, kernel1 / kernel_size).tocsr()
             # Multiply each pixel in mean signal by the proportion of kernel
             # that's not in a margin
-            signal_mean[ker1_coo.row, ker1_coo.col] = np.array(
-                signal_mean[ker1_coo.row, ker1_coo.col]
+            signal_mean[ker1_coo_row, ker1_coo_col] = np.array(
+                signal_mean[ker1_coo_row, ker1_coo_col]
             ) * (kernel_size / kernel_size_wm)
 
             # Same for the denominator
             denom = (xcorr2(signal.power(2), kernel1) / kernel_size).tocsr()
-            denom[ker1_coo.row, ker1_coo.col] = np.array(
-                denom[ker1_coo.row, ker1_coo.col]
+            denom[ker1_coo_row, ker1_coo_col] = np.array(
+                denom[ker1_coo_row, ker1_coo_col]
             ) * (kernel_size / kernel_size_wm)
             denom = (denom - signal_mean.power(2)) * (
                 kernel2_mean - kernel_mean ** 2
             )
-            denom[ker1_coo.row, ker1_coo.col] = (
-                np.array(denom[ker1_coo.row, ker1_coo.col])
+            denom[ker1_coo_row, ker1_coo_col] = (
+                np.array(denom[ker1_coo_row, ker1_coo_col])
                 / (kernel2_mean - kernel_mean ** 2)
             ) * (kernel2_mean_wm - kernel_mean_wm ** 2)
             denom = denom.sqrt()
 
             conv = signal_mean * kernel_mean
-            conv[ker1_coo.row, ker1_coo.col] = (
-                np.array(conv[ker1_coo.row, ker1_coo.col])
+            conv[ker1_coo_row, ker1_coo_col] = (
+                np.array(conv[ker1_coo_row, ker1_coo_col])
                 * (kernel_mean_wm / kernel_mean)
                 * (kernel_size_wm / kernel_size)
             )
             conv = xcorr2(signal, kernel) / kernel_size - conv
-            conv[ker1_coo.row, ker1_coo.col] = np.array(
-                conv[ker1_coo.row, ker1_coo.col]
+            conv[ker1_coo_row, ker1_coo_col] = np.array(
+                conv[ker1_coo_row, ker1_coo_col]
             ) * (kernel_size / kernel_size_wm)
             conv.eliminate_zeros()
             denom.eliminate_zeros()
@@ -932,7 +944,8 @@ def _corrcoef2d_sparse(
     conv = conv.tocsr()
     if mode == "full":
         conv = conv.tocsr()[mk - 1 : -mk + 1, nk - 1 : -nk + 1]
-
+    import matplotlib.pyplot as plt
+    plt.imshow(conv.toarray()); plt.show()
     return conv
 
 

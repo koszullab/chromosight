@@ -522,11 +522,11 @@ def make_exterior_frame(signal_shape, kernel_shape, sym_upper=False):
     # Left and right
     exterior_frame[:, : nk - 1] = 1
     exterior_frame[:, ns + (nk - 1) :] = 1
-
-    for d in range(-mk // 2):
-        exterior_frame.setdiag(1, k=d)
+    if sym_upper:
+        # Add margin below diagonal
+        for d in range(1, mk // 2):
+            exterior_frame.setdiag(1, k=-d)
     return exterior_frame
-
 
 def missing_bins_mask(shape, valid_rows, valid_cols):
     """
