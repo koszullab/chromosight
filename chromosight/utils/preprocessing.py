@@ -492,41 +492,85 @@ def sparse_division(m1, m2):
     return div
 
 
-def make_exterior_frame(signal_shape, kernel_shape, sym_upper=False):
+def make_exterior_frame(mask, kernel_shape, sym_upper=False, max_dist=None):
     """
-    Generate an empty matrix with a padding of size 1/2 kernel. This matrix
-    Is used to denote missing values as 1 and good values as 0.
+    Adds a frame around input mask, given a kernel. The goal of this
+    frame is define margins around the matrix where the kernel will not perform
+    convolution (denoted by 1). If the matrix is upper symmetric, a margin of half
+    the kernel's width is added below the diagonal and a maximum distance from
+    the diagonal above which margins need not be drawn can be considered.
+    Otherwise Margins are simply added on all 4 sides of the matrix.
+
+    signal    kernel   _________
+    ______   ____      |#######|
+    |     |  |   | ==> |#     #|
+    |     |  |___|     |#     #|
+    |     |            |#     #|
+    |_____|            |#     #|
+                       |#######|
+                       --------
 
     Parameters
     ----------
     signal_shape : tuple of ints
-        The number of rows and columns in the input signal
+        The the input signal on which to add the frame.
     kernels_shape : tuple of ints
         The number of rows and kernel in the input kernel. Margins will be half
         these values.
     sym_upper : bool
         Whether the signal is a symmetric upper triangle matrix. If so, values
         on a margin below the diagonal will be masked.
+    max_dist : int or None
+        Number of diagonals to keep
 
     Returns
     -------
     exterior_frame : scipy.sparse.lil_matrix
     """
-    ms, ns = signal_shape
+    ms, ns = mask.shape
     mk, nk = kernel_shape
-    # Generate exterior frame to act as margin when convolving borders
-    exterior_frame = sp.lil_matrix((ms + 2 * (mk - 1), ns + 2 * (nk - 1)), dtype=bool)
-    # Up and down
-    exterior_frame[: mk - 1, :] = 1
-    exterior_frame[ms + (mk - 1) :, :] = 1
+    if sym_upper and (max_dist is not None):
+        # Remove diagonals further than scan distance in the input mask
+        mask = diag_trim(mask.todia(), max_dist + max(nk, mk)).tocsr()
+        max_m = max_dist + mk
+        max_n = max_dist + nk
+    else:
+        max_m, max_n = ms, ns
+    # Up and down margins initialized with zeros and filled as needed
+    margin_1 = sp.csr_matrix((mk - 1, ns), dtype=bool)
+    margin_2 = sp.csr_matrix((mk - 1, ns), dtype=bool)
+    if sym_upper and (max_dist is not None):
+        # Margin 1 (top) is in upper triangle -> fill missing up to scan dist
+        margin_1[:, :max_n] = 1
+    else:
+        margin_1[:, :] = 1
+        margin_2[:, :] = 1
+    mask = sp.vstack([margin_1, mask, margin_2], format="csr")
+
     # Left and right
-    exterior_frame[:, : nk - 1] = 1
-    exterior_frame[:, ns + (nk - 1) :] = 1
+    margin_1 = sp.csr_matrix((ms + 2 * (mk - 1), nk - 1))
+    margin_2 = sp.csr_matrix((ms + 2 * (mk - 1), nk - 1))
+
+    if sym_upper and (max_dist is not None):
+        # Margin 2 (right) is in upper triangle-> fill missing up to scan dist
+        margin_2[-(max_m + 1) :, :] = 1
+        # Fill only the start of left margin for the top-left corner
+        margin_1[: mk - 1, :] = 1
+    else:
+        margin_1[:, :] = 1
+        margin_2[:, :] = 1
+    mask = sp.hstack([margin_1, mask, margin_2], format="csr")
+
     if sym_upper:
+        # LIL format is much faster when changing sparsity
+        mask = mask.tolil()
         # Add margin below diagonal
-        for d in range(1, mk // 2):
-            exterior_frame.setdiag(1, k=-d)
-    return exterior_frame
+        for d in range(1, max(mk, nk) // 2):
+            mask.setdiag(1, k=-d)
+        mask = mask.tocsr()
+
+    return mask
+
 
 def missing_bins_mask(shape, valid_rows, valid_cols):
     """
@@ -561,6 +605,57 @@ def missing_bins_mask(shape, valid_rows, valid_cols):
     mask[:, missing_cols] = 1
 
     return mask
+
+
+def zero_pad_sparse(mat, margin_h, margin_v, fmt="coo"):
+    """
+    Adds margin of zeros around an input sparse matrix.
+
+    Parameters
+    ----------
+    mat : scipy.sparse.coo_matrix
+        The matrix to be padded.
+    margin_h : int
+        The width of the horizontal margin to add on the left and right of the
+        matrix.
+    margin_v : int
+        The width of the vertical margin to add on the top and bottom of the
+        matrix.
+    fmt : string
+        The desired scipy sparse format of the output matrix
+    
+    Returns
+    -------
+    scipy.sparse.coo_matrix :
+        The padded matrix of dimensions (m + 2 * margin_h, n + 2 * margin_v).
+    
+    Examples
+    --------
+    >>> m = sp.coo_matrix(np.array([[1, 2], [10, 20]]))
+    >>> zero_pad_sparse(m, 1, 2).toarray()
+    array([[ 0,  0,  0,  0,  0,  0],
+           [ 0,  0,  1,  2,  0,  0],
+           [ 0,  0, 10, 20,  0,  0],
+           [ 0,  0,  0,  0,  0,  0]])
+    """
+
+    matfun = {
+        "coo": sp.coo_matrix,
+        "csr": sp.csr_matrix,
+        "lil": sp.lil_matrix,
+        "csc": sp.csc_matrix,
+    }
+    sm, sn = mat.shape
+    padded_m = sm + 2 * margin_h
+    padded_n = sn + 2 * margin_v
+
+    rows = mat.row + margin_h
+    cols = mat.col + margin_v
+    padded = matfun[fmt](
+        (mat.data, (rows, cols)), shape=(padded_m, padded_n), dtype=mat.dtype
+    )
+
+    return padded
 
 
 def crop_kernel(kernel, target_size):
