@@ -632,7 +632,7 @@ def zero_pad_sparse(mat, margin_h, margin_v, fmt="coo"):
     Examples
     --------
     >>> m = sp.coo_matrix(np.array([[1, 2], [10, 20]]))
-    >>> zero_pad_sparse(m, 1, 2).toarray()
+    >>> zero_pad_sparse(m, 2, 1).toarray()
     array([[ 0,  0,  0,  0,  0,  0],
            [ 0,  0,  1,  2,  0,  0],
            [ 0,  0, 10, 20,  0,  0],
@@ -646,11 +646,11 @@ def zero_pad_sparse(mat, margin_h, margin_v, fmt="coo"):
         "csc": sp.csc_matrix,
     }
     sm, sn = mat.shape
-    padded_m = sm + 2 * margin_h
-    padded_n = sn + 2 * margin_v
+    padded_m = sm + 2 * margin_v
+    padded_n = sn + 2 * margin_h
 
-    rows = mat.row + margin_h
-    cols = mat.col + margin_v
+    rows = mat.row + margin_v
+    cols = mat.col + margin_h
     padded = matfun[fmt](
         (mat.data, (rows, cols)), shape=(padded_m, padded_n), dtype=mat.dtype
     )

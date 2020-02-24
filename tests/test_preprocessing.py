@@ -153,12 +153,29 @@ def test_crop_kernel():
         if exp_dim > m:
             exp_dim = m
         obs_kernel = preproc.crop_kernel(
-            point_kernel,
-            target_size=(targ, targ)
+            point_kernel, target_size=(targ, targ)
         )
         obs_dim = obs_kernel.shape[0]
         assert obs_dim == exp_dim
 
+
+def test_zero_pad_sparse():
+    """
+    Test if zero padding yields correct dimensions and centered input.
+    """
+    mat = sp.coo_matrix(np.ones((10, 10)))
+    for hpad in range(4):
+        for vpad in range(4):
+            padded = preproc.zero_pad_sparse(mat, margin_h=hpad, margin_v=vpad)
+            assert padded.shape[0] == mat.shape[0] + 2 * vpad
+            assert padded.shape[1] == mat.shape[1] + 2 * hpad
+            assert np.all(
+                mat.toarray()
+                == padded.toarray()[
+                    vpad : padded.shape[0] - vpad,
+                    hpad : padded.shape[1] - hpad,
+                ]
+            )
 
 
 def test_distance_law():
