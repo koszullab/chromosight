@@ -197,7 +197,7 @@ def pattern_detector(
     Returns
     -------
     filtered_chrom_patterns : numpy.array
-        A 2D array of detected patterns with 3 columns: x, y, score.
+        A 2D array of detected patterns with 3 columns: bin1, bin2, score.
     chrom_pattern_windows : numpy array
         A 3D array containing the pile of windows around detected patterns.
     """
@@ -273,6 +273,10 @@ def pattern_detector(
         kernel_matrix,
         kernel_config["max_perc_undetected"],
     )
+    
+    if full:
+        filtered_chrom_patterns.bin1 -= kh
+        filtered_chrom_patterns.bin2 -= kw
 
     return filtered_chrom_patterns, chrom_pattern_windows
 
