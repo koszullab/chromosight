@@ -13,7 +13,7 @@ DUMPDIR = tempfile.TemporaryDirectory()
 # Select a bunch of arguments that are relevant to test and generate
 # all possible combinations. Put them in a datastructure that can be digested
 # by docopt
-detect_args = ["-I", "-n", "-r", f"-d {DUMPDIR.name}"]
+detect_args = ["-I", "-n", f"-d {DUMPDIR.name}"]
 detect_combos = []
 for i in range(0, len(detect_args) + 1):
     args_combos = list(it.combinations(detect_args, i))

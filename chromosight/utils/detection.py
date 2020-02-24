@@ -273,7 +273,7 @@ def pattern_detector(
         kernel_matrix,
         kernel_config["max_perc_undetected"],
     )
-    
+
     if full:
         filtered_chrom_patterns.bin1 -= kh
         filtered_chrom_patterns.bin2 -= kw
@@ -799,7 +799,7 @@ def _corrcoef2d_sparse(
         matrices.
     scaling : str
         Which metric to use when computing correlation coefficients. Either 'pearson'
-        for Pearson correlation, or 'cross' for cross correlation.
+        for Pearson correlation or None for basic convolution.
     missing_mask : scipy.sparse.coo_matrix of ints
         Matrix defining which pixels are missing (1) or not (0). Only used with
         mode='full'.
@@ -848,16 +848,6 @@ def _corrcoef2d_sparse(
     # Plain old convolution
     if scaling is None:
         conv = xcorr2(signal, kernel)
-
-    # Cross-correlation
-    elif scaling == "cross":
-        if missing_mask is None:
-            denom = float(np.sum(kernel ** 2))
-        else:
-            denom = np.sum(kernel ** 2) - xcorr2(missing_mask, kernel ** 2)
-        denom *= xcorr2(signal.power(2), kernel1)
-        denom = denom.sqrt()
-        conv = preproc.sparse_division(xcorr2(signal, kernel), denom)
 
     elif scaling == "pearson":
         if missing_mask is None:
@@ -950,7 +940,8 @@ def _corrcoef2d_sparse(
             conv.eliminate_zeros()
             denom.eliminate_zeros()
             conv = preproc.sparse_division(conv.tocoo(), denom.tocoo())
-
+    else:
+        raise ValueError("scaling must be either None or pearson.")
     if (max_dist is not None) and sym_upper:
         # Trim diagonals further than max_scan_distance
         conv = preproc.diag_trim(conv.todia(), max_dist)
@@ -995,7 +986,7 @@ def _corrcoef2d_dense(
         matrices.
     scaling : str
         Which metric to use when computing correlation coefficients. Either 'pearson'
-        for Pearson correlation, or 'cross' for cross correlation.
+        for Pearson correlation or None for basic convolution.
 
     Returns
     -------
@@ -1018,17 +1009,11 @@ def _corrcoef2d_dense(
         signal = signal + np.transpose(signal) - np.diag(np.diag(signal))
 
     kernel_size = kernel.shape[0] * kernel.shape[1]
-
-    if scaling == "cross":
-        # Compute convolution product
+    kernel1 = np.ones(kernel.shape)
+    # Plain old convolution
+    if scaling is None:
         conv = xcorr2(signal, kernel)
-        # Generate constant kernel
-        kernel1 = np.ones(kernel.shape)
-        # Convolute squared signal with constant kernel
-        signal2 = xcorr2(signal ** 2, kernel1)
-        kernel2 = float(np.sum(kernel ** 2))
-        denom = signal2 * kernel2
-        denom = np.sqrt(denom)
+    # Pearson correlation
     elif scaling == "pearson":
         mean_kernel = float(kernel.mean())
         std_kernel = float(kernel.std())
@@ -1048,7 +1033,9 @@ def _corrcoef2d_dense(
         conv = xcorr2(signal, kernel / kernel_size) - mean_signal * mean_kernel
         denom = std_signal * std_kernel
 
-    conv /= denom
+        conv /= denom
+    else:
+        raise ValueError("scaling must be either None or pearson.")
 
     if (max_dist is not None) and sym_upper:
         # Trim diagonals further than max_scan_distance
