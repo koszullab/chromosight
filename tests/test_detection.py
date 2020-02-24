@@ -269,7 +269,7 @@ def test_xcorr2(signal):
 @params(*gauss1_mats)
 def test_corrcoef2d(signal):
     """Check if Pearson and cross-product correlations yield appropriate values"""
-    for scaling in ["pearson", "cross"]:
+    for scaling in ["pearson"]:
         corr = cud.corrcoef2d(
             signal,
             gauss_kernel,
@@ -285,7 +285,7 @@ def test_corrcoef2d(signal):
 @params(*gauss1_mats)
 def test_corrcoef2d_dense_sparse(signal):
     """Check if corrcoef2d yields identical values for dense and sparse versions"""
-    for scaling in ["pearson"]:
+    for scaling in ["pearson", None]:
         corr_d = cud.corrcoef2d(
             signal.todense(),
             gauss_kernel,
