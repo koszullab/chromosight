@@ -926,6 +926,8 @@ def _corrcoef2d_sparse(
                 / (kernel2_mean - kernel_mean ** 2)
             ) * (kernel2_mean_wm - kernel_mean_wm ** 2)
             denom = denom.sqrt()
+            # Dirty trick to improve numeric stability
+            denom[abs(denom)<1e-10] = 0.0
 
             conv = signal_mean * kernel_mean
             conv[ker1_coo_row, ker1_coo_col] = (
