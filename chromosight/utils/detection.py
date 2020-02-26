@@ -878,6 +878,10 @@ def _corrcoef2d_sparse(
             # Compute convolution of uniform kernel with missing mask to get overlap
             # information into pearson later
             ker1_coo = _xcorr2_sparse(missing_mask, kernel1).tocoo()
+            # Make sure there is no signal in masked regions
+            missing_mask = missing_mask.tocoo()
+            signal[missing_mask.row, missing_mask.col] = 0.0
+            missing_mask = missing_mask.tocsr()
             # Basically, true if there is a margin
             if len(ker1_coo.data) > 0:
                 # TODO: handle cases where kernel_size_wm = 0 !!!
@@ -926,9 +930,16 @@ def _corrcoef2d_sparse(
                 / (kernel2_mean - kernel_mean ** 2)
             ) * (kernel2_mean_wm - kernel_mean_wm ** 2)
             denom = denom.sqrt()
-            # Dirty trick to improve numeric stability
-            denom[abs(denom)<1e-10] = 0.0
-
+            # 2 tricks to improve numeric stability:
+            # Remove very low correlations in the denominators
+            denom[abs(denom) < 1e-10] = 0.0
+            # Exclude correlation coefficients computed on too few kernel values
+            # we select 25% of kernel, as in 50% width and 50% height
+            unstable_coeffs = kernel_size_wm < kernel_size / 4
+            unstable_rows = ker1_coo_row[unstable_coeffs]
+            unstable_cols = ker1_coo_col[unstable_coeffs]
+            denom[unstable_rows, unstable_cols] = 0
+            denom.eliminate_zeros()
             conv = signal_mean * kernel_mean
             conv[ker1_coo_row, ker1_coo_col] = (
                 np.array(conv[ker1_coo_row, ker1_coo_col])
@@ -957,6 +968,8 @@ def _corrcoef2d_sparse(
     conv = conv.tocsr()
     if full:
         conv = conv.tocsr()[mk - 1 : -mk + 1, nk - 1 : -nk + 1]
+    import matplotlib.pyplot as plt
+
     return conv
 
 

@@ -512,8 +512,8 @@ def make_exterior_frame(mask, kernel_shape, sym_upper=False, max_dist=None):
 
     Parameters
     ----------
-    signal_shape : tuple of ints
-        The the input signal on which to add the frame.
+    mask : scipy.sparse.csr_matrix of bool
+        The mask around which to add margins.
     kernels_shape : tuple of ints
         The number of rows and kernel in the input kernel. Margins will be half
         these values.
@@ -525,8 +525,11 @@ def make_exterior_frame(mask, kernel_shape, sym_upper=False, max_dist=None):
 
     Returns
     -------
-    exterior_frame : scipy.sparse.lil_matrix
+    exterior_frame : scipy.sparse.csr_matrix of bool
+        The input mask with 
     """
+    if mask.dtype != bool:
+        raise ValueError('Mask must contain boolean values')
     ms, ns = mask.shape
     mk, nk = kernel_shape
     if sym_upper and (max_dist is not None):
@@ -548,8 +551,8 @@ def make_exterior_frame(mask, kernel_shape, sym_upper=False, max_dist=None):
     mask = sp.vstack([margin_1, mask, margin_2], format="csr")
 
     # Left and right
-    margin_1 = sp.csr_matrix((ms + 2 * (mk - 1), nk - 1))
-    margin_2 = sp.csr_matrix((ms + 2 * (mk - 1), nk - 1))
+    margin_1 = sp.csr_matrix((ms + 2 * (mk - 1), nk - 1), dtype=bool)
+    margin_2 = sp.csr_matrix((ms + 2 * (mk - 1), nk - 1), dtype=bool)
 
     if sym_upper and (max_dist is not None):
         # Margin 2 (right) is in upper triangle-> fill missing up to scan dist
@@ -568,7 +571,6 @@ def make_exterior_frame(mask, kernel_shape, sym_upper=False, max_dist=None):
         for d in range(1, max(mk, nk) // 2):
             mask.setdiag(1, k=-d)
         mask = mask.tocsr()
-
     return mask
 
 
@@ -589,7 +591,9 @@ def missing_bins_mask(shape, valid_rows, valid_cols):
     
     Returns
     -------
-    scipy.sparse.coo_matrix
+    scipy.sparse.coo_matrix of bool
+        The mask containing False values where pixels are valid and True valid
+        where pixels are missing
     """
 
     missing_rows = np.ones(shape[0])
