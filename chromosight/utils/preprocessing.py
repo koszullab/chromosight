@@ -568,8 +568,10 @@ def make_exterior_frame(mask, kernel_shape, sym_upper=False, max_dist=None):
         # LIL format is much faster when changing sparsity
         mask = mask.tolil()
         # Add margin below diagonal
-        for d in range(1, max(mk, nk) // 2):
-            mask.setdiag(1, k=-d)
+        big_k = max(nk, mk)
+        dia_margin = np.ones(big_k // 2)
+        dia_offsets = np.arange(0, -big_k // 2 + 1, -1)
+        mask += sp.diags(dia_margin, dia_offsets, shape=mask.shape, format="lil", dtype=bool)
         mask = mask.tocsr()
     return mask
 
