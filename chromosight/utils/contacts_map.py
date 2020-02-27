@@ -317,8 +317,8 @@ class HicGenome:
         """Gathers all processed sub_matrices into a whole genome matrix """
         gathered = sp.csr_matrix(self.matrix.shape)
         # Define shortcut to extract bins for each chromosome
-        c = self.chroms.set_index('name')
-        chr_extent = lambda n: c.loc[n, ['start_bin', 'end_bin']].values
+        c = self.chroms.set_index("name")
+        chr_extent = lambda n: c.loc[n, ["start_bin", "end_bin"]].values
         # Fill empty whole genome matrix with processed submatrices
         for i1, r1 in self.sub_mats.iterrows():
             s1, e1 = chr_extent(r1.chr1)
@@ -446,7 +446,7 @@ class HicGenome:
                 coords.reset_index().rename(columns={"index": "coord_idx"}),
                 left_on=["chrom", "start"],
                 right_on=["chrom", "pos"],
-                how='right',
+                how="right",
             )
             .set_index("bin_idx")
             .sort_values("coord_idx")
@@ -544,8 +544,8 @@ class ContactMap:
         )
         self.matrix = self.matrix.tocoo()
         # Fill diagonals of the lower triangle that might overlap the kernel
-        for i in range(1, min(self.matrix.shape[0], self.largest_kernel)):
-            self.matrix.setdiag(1, -i)
+        # for i in range(1, min(self.matrix.shape[0], self.largest_kernel)):
+        #    self.matrix.setdiag(1, -i)
 
     @property
     def keep_distance(self):

@@ -7,7 +7,7 @@ maps with pattern matching.
 
 Usage:
     chromosight detect  [--kernel-config=FILE] [--pattern=loops] [--precision=auto]
-                        [--iterations=auto] [--resize-kernel] [--win-fmt={json,npy}]
+                        [--iterations=auto] [--win-fmt={json,npy}] [--full]
                         [--subsample=no] [--inter] [--smooth-trend] [--n-mads=5]
                         [--min-dist=0] [--max-dist=auto] [--no-plotting]
                         [--min-separation=auto] [--threads=1] [--dump=DIR]
@@ -29,7 +29,7 @@ Usage:
         Given a list of pairs of positions and a contact map, computes the
         correlation coefficients between those positions and the kernel of the
         selected pattern.
-    test:                       
+    test:
         Download example data and run the program on it.
 
 Arguments for detect:
@@ -43,6 +43,11 @@ Arguments for detect:
                                 a compressed npz of a sparse matrix and can be
                                 loaded using scipy.sparse.load_npz. Disabled
                                 by default.
+    -f, --full                  Enable 'full' convolution mode: The whole matrix
+                                is scanned all the way to edges and missing bins
+                                are masked. This will allow to detect very close
+                                to the diagonal and close to repeated sequences
+                                at the cost of memory and compute time.
     -I, --inter                 Enable to consider interchromosomal contacts.
                                 Warning: Experimental feature with very high
                                 memory consumption is very high, only use with
@@ -75,8 +80,6 @@ Arguments for detect:
                                 probability in the contact map. A lesser value
                                 leads to potentially more detections, but more
                                 false positives. [default: auto]
-    -r, --resize-kernel         Experimental: Enable to resize kernel based on
-                                input resolution.
     -s, --subsample=INT         If greater than 1, subsample contacts from the 
                                 matrix to INT contacts. If between 0 and 1, subsample
                                 a proportion of contacts instead. This is useful
@@ -143,6 +146,7 @@ from chromosight.utils.preprocessing import resize_kernel, crop_kernel
 import scipy.stats as ss
 import scipy.ndimage as ndi
 import matplotlib.pyplot as plt
+
 
 URL_EXAMPLE_DATASET = (
     "https://raw.githubusercontent.com/koszullab/"
@@ -399,7 +403,7 @@ def _detect_sub_mat(data):
     kernel = data[2]
     dump = data[3]
     chrom_patterns, chrom_windows = cid.pattern_detector(
-        sub.contact_map, config, kernel, dump
+        sub.contact_map, config, kernel, dump, full=config["full"]
     )
     return {
         "coords": chrom_patterns,
@@ -413,6 +417,7 @@ def cmd_detect(arguments):
     # Parse command line arguments for detect
     kernel_config_path = arguments["--kernel-config"]
     dump = arguments["--dump"]
+    full = arguments["--full"]
     interchrom = arguments["--inter"]
     iterations = arguments["--iterations"]
     mat_path = arguments["<contact_map>"]
@@ -423,7 +428,6 @@ def cmd_detect(arguments):
     pattern = arguments["--pattern"]
     perc_undetected = arguments["--perc-undetected"]
     precision = arguments["--precision"]
-    resize = arguments["--resize-kernel"]
     threads = arguments["--threads"]
     output = arguments["<output>"]
     win_fmt = arguments["--win-fmt"]
@@ -484,39 +488,6 @@ def cmd_detect(arguments):
         smooth=smooth_trend,
     )
     ### 1: Process input signal
-    # Make necessary kernel adjustments
-    for i, mat in enumerate(cfg["kernels"]):
-        min_size, max_size = 7, 101
-        new_kernel = mat
-        # Adapt size of kernel matrices based on the signal resolution if requested
-        if resize:
-            new_kernel = resize_kernel(
-                mat,
-                kernel_res=cfg["resolution"],
-                signal_res=hic_genome.resolution,
-                min_size=min_size,
-                max_size=max_size,
-            )
-        # Crop the kernel if it is larger than min-dist and goes over diagonal
-        # Do not trim if patterns of interest are on the diagonal (e.g. borders, hairpins)
-        min_dist_diag = int(np.ceil(cfg["min_dist"] / hic_genome.resolution))
-        # Make sure kernel is not too small or too large
-        min_dist_diag = max(min_size, min_dist_diag)
-        min_dist_diag = min(max_size, min_dist_diag)
-
-        if min_dist_diag < max(mat.shape) and min_dist_diag > 0:
-            new_kernel = crop_kernel(
-                new_kernel, target_size=(min_dist_diag, min_dist_diag)
-            )
-            m, n = new_kernel.shape
-            sys.stderr.write(
-                "WARNING: --min-dist smaller than kernel size. Kernel has "
-                f"been cropped to {m}x{n} to avoid overlapping the diagonal. "
-                f"Increase --min-dist to {mat.shape[0] * hic_genome.resolution} "
-                "if you want to prevent cropping.\n"
-            )
-        cfg["kernels"][i] = new_kernel
-
     hic_genome.kernel_config = cfg
     # Subsample Hi-C contacts from the matrix, if requested
     # NOTE: Subsampling has to be done before normalisation
@@ -537,6 +508,8 @@ def cmd_detect(arguments):
     n_sub_mats = hic_genome.sub_mats.shape[0]
     # Loop over the different kernel matrices for input pattern
     run_id = 0
+    # Use cfg to inform jobs whether they should run full convolution
+    cfg["full"] = full
     total_runs = len(cfg["kernels"]) * cfg["max_iterations"]
     sys.stderr.write("Detecting patterns...\n")
     for kernel_id, kernel_matrix in enumerate(cfg["kernels"]):
@@ -556,14 +529,17 @@ def cmd_detect(arguments):
             # Run detection in parallel on different sub matrices, and show progress when
             # gathering results
             sub_mat_results = []
-            for i, result in enumerate(
+
+            for s, result in enumerate(
                 pool.imap_unordered(_detect_sub_mat, sub_mat_data, 1)
             ):
-                chr1 = hic_genome.sub_mats.chr1[i]
-                chr2 = hic_genome.sub_mats.chr2[i]
-                cio.progress(i, n_sub_mats, f"{chr1}-{chr2}")
+                chr1 = hic_genome.sub_mats.chr1[s]
+                chr2 = hic_genome.sub_mats.chr2[s]
+                cio.progress(s, n_sub_mats, f"{chr1}-{chr2}")
                 sub_mat_results.append(result)
-            # sub_mat_results = map(_detect_sub_mat, sub_mat_data)
+
+            # sub_mat_results = list(map(_detect_sub_mat, sub_mat_data))
+
             # Convert coordinates from chromosome to whole genome bins
             kernel_coords = [
                 hic_genome.get_full_mat_pattern(
@@ -601,7 +577,6 @@ def cmd_detect(arguments):
             kernel_matrix = cid.pileup_patterns(kernel_windows)
             run_id += 1
     cio.progress(run_id, total_runs, f"Kernel: {kernel_id}, Iteration: {i}\n")
-
     # If no pattern detected on any chromosome, with any kernel, exit gracefully
     if len(all_pattern_coords) == 0:
         sys.stderr.write("No pattern detected ! Exiting.\n")
@@ -705,9 +680,7 @@ def cmd_test(arguments):
 
 @contextmanager
 def capture_ouput(stderr_to=None):
-    """Capture the stderr of the test run. Inspired from
-    http://sametmax.com/capturer-laffichage-des-prints-dun-code-python/
-    """
+    """Capture the stderr of the test run. """
 
     try:
         stderr = sys.stderr

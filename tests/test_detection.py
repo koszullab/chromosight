@@ -269,7 +269,7 @@ def test_xcorr2(signal):
 @params(*gauss1_mats)
 def test_corrcoef2d(signal):
     """Check if Pearson and cross-product correlations yield appropriate values"""
-    for scaling in ["pearson", "cross"]:
+    for scaling in ["pearson"]:
         corr = cud.corrcoef2d(
             signal,
             gauss_kernel,
@@ -285,7 +285,7 @@ def test_corrcoef2d(signal):
 @params(*gauss1_mats)
 def test_corrcoef2d_dense_sparse(signal):
     """Check if corrcoef2d yields identical values for dense and sparse versions"""
-    for scaling in ["pearson", "cross"]:
+    for scaling in ["pearson", None]:
         corr_d = cud.corrcoef2d(
             signal.todense(),
             gauss_kernel,
@@ -308,7 +308,7 @@ def test_corrcoef2d_kernels(kernel_config):
     """Test corrfoef2d on all built-in patterns"""
     # Loop over the different kernel matrices for the current pattern
     for kernel in kernel_config["kernels"]:
-        for scaling in ["pearson", "cross"]:
+        for scaling in ["pearson", None]:
             km, kn = kernel.shape
             # Generate fake Hi-C matrix: empty with pattern centered at 60,80
             pattern_signal = np.zeros((100, 100), dtype=float)

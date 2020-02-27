@@ -463,6 +463,207 @@ def subsample_contacts(M, n_contacts):
     )
 
 
+def sparse_division(m1, m2):
+    """Divide nonzero values of one sparse matrix by corresponding values in
+    another sparse matrix.
+
+    Parameters
+    ----------
+    m1 : scipy.sparse.coo_matrix
+        Matrix whose values should be divided.
+    m2 : scipy.sparse.coo_matrix
+        Matrix whose values should be the denominator.
+    
+    Returns
+    -------
+    scipy.sparse.coo_matrix
+    """
+    # Get coords of non-zero (nz) values in the numerator
+    nz_vals = m1.nonzero()
+    div = m1.copy()
+    # Divide them by corresponding entries in the numerator
+    denom = m2.tocsr()
+    try:
+        div.data /= denom[nz_vals].A1
+    # Case there are no nonzero values in m2
+    except AttributeError:
+        pass
+
+    return div
+
+
+def make_exterior_frame(mask, kernel_shape, sym_upper=False, max_dist=None):
+    """
+    Adds a frame around input mask, given a kernel. The goal of this
+    frame is define margins around the matrix where the kernel will not perform
+    convolution (denoted by 1). If the matrix is upper symmetric, a margin of half
+    the kernel's width is added below the diagonal and a maximum distance from
+    the diagonal above which margins need not be drawn can be considered.
+    Otherwise Margins are simply added on all 4 sides of the matrix.
+
+    signal    kernel   _________
+    ______   ____      |#######|
+    |     |  |   | ==> |#     #|
+    |     |  |___|     |#     #|
+    |     |            |#     #|
+    |_____|            |#     #|
+                       |#######|
+                       --------
+
+    Parameters
+    ----------
+    mask : scipy.sparse.csr_matrix of bool
+        The mask around which to add margins.
+    kernels_shape : tuple of ints
+        The number of rows and kernel in the input kernel. Margins will be half
+        these values.
+    sym_upper : bool
+        Whether the signal is a symmetric upper triangle matrix. If so, values
+        on a margin below the diagonal will be masked.
+    max_dist : int or None
+        Number of diagonals to keep
+
+    Returns
+    -------
+    exterior_frame : scipy.sparse.csr_matrix of bool
+        The input mask with 
+    """
+    if mask.dtype != bool:
+        raise ValueError('Mask must contain boolean values')
+    ms, ns = mask.shape
+    mk, nk = kernel_shape
+    if sym_upper and (max_dist is not None):
+        # Remove diagonals further than scan distance in the input mask
+        mask = diag_trim(mask.todia(), max_dist + max(nk, mk)).tocsr()
+        max_m = max_dist + mk
+        max_n = max_dist + nk
+    else:
+        max_m, max_n = ms, ns
+    # Up and down margins initialized with zeros and filled as needed
+    margin_1 = sp.csr_matrix((mk - 1, ns), dtype=bool)
+    margin_2 = sp.csr_matrix((mk - 1, ns), dtype=bool)
+    if sym_upper and (max_dist is not None):
+        # Margin 1 (top) is in upper triangle -> fill missing up to scan dist
+        margin_1[:, :max_n] = 1
+    else:
+        margin_1[:, :] = 1
+        margin_2[:, :] = 1
+    mask = sp.vstack([margin_1, mask, margin_2], format="csr")
+
+    # Left and right
+    margin_1 = sp.csr_matrix((ms + 2 * (mk - 1), nk - 1), dtype=bool)
+    margin_2 = sp.csr_matrix((ms + 2 * (mk - 1), nk - 1), dtype=bool)
+
+    if sym_upper and (max_dist is not None):
+        # Margin 2 (right) is in upper triangle-> fill missing up to scan dist
+        margin_2[-(max_m + 1) :, :] = 1
+        # Fill only the start of left margin for the top-left corner
+        margin_1[: mk - 1, :] = 1
+    else:
+        margin_1[:, :] = 1
+        margin_2[:, :] = 1
+    mask = sp.hstack([margin_1, mask, margin_2], format="csr")
+
+    if sym_upper:
+        # LIL format is much faster when changing sparsity
+        mask = mask.tolil()
+        # Add margin below diagonal
+        big_k = max(nk, mk)
+        dia_margin = np.ones(big_k // 2)
+        dia_offsets = np.arange(0, -big_k // 2 + 1, -1)
+        mask += sp.diags(dia_margin, dia_offsets, shape=mask.shape, format="lil", dtype=bool)
+        mask = mask.tocsr()
+    return mask
+
+
+def missing_bins_mask(shape, valid_rows, valid_cols):
+    """
+    Given lists of valid rows and columnts, generate a sparse matrix mask with
+    missing pixels denoted as 1 and valid pixels as 0. The mask can only flag
+    entire rows or colums.
+
+    Parameters
+    ----------
+    shape : tuple of ints
+        Shape of the mask to generate.
+    valid_rows : numpy.array of ints
+        Array with the indices of valid rows that should be set to 0 in the mask.
+    valid_cols : numpy.array of ints
+        Array with the indices of valid rows that should be set to 0 in the mask.
+    
+    Returns
+    -------
+    scipy.sparse.coo_matrix of bool
+        The mask containing False values where pixels are valid and True valid
+        where pixels are missing
+    """
+
+    missing_rows = np.ones(shape[0])
+    missing_rows[valid_rows] = 0
+    missing_cols = np.ones(shape[1])
+    missing_cols[valid_cols] = 0
+
+    missing_rows = np.where(missing_rows == True)[0]
+    missing_cols = np.where(missing_cols == True)[0]
+
+    mask = sp.csr_matrix(shape, dtype=bool)
+    mask[missing_rows, :] = 1
+    mask[:, missing_cols] = 1
+
+    return mask
+
+
+def zero_pad_sparse(mat, margin_h, margin_v, fmt="coo"):
+    """
+    Adds margin of zeros around an input sparse matrix.
+
+    Parameters
+    ----------
+    mat : scipy.sparse.coo_matrix
+        The matrix to be padded.
+    margin_h : int
+        The width of the horizontal margin to add on the left and right of the
+        matrix.
+    margin_v : int
+        The width of the vertical margin to add on the top and bottom of the
+        matrix.
+    fmt : string
+        The desired scipy sparse format of the output matrix
+    
+    Returns
+    -------
+    scipy.sparse.coo_matrix :
+        The padded matrix of dimensions (m + 2 * margin_h, n + 2 * margin_v).
+    
+    Examples
+    --------
+    >>> m = sp.coo_matrix(np.array([[1, 2], [10, 20]]))
+    >>> zero_pad_sparse(m, 2, 1).toarray()
+    array([[ 0,  0,  0,  0,  0,  0],
+           [ 0,  0,  1,  2,  0,  0],
+           [ 0,  0, 10, 20,  0,  0],
+           [ 0,  0,  0,  0,  0,  0]])
+    """
+
+    matfun = {
+        "coo": sp.coo_matrix,
+        "csr": sp.csr_matrix,
+        "lil": sp.lil_matrix,
+        "csc": sp.csc_matrix,
+    }
+    sm, sn = mat.shape
+    padded_m = sm + 2 * margin_v
+    padded_n = sn + 2 * margin_h
+
+    rows = mat.row + margin_v
+    cols = mat.col + margin_h
+    padded = matfun[fmt](
+        (mat.data, (rows, cols)), shape=(padded_m, padded_n), dtype=mat.dtype
+    )
+
+    return padded
+
+
 def crop_kernel(kernel, target_size):
     """
     Crop a kernel matrix to target size horizontally and vertically. If the target size
@@ -486,12 +687,12 @@ def crop_kernel(kernel, target_size):
     adjusted = False
     for dim in range(len(target)):
         if not target[dim] % 2:
-            target[dim] +=1
+            target[dim] += 1
             adjusted = True
     if adjusted:
         sys.stderr.write(
-            'WARNING: Cropped kernel size adjusted to '
-            f'{target[0]}x{target[1]} to keep odd dimensions.\n'
+            "WARNING: Cropped kernel size adjusted to "
+            f"{target[0]}x{target[1]} to keep odd dimensions.\n"
         )
 
     source_m, source_n = kernel.shape
@@ -507,8 +708,8 @@ def crop_kernel(kernel, target_size):
         margin_cols = 0
 
     cropped = kernel[
-        margin_rows: (source_m - margin_rows),
-        margin_cols: (source_n - margin_cols)
+        margin_rows : (source_m - margin_rows),
+        margin_cols : (source_n - margin_cols),
     ]
 
     return cropped
