@@ -837,6 +837,7 @@ def _corrcoef2d_sparse(
         signal = sp.hstack([tmp, signal, tmp], format=signal.format)
         # If a missing mask was specified, use it
         if missing_mask is not None:
+            preproc.check_ismissing(signal, mask)
             # Add margins around missing mask.
             missing_mask = preproc.make_exterior_frame(
                 missing_mask,

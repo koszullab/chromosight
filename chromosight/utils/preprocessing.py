@@ -576,6 +576,29 @@ def make_exterior_frame(mask, kernel_shape, sym_upper=False, max_dist=None):
     return mask
 
 
+def check_ismissing(signal, mask):
+    """
+    Ensure all elements defined as missing by the mask are set to zero in the signal.
+    If this is not the case, raises an error.
+
+    Parameters
+    ----------
+    signal : numpy.array of floats or scipy.sparse.csr_matrix of floats
+        The signal to be checked.
+    mask : numpy.array of bools or scipy.sparse.csr_matrix of bools
+        The mask defining missing values as True and valid values as False.
+    """
+
+    if sp.issparse(mask):
+        # Check if there are nonzero values in the signal reported as missing by the mask
+        missing_with_signal = np.nonzero(abs(signal[mask.nonzero()[0], mask.nonzero()[1]])>0)[0]
+        if len(missing_with_signal)>0:
+            raise ValueError('There are', len(missing_with_signal), 'non-zero elements reported as missing.')
+    else:
+        if (np.sum(abs(signal[mask>0]))>1e-10):
+            raise ValueError('There are', str(np.sum(abs(signal[mask>0]))), 'non-zero elements reported as missing.')
+
+
 def missing_bins_mask(shape, valid_rows, valid_cols):
     """
     Given lists of valid rows and columnts, generate a sparse matrix mask with
