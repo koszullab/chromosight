@@ -529,7 +529,7 @@ def cmd_detect(arguments):
             # Run detection in parallel on different sub matrices, and show progress when
             # gathering results
             sub_mat_results = []
-
+            
             for s, result in enumerate(
                 pool.imap_unordered(_detect_sub_mat, sub_mat_data, 1)
             ):
@@ -537,7 +537,7 @@ def cmd_detect(arguments):
                 chr2 = hic_genome.sub_mats.chr2[s]
                 cio.progress(s, n_sub_mats, f"{chr1}-{chr2}")
                 sub_mat_results.append(result)
-
+            
             # sub_mat_results = list(map(_detect_sub_mat, sub_mat_data))
 
             # Convert coordinates from chromosome to whole genome bins

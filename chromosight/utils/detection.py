@@ -221,7 +221,7 @@ def pattern_detector(
 
     # Pattern matching operate here
     mat_conv = corrcoef2d(
-        contact_map.matrix,
+        contact_map.matrix.tocsr(),
         kernel_matrix,
         max_dist=contact_map.max_dist,
         sym_upper=not contact_map.inter,
@@ -230,8 +230,6 @@ def pattern_detector(
     )
     if dump:
         save_dump("03_corrcoef2d", mat_conv)
-    # Only trim diagonals for intra matrices (makes no sense for inter)
-    mat_conv = mat_conv.tocoo()
     # Clean potential missing values
     mat_conv.data[np.isnan(mat_conv.data)] = 0
     # Only keep corrcoefs in scannable range
@@ -273,7 +271,8 @@ def pattern_detector(
         kernel_matrix,
         kernel_config["max_perc_undetected"],
     )
-
+    
+    # Shift coordinates of detected patterns back if padding was added
     if full:
         filtered_chrom_patterns.bin1 -= kh
         filtered_chrom_patterns.bin2 -= kw
@@ -811,14 +810,6 @@ def _corrcoef2d_sparse(
     scipy.sparse.csr_matrix
         The sparse matrix of correlation coefficients
     """
-    # If using only the upper triangle matrix, set diagonals that will
-    # overlap the kernel in the lower triangle to their opposite diagonal
-    # in the upper triangle
-    if sym_upper:
-        signal = signal.tolil()
-        for i in range(1, kernel.shape[0]):
-            signal.setdiag(signal.diagonal(i), -i)
-    signal = signal.tocsr()
     mk, nk = kernel.shape
     ms, ns = signal.shape
 
@@ -837,7 +828,6 @@ def _corrcoef2d_sparse(
         signal = sp.hstack([tmp, signal, tmp], format=signal.format)
         # If a missing mask was specified, use it
         if missing_mask is not None:
-            preproc.check_ismissing(signal, mask)
             # Add margins around missing mask.
             missing_mask = preproc.make_exterior_frame(
                 missing_mask,
@@ -845,6 +835,8 @@ def _corrcoef2d_sparse(
                 sym_upper=sym_upper,
                 max_dist=max_dist,
             )
+            # Safety check to make sure mask matches signal
+            preproc.check_ismissing(signal, missing_mask)
 
     # Plain old convolution
     if scaling is None:

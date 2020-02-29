@@ -569,8 +569,8 @@ def make_exterior_frame(mask, kernel_shape, sym_upper=False, max_dist=None):
         mask = mask.tolil()
         # Add margin below diagonal
         big_k = max(nk, mk)
-        dia_margin = np.ones(big_k // 2)
-        dia_offsets = np.arange(0, -big_k // 2 + 1, -1)
+        dia_margin = np.ones(big_k // 2 -1)
+        dia_offsets = np.arange(-1, -big_k // 2 + 1, -1)
         mask += sp.diags(dia_margin, dia_offsets, shape=mask.shape, format="lil", dtype=bool)
         mask = mask.tocsr()
     return mask
