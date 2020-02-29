@@ -201,6 +201,8 @@ def pattern_detector(
     chrom_pattern_windows : numpy array
         A 3D array containing the pile of windows around detected patterns.
     """
+    km, kn = kernel_matrix.shape
+    kh, kw = (km - 1) // 2, (kn - 1) // 2
     # Define where to save the dump
     save_dump = lambda base, mat: sp.save_npz(
         pathlib.Path(dump) / f"{contact_map.name}_{base}", mat
@@ -244,24 +246,32 @@ def pattern_detector(
     chrom_pattern_coords, foci_mat = picker(
         mat_conv, kernel_config["precision"]
     )
+    
     if chrom_pattern_coords is None:
         return None, None
     if dump:
         save_dump("05_foci", foci_mat)
-    mat = contact_map.matrix
-    det = list(contact_map.detectable_bins)
+    mat = contact_map.matrix.copy()
+    det = [d.copy() for d in contact_map.detectable_bins]
     # Zero pad contact and convolution maps and shift missing bins and detected
     # pattern coords before validation if in full mode
     if full:
         mat = mat.tocoo()
-        km, kn = kernel_matrix.shape
-        kh, kw = (km - 1) // 2, (kn - 1) // 2
         mat = preproc.zero_pad_sparse(mat, kh, kw, fmt="csr")
         mat_conv = preproc.zero_pad_sparse(mat_conv, kh, kw, fmt="csr")
         det[0] += kh
         det[1] += kw
         chrom_pattern_coords[:, 0] += kh
         chrom_pattern_coords[:, 1] += kw
+    
+    if not contact_map.inter:
+        # Symmetrize first kh / 2 diagonals in the lower triangle to have nicer
+        # pileups and do not count them as missing (otherwise all patterns on
+        # diagonal would have 50% missing
+        big_k = max(kh, kw)
+        mat = mat.tolil()
+        for i in range(1, big_k):
+            mat.setdiag(mat.diagonal(i), -i)
 
     filtered_chrom_patterns, chrom_pattern_windows = validate_patterns(
         chrom_pattern_coords,
@@ -276,7 +286,6 @@ def pattern_detector(
     if full:
         filtered_chrom_patterns.bin1 -= kh
         filtered_chrom_patterns.bin2 -= kw
-
     return filtered_chrom_patterns, chrom_pattern_windows
 
 
@@ -961,8 +970,6 @@ def _corrcoef2d_sparse(
     conv = conv.tocsr()
     if full:
         conv = conv.tocsr()[mk - 1 : -mk + 1, nk - 1 : -nk + 1]
-    import matplotlib.pyplot as plt
-
     return conv
 
 
@@ -1007,14 +1014,6 @@ def _corrcoef2d_dense(
         signal = np.array(signal)
     if isinstance(kernel, np.matrix):
         kernel = np.array(kernel)
-    # If using only the upper triangle matrix, set diagonals that will
-    # overlap the kernel in the lower triangle to their opposite diagonal
-    # in the upper triangle
-    if sym_upper:
-        # Full matrix is stored for dense arrays anyway
-        # -> make symmetric
-        sys.stderr.write("Making dense matrix symmetric.\n")
-        signal = signal + np.transpose(signal) - np.diag(np.diag(signal))
 
     kernel_size = kernel.shape[0] * kernel.shape[1]
     kernel1 = np.ones(kernel.shape)

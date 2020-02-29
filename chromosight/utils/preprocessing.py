@@ -601,7 +601,7 @@ def check_ismissing(signal, mask):
 
 def missing_bins_mask(shape, valid_rows, valid_cols):
     """
-    Given lists of valid rows and columnts, generate a sparse matrix mask with
+    Given lists of valid rows and columns, generate a sparse matrix mask with
     missing pixels denoted as 1 and valid pixels as 0. The mask can only flag
     entire rows or colums.
 
