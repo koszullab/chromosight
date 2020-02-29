@@ -246,7 +246,7 @@ def pattern_detector(
     chrom_pattern_coords, foci_mat = picker(
         mat_conv, kernel_config["precision"]
     )
-    
+
     if chrom_pattern_coords is None:
         return None, None
     if dump:
@@ -263,7 +263,7 @@ def pattern_detector(
         det[1] += kw
         chrom_pattern_coords[:, 0] += kh
         chrom_pattern_coords[:, 1] += kw
-    
+
     if not contact_map.inter:
         # Symmetrize first kh / 2 diagonals in the lower triangle to have nicer
         # pileups and do not count them as missing (otherwise all patterns on
@@ -281,7 +281,7 @@ def pattern_detector(
         kernel_matrix,
         kernel_config["max_perc_undetected"],
     )
-    
+
     # Shift coordinates of detected patterns back if padding was added
     if full:
         filtered_chrom_patterns.bin1 -= kh
@@ -915,22 +915,27 @@ def _corrcoef2d_sparse(
             signal_mean = xcorr2(signal, kernel1 / kernel_size).tocsr()
             # Multiply each pixel in mean signal by the proportion of kernel
             # that's not in a margin
-            signal_mean[ker1_coo_row, ker1_coo_col] = np.array(
-                signal_mean[ker1_coo_row, ker1_coo_col]
-            ) * (kernel_size / kernel_size_wm)
+            signal_mean[ker1_coo_row, ker1_coo_col] = (
+                np.array(signal_mean[ker1_coo_row, ker1_coo_col])
+                * (kernel_size / kernel_size_wm)
+            ).flat
 
             # Same for the denominator
             denom = (xcorr2(signal.power(2), kernel1) / kernel_size).tocsr()
-            denom[ker1_coo_row, ker1_coo_col] = np.array(
-                denom[ker1_coo_row, ker1_coo_col]
-            ) * (kernel_size / kernel_size_wm)
+            denom[ker1_coo_row, ker1_coo_col] = (
+                np.array(denom[ker1_coo_row, ker1_coo_col])
+                * (kernel_size / kernel_size_wm)
+            ).flat
             denom = (denom - signal_mean.power(2)) * (
                 kernel2_mean - kernel_mean ** 2
             )
             denom[ker1_coo_row, ker1_coo_col] = (
-                np.array(denom[ker1_coo_row, ker1_coo_col])
-                / (kernel2_mean - kernel_mean ** 2)
-            ) * (kernel2_mean_wm - kernel_mean_wm ** 2)
+                (
+                    np.array(denom[ker1_coo_row, ker1_coo_col])
+                    / (kernel2_mean - kernel_mean ** 2)
+                )
+                * (kernel2_mean_wm - kernel_mean_wm ** 2)
+            ).flat
             denom = denom.sqrt()
             # 2 tricks to improve numeric stability:
             # Remove very low correlations in the denominators
@@ -947,11 +952,12 @@ def _corrcoef2d_sparse(
                 np.array(conv[ker1_coo_row, ker1_coo_col])
                 * (kernel_mean_wm / kernel_mean)
                 * (kernel_size_wm / kernel_size)
-            )
+            ).flat
             conv = xcorr2(signal, kernel) / kernel_size - conv
-            conv[ker1_coo_row, ker1_coo_col] = np.array(
-                conv[ker1_coo_row, ker1_coo_col]
-            ) * (kernel_size / kernel_size_wm)
+            conv[ker1_coo_row, ker1_coo_col] = (
+                np.array(conv[ker1_coo_row, ker1_coo_col])
+                * (kernel_size / kernel_size_wm)
+            ).flat
             conv.eliminate_zeros()
             denom.eliminate_zeros()
             conv = preproc.sparse_division(conv.tocoo(), denom.tocoo())
