@@ -7,7 +7,7 @@
     "max_dist": 0,
     "max_iterations": 3,
     "max_perc_undetected": 80.0,
-    "precision": 3,
+    "pearson": 0.5,
     "min_separation": 100000,
     "resolution": 2000
 }

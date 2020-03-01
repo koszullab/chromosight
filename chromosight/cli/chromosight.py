@@ -6,7 +6,7 @@ Explore and detect patterns (loops, borders, centromeres, etc.) in Hi-C contact
 maps with pattern matching.
 
 Usage:
-    chromosight detect  [--kernel-config=FILE] [--pattern=loops] [--precision=auto]
+    chromosight detect  [--kernel-config=FILE] [--pattern=loops] [--pearson=auto]
                         [--iterations=auto] [--win-fmt={json,npy}] [--full]
                         [--subsample=no] [--inter] [--smooth-trend] [--n-mads=5]
                         [--min-dist=0] [--max-dist=auto] [--no-plotting]
@@ -76,7 +76,7 @@ Arguments for detect:
                                 configurations for the given pattern. Possible
                                 values are: loops, borders, hairpins and
                                 centromeres. [default: loops]
-    -p, --precision=auto        Precision threshold when assessing pattern
+    -p, --pearson=auto          Pearson correlation threshold when assessing pattern
                                 probability in the contact map. A lesser value
                                 leads to potentially more detections, but more
                                 false positives. [default: auto]
@@ -155,7 +155,7 @@ URL_EXAMPLE_DATASET = (
 
 TEST_LOG = f"""Fetching test dataset at {URL_EXAMPLE_DATASET}...
 Running detection on test dataset...
-precision set to 3 based on config file.
+pearson set to 0.25 based on config file.
 max_dist set to 500000 based on config file.
 min_dist set to 5000 based on config file.
 min_separation set to 5000 based on config file.
@@ -427,7 +427,7 @@ def cmd_detect(arguments):
     n_mads = float(arguments["--n-mads"])
     pattern = arguments["--pattern"]
     perc_undetected = arguments["--perc-undetected"]
-    precision = arguments["--precision"]
+    pearson = arguments["--pearson"]
     threads = arguments["--threads"]
     output = arguments["<output>"]
     win_fmt = arguments["--win-fmt"]
@@ -466,7 +466,7 @@ def cmd_detect(arguments):
     ### 0: LOAD INPUT
     params = {
         "max_iterations": (iterations, int),
-        "precision": (precision, float),
+        "pearson": (pearson, float),
         "max_dist": (max_dist, int),
         "min_dist": (min_dist, int),
         "min_separation": (min_separation, int),
@@ -529,7 +529,7 @@ def cmd_detect(arguments):
             # Run detection in parallel on different sub matrices, and show progress when
             # gathering results
             sub_mat_results = []
-            
+
             for s, result in enumerate(
                 pool.imap_unordered(_detect_sub_mat, sub_mat_data, 1)
             ):
@@ -537,7 +537,7 @@ def cmd_detect(arguments):
                 chr2 = hic_genome.sub_mats.chr2[s]
                 cio.progress(s, n_sub_mats, f"{chr1}-{chr2}")
                 sub_mat_results.append(result)
-            
+
             # sub_mat_results = list(map(_detect_sub_mat, sub_mat_data))
 
             # Convert coordinates from chromosome to whole genome bins
