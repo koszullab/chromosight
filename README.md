@@ -39,7 +39,7 @@ To get a first look at a chromosight run, you can run `chromosight test`, which 
 
 * `--min-dist`: Minimum distance from which to detect patterns.
 * `--max-dist`: Maximum distance from which to detect patterns. Increasing also increases runtime and memory use.
-* `--precision`: Decrease to allow a greater number of pattern detected (with potentially more false positives).
+* `--pearson`: Decrease to allow a greater number of pattern detected (with potentially more false positives).
 * `--perc-undetected`: Proportion of empty pixels allowed in a window for detection.
 
 ### Example
@@ -69,7 +69,7 @@ Explore and detect patterns (loops, borders, centromeres, etc.) in Hi-C contact
 maps with pattern matching.
 
 Usage:
-    chromosight detect  [--kernel-config=FILE] [--pattern=loops] [--precision=auto]
+    chromosight detect  [--kernel-config=FILE] [--pattern=loops] [--pearson=auto]
                         [--iterations=auto] [--resize-kernel] [--win-fmt={json,npy}]
                         [--subsample=no] [--inter] [--smooth-trend] [--n-mads=5]
                         [--min-dist=0] [--max-dist=auto] [--no-plotting]

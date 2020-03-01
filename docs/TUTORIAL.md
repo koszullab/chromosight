@@ -83,7 +83,7 @@ This will generate a JSON file named `demo_pattern.json`, pre-filled with parame
     "max_iterations": 3,
     "max_perc_undetected": 30.0,
     "min_separation": 5000,
-    "precision": 0.3,
+    "pearson": 0.3,
     "resolution": 5000
 }
 

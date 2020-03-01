@@ -223,7 +223,7 @@ def load_kernel_config(kernel, custom=False):
         "min_dist": int,
         "max_iterations": int,
         "max_perc_undetected": float,
-        "precision": float
+        "pearson": float
         "resolution": int
     }
     ```
@@ -239,7 +239,7 @@ def load_kernel_config(kernel, custom=False):
     * max_dist : maximum distance in basepairs to scan from the diagonal
     * max_iterations: maximum number of scanning iterations to perform
     * max_perc_undetected: Maximum percentage of undetected bins to include a pattern
-    * precision: Increasing this value reduces false positive patterns.
+    * pearson: Increasing this value reduces false positive patterns.
     * resolution: Basepair resolution for the kernel matrix.
 
     Parameters
@@ -266,7 +266,7 @@ def load_kernel_config(kernel, custom=False):
             "max_dist": {"type": "number", "minimum": 0},
             "max_iterations": {"type": "number", "minimum": 0},
             "min_separation": {"type": "number", "minimum": 1},
-            "precision": {"type": "number"},
+            "pearson": {"type": "number"},
             "resolution": {"type": "number"},
         },
         "required": [
@@ -276,7 +276,7 @@ def load_kernel_config(kernel, custom=False):
             "max_dist",
             "max_iterations",
             "min_separation",
-            "precision",
+            "pearson",
             "resolution",
         ],
     }
@@ -399,7 +399,7 @@ def progress(count, total, status=""):
 
     percents = round(100.0 * count / float(total), 1)
     bar = "=" * filled_len + "-" * (bar_len - filled_len)
-    
+
     # Clear current line, write status and erase everything to the end of
     # the line using ANSI code
     sys.stderr.write("\r [%s] %s%s %s\033[K" % (bar, percents, "%", status))
@@ -440,7 +440,7 @@ def load_bed2d(path):
     inverted = (bed2d.start2 < bed2d.start1) & (bed2d.chrom1 == bed2d.chrom2)
     bed2d.start1[inverted], bed2d.start2[inverted] = (
         bed2d.start2[inverted],
-        bed2d.start1[inverted]
+        bed2d.start1[inverted],
     )
 
     return bed2d

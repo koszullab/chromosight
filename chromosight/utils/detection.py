@@ -243,9 +243,7 @@ def pattern_detector(
     mat_conv.eliminate_zeros()
 
     # Find foci of highly correlated pixels
-    chrom_pattern_coords, foci_mat = picker(
-        mat_conv, kernel_config["precision"]
-    )
+    chrom_pattern_coords, foci_mat = picker(mat_conv, kernel_config["pearson"])
 
     if chrom_pattern_coords is None:
         return None, None
@@ -327,10 +325,10 @@ def remove_neighbours(patterns, win_size=8):
     return whitelist_mask
 
 
-def picker(mat_conv, precision=None):
+def picker(mat_conv, pearson):
     """
     Pick coordinates of local maxima in a sparse 2D convolution heatmap. A threshold
-    computed based on the precision argument is applied to the heatmap. All values below
+    computed based on the pearson argument is applied to the heatmap. All values below
     that threshold are set to 0. The coordinate of the maximum value in each focus is
     returned.
 
@@ -338,11 +336,8 @@ def picker(mat_conv, precision=None):
     ----------
     mat_conv : scipy.sparse.coo_matrix of floats
         A 2D sparse convolution heatmap.
-    precision : float, optional
-        Minimum number of median absolute deviations above the median of
-        correlation coefficients required to consider a pixel as candidate.
-        The threshold to define candidate pixels (foci) is given by
-        median(c) + mad(c) * precision, where c are nonzero correlation coefficients.
+    pearson : float
+        Minimum correlation coefficient required to consider a pixel as candidate.
         Increasing this value reduces the amount of false positive patterns.
     Returns
     -------
@@ -356,16 +351,7 @@ def picker(mat_conv, precision=None):
 
     candidate_mat = mat_conv.copy()
     candidate_mat = candidate_mat.tocoo()
-    # Compute a threshold from precision arg and set all pixels below to 0
-    if precision is None:
-        thres = 0
-    else:
-        thres = np.median(
-            mat_conv.data
-        ) + precision * ss.median_absolute_deviation(
-            mat_conv.data, nan_policy="omit"
-        )
-    candidate_mat.data[candidate_mat.data < thres] = 0
+    candidate_mat.data[candidate_mat.data < pearson] = 0
     candidate_mat.data[candidate_mat.data != 0] = 1
     candidate_mat.eliminate_zeros()
 
