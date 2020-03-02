@@ -811,6 +811,16 @@ def _corrcoef2d_sparse(
     # Generate constant kernel
     kernel1 = np.ones(kernel.shape)
     kernel_size = mk * nk
+
+    if missing_mask is not None:
+        if not signal.shape == missing_mask.shape:
+            raise ValueError(
+                "Signal and missing mask do not have the same shape"
+            )
+        if missing_mask.dtype != bool:
+            raise ValueError(
+                f"Missing mask data type is {missing_mask.dtype}. Should be bool."
+            )
     # In full mode, we compute the convolution with all pixels in the input
     # signal. We need to add a margin around the input to allow the kernel to
     # be centered on the edges.
