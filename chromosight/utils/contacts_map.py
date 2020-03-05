@@ -1,6 +1,7 @@
 # Implementation of a contact map class.
 from __future__ import absolute_import
 from . import io as cio
+import cooler
 from . import preprocessing as preproc
 import os
 import re
@@ -110,9 +111,7 @@ class HicGenome:
             os.makedirs(self.dump, exist_ok=True)
         except TypeError:
             self.dump = None
-        self.matrix, self.chroms, self.bins, self.resolution = self.load_data(
-            path
-        )
+        self.clr = cooler.Cooler(path)
         self.smooth = smooth
         self.kernel_config = kernel_config
         self.sub_mats = None
@@ -125,7 +124,7 @@ class HicGenome:
         # Convert maximum scanning distance to bins using resolution
         try:
             self.max_dist = max(
-                self.kernel_config["max_dist"] // self.resolution, 1
+                self.kernel_config["max_dist"] // self.clr.binsize, 1
             )
             # Get the size of the largest convolution kernel
             self.largest_kernel = max(
@@ -154,11 +153,12 @@ class HicGenome:
             self.matrix, n_mads=n_mads
         )[0]
         print(
-            f"Found {len(self.detectable_bins)} / {self.matrix.shape[0]} detectable bins"
+            f"Found {len(self.detectable_bins)} / {self.clr.shape[0]} detectable bins"
         )
         self.matrix = preproc.normalize(
             self.matrix, good_bins=self.detectable_bins, iterations=iterations
         )
+
         print("Whole genome matrix normalized")
 
     @DumpMatrix("01_subsampled")
