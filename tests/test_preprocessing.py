@@ -50,6 +50,7 @@ class TestPreprocessing(unittest.TestCase):
         """Test if missing bin masks are generated properly according to matrix type"""
         missing_bins = np.array([0, 4, 9])
         valid_bins = np.array([i for i in range(10) if i not in missing_bins])
+        valid_cols = np.array([i for i in range(15) if i not in missing_bins])
         max_dist = 3
         # Symmetric mask, whole matrix masked
         exp_mask_sym = np.zeros((10, 10), dtype=bool)
@@ -62,19 +63,29 @@ class TestPreprocessing(unittest.TestCase):
         # Symmetric mask, only upper triangle masked
         exp_mask_sym_upper = np.triu(exp_mask_sym)
         # Symmetric upper triangle masked up to a certain distance
-        exp_mask_sym_upper_maxdist = preproc.diag_trim(exp_mask_sym_upper, max_dist)
+        exp_mask_sym_upper_maxdist = preproc.diag_trim(
+            exp_mask_sym_upper, max_dist
+        )
         # Test if correct bins are masked
-        obs_mask_sym = preproc.missing_bins_mask(exp_mask_sym.shape, valid_bins, valid_bins, sym_upper=False)
+        obs_mask_sym = preproc.missing_bins_mask(
+            exp_mask_sym.shape, valid_bins, valid_bins, sym_upper=False
+        )
         assert np.all(obs_mask_sym == exp_mask_sym)
         # Test if only upper triangle is masked in upper symmetric matrices
-        obs_mask_sym_upper = preproc.missing_bins_mask(exp_mask_sym.shape, valid_bins, valid_bins, sym_upper=True)
+        obs_mask_sym_upper = preproc.missing_bins_mask(
+            exp_mask_sym.shape, valid_bins, valid_bins, sym_upper=True
+        )
         assert np.all(obs_mask_sym_upper == exp_mask_sym_upper)
         # Test masking of asymmetric matrices
-        obs_mask_asym = preproc.missing_bins_mask(exp_mask_asym.shape, valid_bins, valid_bins)
+        obs_mask_asym = preproc.missing_bins_mask(
+            exp_mask_asym.shape, valid_bins, valid_cols
+        )
         assert np.all(obs_mask_asym == exp_mask_asym)
         # Test if giving an asymmetric matrix with sym_upper results in error
         with self.assertRaises(ValueError):
-            preproc.missing_bins_mask(obs_mask_asym.shape, valid_bins, valid_bins, sym_upper=True)
+            preproc.missing_bins_mask(
+                obs_mask_asym.shape, valid_bins, valid_bins, sym_upper=True
+            )
         # Test if using max_dist yields the same results as manually truncating diagonals
         obs_mask_sym_upper_maxdist = preproc.missing_bins_mask(
             exp_mask_sym.shape,
