@@ -46,6 +46,45 @@ class TestPreprocessing(unittest.TestCase):
         with self.assertRaises(ValueError):
             preproc.get_detectable_bins(asym_mat, inter=False)
 
+    def test_missing_bins_mask(self):
+        """Test if missing bin masks are generated properly according to matrix type"""
+        missing_bins = np.array([0, 4, 9])
+        valid_bins = np.array([i for i in range(10) if i not in missing_bins])
+        max_dist = 3
+        # Symmetric mask, whole matrix masked
+        exp_mask_sym = np.zeros((10, 10), dtype=bool)
+        exp_mask_sym[:, missing_bins] = True
+        exp_mask_sym[missing_bins, :] = True
+        # Asymmetric mask, whole matrix masked
+        exp_mask_asym = np.zeros((10, 15), dtype=bool)
+        exp_mask_asym[:, missing_bins] = True
+        exp_mask_asym[missing_bins, :] = True
+        # Symmetric mask, only upper triangle masked
+        exp_mask_sym_upper = np.triu(exp_mask_sym)
+        # Symmetric upper triangle masked up to a certain distance
+        exp_mask_sym_upper_maxdist = preproc.diag_trim(exp_mask_sym_upper, max_dist)
+        # Test if correct bins are masked
+        obs_mask_sym = preproc.missing_bins_mask(exp_mask_sym.shape, valid_bins, valid_bins, sym_upper=False)
+        assert np.all(obs_mask_sym == exp_mask_sym)
+        # Test if only upper triangle is masked in upper symmetric matrices
+        obs_mask_sym_upper = preproc.missing_bins_mask(exp_mask_sym.shape, valid_bins, valid_bins, sym_upper=True)
+        assert np.all(obs_mask_sym_upper == exp_mask_sym_upper)
+        # Test masking of asymmetric matrices
+        obs_mask_asym = preproc.missing_bins_mask(exp_mask_asym.shape, valid_bins, valid_bins)
+        assert np.all(obs_mask_asym == exp_mask_asym)
+        # Test if giving an asymmetric matrix with sym_upper results in error
+        with self.assertRaises(ValueError):
+            preproc.missing_bins_mask(obs_mask_asym.shape, valid_bins, valid_bins, sym_upper=True)
+        # Test if using max_dist yields the same results as manually truncating diagonals
+        obs_mask_sym_upper_maxdist = preproc.missing_bins_mask(
+            exp_mask_sym.shape,
+            valid_bins,
+            valid_bins,
+            sym_upper=True,
+            max_dist=max_dist,
+        )
+        assert np.all(obs_mask_sym_upper_maxdist == exp_mask_sym_upper_maxdist)
+
     @params(100000000, 10e10)
     def test_subsample_contacts_exceed(self, n_contacts):
         """Oversampling should result in value errors"""
@@ -245,3 +284,4 @@ def test_subsample_contacts_count(n_contacts):
     """Test sampling raw contact counts"""
     sampled = preproc.subsample_contacts(mat.tocoo(), n_contacts)
     assert np.isclose(sampled.data.sum(), n_contacts, rtol=0.1)
+

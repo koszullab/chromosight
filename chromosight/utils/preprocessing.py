@@ -599,11 +599,11 @@ def check_ismissing(signal, mask):
             raise ValueError('There are', str(np.sum(abs(signal[mask>0]))), 'non-zero elements reported as missing.')
 
 
-def missing_bins_mask(shape, valid_rows, valid_cols):
+def missing_bins_mask(shape, valid_rows, valid_cols, max_dist=None, sym_upper=False):
     """
     Given lists of valid rows and columns, generate a sparse matrix mask with
-    missing pixels denoted as 1 and valid pixels as 0. The mask can only flag
-    entire rows or colums.
+    missing pixels denoted as 1 and valid pixels as 0. If a max_dist is provided, upper
+    symmetric matrices will only be flagged up to max_dist pixels from the diagonal.
 
     Parameters
     ----------
@@ -613,25 +613,88 @@ def missing_bins_mask(shape, valid_rows, valid_cols):
         Array with the indices of valid rows that should be set to 0 in the mask.
     valid_cols : numpy.array of ints
         Array with the indices of valid rows that should be set to 0 in the mask.
+    max_dist : int or None
+        The maximum diagonal distance at which masking should take place.
+    sym_upper : bool
+        Whether the matrix is symmetric upper. If so, max_dist is ignored
     
     Returns
     -------
-    scipy.sparse.coo_matrix of bool
+    scipy.sparse.csr_matrix of bool
         The mask containing False values where pixels are valid and True valid
         where pixels are missing
     """
+    # Error if the matrix upper symmetric but shape is rectangle or missing
+    # rows and cols are different
+    sm, sn = shape
+    if sym_upper and (sm != sn or len(valid_rows) != len(valid_cols)):
+            raise ValueError("Rectangular matrices cannot be upper symmetric")
 
-    missing_rows = np.ones(shape[0])
+    # Get a boolean array of missing (1) and valid (0) rows
+    missing_rows = np.ones(sm)
     missing_rows[valid_rows] = 0
-    missing_cols = np.ones(shape[1])
-    missing_cols[valid_cols] = 0
-
     missing_rows = np.where(missing_rows == True)[0]
-    missing_cols = np.where(missing_cols == True)[0]
+    # When matrix is symmetric, rows and cols are synonym, no need to compute 2x
+    if sym_upper:
+        missing_cols = missing_rows
+    else:
+        missing_cols = np.ones(sm)
+        missing_cols[valid_cols] = 0
+        missing_cols = np.where(missing_cols == True)[0]
 
-    mask = sp.csr_matrix(shape, dtype=bool)
-    mask[missing_rows, :] = 1
-    mask[:, missing_cols] = 1
+    # If upper symmetric, fill only upper diagonal up to max_dist. E. g. with bins 1 and 3 missing
+    # and a max_dist of 1:
+    # 0 1 0 0 0
+    # 0 1 1 0 0
+    # 0 0 0 1 0
+    # 0 0 0 1 1
+    # 0 0 0 0 0
+    # For each missing bin, mask is apply 1 pixel upwards and 1 to the right to fill only the upper
+    # triangle up to max_dist
+    if sym_upper:
+        # If no max dist has been specified, we'll fill the whole upper triangle
+        if max_dist is None:
+            max_dist = min(shape)
+        # Generate matrix of distance shifts by row. Shape is len(missing_rows) x (max_dist + 1)
+        # e.g.: 2 missing rows and max dist of 1
+        # 0 0
+        # 1 1
+        row_shifts = np.tile(np.array(range(max_dist)), (len(missing_rows), 1)).T
+        # Compute row positions upwards to diagonal by subtracting missing rows to the shifts
+        # Following the previous example, if missing rows are bins 1 and 3:
+        #  1 3
+        #  0 2
+        rows_before = (missing_rows - row_shifts).flatten('F')
+        # Since we are looking at pixels up from the bins, cols remain the same:
+        # 1 3
+        # 1 3
+        cols_before = np.repeat(missing_rows, max_dist)
+        # Compute column position to the right until diagonal by adding the shift
+        # Note: upper symmetric, so row_shifts = col_shift_
+        # 1 3
+        # 2 4
+        cols_after = (missing_cols + row_shifts).flatten('F')
+        # This time, rows remain constant since we are computing positions to the right
+        rows_after = np.repeat(missing_cols, max_dist)
+        # Combine positions to the right and upwards
+        rows = np.concatenate([rows_before, rows_after])
+        cols = np.concatenate([cols_before, cols_after])
+        data = np.ones(rows.shape, dtype=bool)
+        # Remove entries where rows or cols are negative or larger than shape
+        valid = (cols < sm) & (cols >= 0) & (rows < sm) & (rows >= 0)
+        # Remove duplicate entries and sort data
+        m_data = np.vstack([rows[valid], cols[valid], data[valid]])
+        m_data = np.unique(m_data, axis=1)
+        # Build mask matrix with miss. bins up to max scan distance in upper triangle
+        mask = sp.coo_matrix(
+            (m_data[2, :], (m_data[0, :], m_data[1, :])),
+            shape=shape,
+            dtype=bool
+        ).tocsr()
+    else:
+        mask = sp.csr_matrix(shape, dtype=bool)
+        mask[missing_rows, :] = 1
+        mask[:, missing_cols] = 1
 
     return mask
 

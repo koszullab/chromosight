@@ -217,6 +217,8 @@ def pattern_detector(
             contact_map.matrix.shape,
             valid_rows=contact_map.detectable_bins[0],
             valid_cols=contact_map.detectable_bins[1],
+            max_dist = contact_map.max_dist,
+            sym_upper=not contact_map.inter
         )
     else:
         missing_mask = None
