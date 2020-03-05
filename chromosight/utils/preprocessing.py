@@ -11,6 +11,58 @@ import scipy.sparse as sp
 import scipy.ndimage as ndi
 from sklearn.isotonic import IsotonicRegression
 
+def erase_missing(signal, valid_rows, valid_cols, sym_upper=True):
+    """
+    Given an input sparse matrix, set missing (invalid) bins to 0.
+
+    Parameters
+    ----------
+    signal : scipy.sparse.csr_matrix of floats
+        Input signal on which to erase values.
+    valid_rows : numpy.array of ints
+        Indices of rows considered valid (not missing).
+    valid_cols : numpy.array of ints
+        Indices of columns considered valid (not missing).
+    sym_upper : bool
+        Define if the input signal is upper symmetric.
+
+    Returns
+    -------
+    scipy.sparse.csr_matrix
+        The input signal with all values in missing bins set to 0
+    """
+    if sym_upper and sp.issparse(signal):
+        if np.any(valid_rows != valid_cols):
+            raise ValueError(
+                "Valid rows and columns must be identical with sym_upper=True"
+            )
+        if signal.shape[0] != signal.shape[1]:
+            raise Value("Input matrix must be square when using sym_upper=True")
+        # Make a boolean mask from good bins
+        good_mask = np.isin(range(signal.shape[0]), valid_rows)
+        # Set all pixels in a nondetectable bin to 0
+        # For faster masking of bins, mask bins using dot product with an identity
+        # matrix where bad bins have been masked on the diagonal
+        # E.g. if removing the second bin (row and column):
+        # 1 0 0     9 6 5     1 0 0     9 0 5
+        # 0 0 0  X  6 8 7  X  0 0 0  =  0 0 0
+        # 0 0 1     6 7 8     0 0 1     6 0 8
+        mask_mat = sp.eye(signal.shape[0])
+        mask_mat.data[0][~good_mask] = 0
+        erased = mask_mat.dot(signal).dot(mask_mat)
+    else:
+        # Get a boolean array of missing (1) and valid (0) rows
+        missing_rows = np.ones(signal.shape[0])
+        missing_cols = np.ones(signal.shape[1])
+        missing_rows[valid_rows] = 0
+        missing_cols[valid_cols] = 0
+        missing_rows = np.where(missing_rows)[0]
+        missing_cols = np.where(missing_cols)[0]
+        erased = signal.copy()
+        erased[missing_rows, :] = 0
+        erased[:, missing_cols] = 0
+
+    return erased
 
 def normalize(B, good_bins=None, iterations=10):
     """
@@ -32,19 +84,10 @@ def normalize(B, good_bins=None, iterations=10):
     """
     if good_bins is None:
         good_bins = np.arange(B.shape[0])
-    r = B.copy()
-    # Make a boolean mask from good bins
-    good_mask = np.isin(range(r.shape[0]), good_bins)
-    # Set all pixels in a nondetectable bin to 0
-    # For faster masking of bins, mask bins using dot product with an identity
-    # matrix where bad bins have been masked on the diagonal
-    # E.g. if removing the second bin (row and column):
-    # 1 0 0     9 6 5     1 0 0     9 0 5
-    # 0 0 0  X  6 8 7  X  0 0 0  =  0 0 0
-    # 0 0 1     6 7 8     0 0 1     6 0 8
-    mask_mat = sp.eye(r.shape[0])
-    mask_mat.data[0][~good_mask] = 0
-    r = mask_mat.dot(r).dot(mask_mat)
+        r = B.copy()
+    else:
+        # Enforce removal of values in missing bins
+        r = erase_missing(B, good_bins, good_bins, sym_upper=True)
     r = r.tocoo()
     # Update sparsity and get coordinates of nonzero pixels
     r.eliminate_zeros()
@@ -638,7 +681,7 @@ def missing_bins_mask(shape, valid_rows, valid_cols, max_dist=None, sym_upper=Fa
     if sym_upper:
         missing_cols = missing_rows
     else:
-        missing_cols = np.ones(sm)
+        missing_cols = np.ones(sn)
         missing_cols[valid_cols] = 0
         missing_cols = np.where(missing_cols == True)[0]
 
