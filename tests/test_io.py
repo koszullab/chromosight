@@ -47,9 +47,7 @@ class TestIO:
         # Group bins per chromosome
         chr_groups = df.groupby("chrom1")
         # Compute the number of bins in each chromosome and make a range (0 -> nbins)
-        start_per_chrom = chr_groups.apply(
-            lambda g: np.array(range(g.shape[0]))
-        )
+        start_per_chrom = chr_groups.apply(lambda g: range(g.shape[0]))
 
         # Concatenate ranges to have start values from 0 to n bins
         start_array = np.hstack(start_per_chrom)
@@ -141,7 +139,7 @@ class TestIO:
             "max_iterations": 1,
             "max_perc_undetected": 10,
             "min_separation": 1,
-            "precision": 4,
+            "pearson": 0.4,
             "resolution": 1000,
         }
         # Write config to disk
@@ -172,7 +170,7 @@ class TestIO:
             assert True
         # Check if missing parameters in config yields explicit error
         bad_config = exp_config.copy()
-        bad_config.pop("precision")
+        bad_config.pop("pearson")
         json.dump(bad_config, open(self.tmp_path, "w"))
         try:
             cio.load_kernel_config(self.tmp_path, custom=True)

@@ -156,8 +156,8 @@ def test_contact_map_intra(size, max_dist, kernel_size):
     diagoffsets = contact_map.matrix.todia().offsets
     # Check if matrix is trimmed after max dist + largest kernel
     assert max(diagoffsets) == max_dist + kernel_size
-    # Check if a margin of ones was inserted below diagonal
-    assert np.allclose(np.mean(diagomeans[np.where(diagoffsets < 0)[0]]), 1)
+    # OBSOLETE: Check if a margin of ones was inserted below diagonal
+    # assert np.allclose(np.mean(diagomeans[np.where(diagoffsets < 0)[0]]), 1)
 
 
 def test_contact_map_inter():

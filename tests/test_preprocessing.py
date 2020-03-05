@@ -46,6 +46,45 @@ class TestPreprocessing(unittest.TestCase):
         with self.assertRaises(ValueError):
             preproc.get_detectable_bins(asym_mat, inter=False)
 
+    def test_missing_bins_mask(self):
+        """Test if missing bin masks are generated properly according to matrix type"""
+        missing_bins = np.array([0, 4, 9])
+        valid_bins = np.array([i for i in range(10) if i not in missing_bins])
+        max_dist = 3
+        # Symmetric mask, whole matrix masked
+        exp_mask_sym = np.zeros((10, 10), dtype=bool)
+        exp_mask_sym[:, missing_bins] = True
+        exp_mask_sym[missing_bins, :] = True
+        # Asymmetric mask, whole matrix masked
+        exp_mask_asym = np.zeros((10, 15), dtype=bool)
+        exp_mask_asym[:, missing_bins] = True
+        exp_mask_asym[missing_bins, :] = True
+        # Symmetric mask, only upper triangle masked
+        exp_mask_sym_upper = np.triu(exp_mask_sym)
+        # Symmetric upper triangle masked up to a certain distance
+        exp_mask_sym_upper_maxdist = preproc.diag_trim(exp_mask_sym_upper, max_dist)
+        # Test if correct bins are masked
+        obs_mask_sym = preproc.missing_bins_mask(exp_mask_sym.shape, valid_bins, valid_bins, sym_upper=False)
+        assert np.all(obs_mask_sym == exp_mask_sym)
+        # Test if only upper triangle is masked in upper symmetric matrices
+        obs_mask_sym_upper = preproc.missing_bins_mask(exp_mask_sym.shape, valid_bins, valid_bins, sym_upper=True)
+        assert np.all(obs_mask_sym_upper == exp_mask_sym_upper)
+        # Test masking of asymmetric matrices
+        obs_mask_asym = preproc.missing_bins_mask(exp_mask_asym.shape, valid_bins, valid_bins)
+        assert np.all(obs_mask_asym == exp_mask_asym)
+        # Test if giving an asymmetric matrix with sym_upper results in error
+        with self.assertRaises(ValueError):
+            preproc.missing_bins_mask(obs_mask_asym.shape, valid_bins, valid_bins, sym_upper=True)
+        # Test if using max_dist yields the same results as manually truncating diagonals
+        obs_mask_sym_upper_maxdist = preproc.missing_bins_mask(
+            exp_mask_sym.shape,
+            valid_bins,
+            valid_bins,
+            sym_upper=True,
+            max_dist=max_dist,
+        )
+        assert np.all(obs_mask_sym_upper_maxdist == exp_mask_sym_upper_maxdist)
+
     @params(100000000, 10e10)
     def test_subsample_contacts_exceed(self, n_contacts):
         """Oversampling should result in value errors"""
@@ -132,6 +171,52 @@ def test_resize_kernel():
             assert np.max(obs_kernel) == obs_kernel[obs_dim // 2, obs_dim // 2]
 
 
+def test_crop_kernel():
+    """
+    Ensure cropped kernels are of appropriate size and centered and contain
+    expected values.
+    """
+    m = 15
+    # Use a simple point to check if result is centered
+    point_kernel = np.zeros((m, m))
+    point_kernel[m // 2, m // 2] = 10
+    # Try with different combinations of source and target resolutions
+    dim_list = range(20)
+    for targ in dim_list:
+        # Kernel should be made larger to keep odd dimensions
+        if targ % 2:
+            exp_dim = targ
+        else:
+            exp_dim = targ + 1
+        # If target dimensions is larger than input, cropping is not performed
+        if exp_dim > m:
+            exp_dim = m
+        obs_kernel = preproc.crop_kernel(
+            point_kernel, target_size=(targ, targ)
+        )
+        obs_dim = obs_kernel.shape[0]
+        assert obs_dim == exp_dim
+
+
+def test_zero_pad_sparse():
+    """
+    Test if zero padding yields correct dimensions and centered input.
+    """
+    mat = sp.coo_matrix(np.ones((10, 10)))
+    for hpad in range(4):
+        for vpad in range(4):
+            padded = preproc.zero_pad_sparse(mat, margin_h=hpad, margin_v=vpad)
+            assert padded.shape[0] == mat.shape[0] + 2 * vpad
+            assert padded.shape[1] == mat.shape[1] + 2 * hpad
+            assert np.all(
+                mat.toarray()
+                == padded.toarray()[
+                    vpad : padded.shape[0] - vpad,
+                    hpad : padded.shape[1] - hpad,
+                ]
+            )
+
+
 def test_distance_law():
     """Test if the distance law array has the right dimensions and expected values"""
     m = np.ones((3, 3))
@@ -199,3 +284,4 @@ def test_subsample_contacts_count(n_contacts):
     """Test sampling raw contact counts"""
     sampled = preproc.subsample_contacts(mat.tocoo(), n_contacts)
     assert np.isclose(sampled.data.sum(), n_contacts, rtol=0.1)
+

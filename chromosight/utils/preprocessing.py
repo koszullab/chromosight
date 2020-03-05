@@ -11,6 +11,58 @@ import scipy.sparse as sp
 import scipy.ndimage as ndi
 from sklearn.isotonic import IsotonicRegression
 
+def erase_missing(signal, valid_rows, valid_cols, sym_upper=True):
+    """
+    Given an input sparse matrix, set missing (invalid) bins to 0.
+
+    Parameters
+    ----------
+    signal : scipy.sparse.csr_matrix of floats
+        Input signal on which to erase values.
+    valid_rows : numpy.array of ints
+        Indices of rows considered valid (not missing).
+    valid_cols : numpy.array of ints
+        Indices of columns considered valid (not missing).
+    sym_upper : bool
+        Define if the input signal is upper symmetric.
+
+    Returns
+    -------
+    scipy.sparse.csr_matrix
+        The input signal with all values in missing bins set to 0
+    """
+    if sym_upper and sp.issparse(signal):
+        if np.any(valid_rows != valid_cols):
+            raise ValueError(
+                "Valid rows and columns must be identical with sym_upper=True"
+            )
+        if signal.shape[0] != signal.shape[1]:
+            raise Value("Input matrix must be square when using sym_upper=True")
+        # Make a boolean mask from good bins
+        good_mask = np.isin(range(signal.shape[0]), valid_rows)
+        # Set all pixels in a nondetectable bin to 0
+        # For faster masking of bins, mask bins using dot product with an identity
+        # matrix where bad bins have been masked on the diagonal
+        # E.g. if removing the second bin (row and column):
+        # 1 0 0     9 6 5     1 0 0     9 0 5
+        # 0 0 0  X  6 8 7  X  0 0 0  =  0 0 0
+        # 0 0 1     6 7 8     0 0 1     6 0 8
+        mask_mat = sp.eye(signal.shape[0])
+        mask_mat.data[0][~good_mask] = 0
+        erased = mask_mat.dot(signal).dot(mask_mat)
+    else:
+        # Get a boolean array of missing (1) and valid (0) rows
+        missing_rows = np.ones(signal.shape[0])
+        missing_cols = np.ones(signal.shape[1])
+        missing_rows[valid_rows] = 0
+        missing_cols[valid_cols] = 0
+        missing_rows = np.where(missing_rows)[0]
+        missing_cols = np.where(missing_cols)[0]
+        erased = signal.copy()
+        erased[missing_rows, :] = 0
+        erased[:, missing_cols] = 0
+
+    return erased
 
 def normalize(B, good_bins=None, iterations=10):
     """
@@ -32,19 +84,10 @@ def normalize(B, good_bins=None, iterations=10):
     """
     if good_bins is None:
         good_bins = np.arange(B.shape[0])
-    r = B.copy()
-    # Make a boolean mask from good bins
-    good_mask = np.isin(range(r.shape[0]), good_bins)
-    # Set all pixels in a nondetectable bin to 0
-    # For faster masking of bins, mask bins using dot product with an identity
-    # matrix where bad bins have been masked on the diagonal
-    # E.g. if removing the second bin (row and column):
-    # 1 0 0     9 6 5     1 0 0     9 0 5
-    # 0 0 0  X  6 8 7  X  0 0 0  =  0 0 0
-    # 0 0 1     6 7 8     0 0 1     6 0 8
-    mask_mat = sp.eye(r.shape[0])
-    mask_mat.data[0][~good_mask] = 0
-    r = mask_mat.dot(r).dot(mask_mat)
+        r = B.copy()
+    else:
+        # Enforce removal of values in missing bins
+        r = erase_missing(B, good_bins, good_bins, sym_upper=True)
     r = r.tocoo()
     # Update sparsity and get coordinates of nonzero pixels
     r.eliminate_zeros()
@@ -463,12 +506,350 @@ def subsample_contacts(M, n_contacts):
     )
 
 
+def sparse_division(m1, m2):
+    """Divide nonzero values of one sparse matrix by corresponding values in
+    another sparse matrix.
+
+    Parameters
+    ----------
+    m1 : scipy.sparse.coo_matrix
+        Matrix whose values should be divided.
+    m2 : scipy.sparse.coo_matrix
+        Matrix whose values should be the denominator.
+    
+    Returns
+    -------
+    scipy.sparse.coo_matrix
+    """
+    # Get coords of non-zero (nz) values in the numerator
+    nz_vals = m1.nonzero()
+    div = m1.copy()
+    # Divide them by corresponding entries in the numerator
+    denom = m2.tocsr()
+    try:
+        div.data /= denom[nz_vals].A1
+    # Case there are no nonzero values in m2
+    except AttributeError:
+        pass
+
+    return div
+
+
+def make_exterior_frame(mask, kernel_shape, sym_upper=False, max_dist=None):
+    """
+    Adds a frame around input mask, given a kernel. The goal of this
+    frame is define margins around the matrix where the kernel will not perform
+    convolution (denoted by 1). If the matrix is upper symmetric, a margin of half
+    the kernel's width is added below the diagonal and a maximum distance from
+    the diagonal above which margins need not be drawn can be considered.
+    Otherwise Margins are simply added on all 4 sides of the matrix.
+
+    signal    kernel   _________
+    ______   ____      |#######|
+    |     |  |   | ==> |#     #|
+    |     |  |___|     |#     #|
+    |     |            |#     #|
+    |_____|            |#     #|
+                       |#######|
+                       --------
+
+    Parameters
+    ----------
+    mask : scipy.sparse.csr_matrix of bool
+        The mask around which to add margins.
+    kernels_shape : tuple of ints
+        The number of rows and kernel in the input kernel. Margins will be half
+        these values.
+    sym_upper : bool
+        Whether the signal is a symmetric upper triangle matrix. If so, values
+        on a margin below the diagonal will be masked.
+    max_dist : int or None
+        Number of diagonals to keep
+
+    Returns
+    -------
+    exterior_frame : scipy.sparse.csr_matrix of bool
+        The input mask with 
+    """
+    if mask.dtype != bool:
+        raise ValueError('Mask must contain boolean values')
+    ms, ns = mask.shape
+    mk, nk = kernel_shape
+    if sym_upper and (max_dist is not None):
+        # Remove diagonals further than scan distance in the input mask
+        mask = diag_trim(mask.todia(), max_dist + max(nk, mk)).tocsr()
+        max_m = max_dist + mk
+        max_n = max_dist + nk
+    else:
+        max_m, max_n = ms, ns
+    # Up and down margins initialized with zeros and filled as needed
+    margin_1 = sp.csr_matrix((mk - 1, ns), dtype=bool)
+    margin_2 = sp.csr_matrix((mk - 1, ns), dtype=bool)
+    if sym_upper and (max_dist is not None):
+        # Margin 1 (top) is in upper triangle -> fill missing up to scan dist
+        margin_1[:, :max_n] = 1
+    else:
+        margin_1[:, :] = 1
+        margin_2[:, :] = 1
+    mask = sp.vstack([margin_1, mask, margin_2], format="csr")
+
+    # Left and right
+    margin_1 = sp.csr_matrix((ms + 2 * (mk - 1), nk - 1), dtype=bool)
+    margin_2 = sp.csr_matrix((ms + 2 * (mk - 1), nk - 1), dtype=bool)
+
+    if sym_upper and (max_dist is not None):
+        # Margin 2 (right) is in upper triangle-> fill missing up to scan dist
+        margin_2[-(max_m + 1) :, :] = 1
+        # Fill only the start of left margin for the top-left corner
+        margin_1[: mk - 1, :] = 1
+    else:
+        margin_1[:, :] = 1
+        margin_2[:, :] = 1
+    mask = sp.hstack([margin_1, mask, margin_2], format="csr")
+
+    if sym_upper:
+        # LIL format is much faster when changing sparsity
+        mask = mask.tolil()
+        # Add margin below diagonal
+        big_k = max(nk, mk)
+        dia_margin = np.ones(big_k // 2 -1)
+        dia_offsets = np.arange(-1, -big_k // 2 + 1, -1)
+        mask += sp.diags(dia_margin, dia_offsets, shape=mask.shape, format="lil", dtype=bool)
+        mask = mask.tocsr()
+    return mask
+
+
+def check_ismissing(signal, mask):
+    """
+    Ensure all elements defined as missing by the mask are set to zero in the signal.
+    If this is not the case, raises an error.
+
+    Parameters
+    ----------
+    signal : numpy.array of floats or scipy.sparse.csr_matrix of floats
+        The signal to be checked.
+    mask : numpy.array of bools or scipy.sparse.csr_matrix of bools
+        The mask defining missing values as True and valid values as False.
+    """
+
+    if sp.issparse(mask):
+        # Check if there are nonzero values in the signal reported as missing by the mask
+        missing_with_signal = np.nonzero(abs(signal[mask.nonzero()[0], mask.nonzero()[1]])>0)[0]
+        if len(missing_with_signal)>0:
+            raise ValueError('There are', len(missing_with_signal), 'non-zero elements reported as missing.')
+    else:
+        if (np.sum(abs(signal[mask>0]))>1e-10):
+            raise ValueError('There are', str(np.sum(abs(signal[mask>0]))), 'non-zero elements reported as missing.')
+
+
+def missing_bins_mask(shape, valid_rows, valid_cols, max_dist=None, sym_upper=False):
+    """
+    Given lists of valid rows and columns, generate a sparse matrix mask with
+    missing pixels denoted as 1 and valid pixels as 0. If a max_dist is provided, upper
+    symmetric matrices will only be flagged up to max_dist pixels from the diagonal.
+
+    Parameters
+    ----------
+    shape : tuple of ints
+        Shape of the mask to generate.
+    valid_rows : numpy.array of ints
+        Array with the indices of valid rows that should be set to 0 in the mask.
+    valid_cols : numpy.array of ints
+        Array with the indices of valid rows that should be set to 0 in the mask.
+    max_dist : int or None
+        The maximum diagonal distance at which masking should take place.
+    sym_upper : bool
+        Whether the matrix is symmetric upper. If so, max_dist is ignored
+    
+    Returns
+    -------
+    scipy.sparse.csr_matrix of bool
+        The mask containing False values where pixels are valid and True valid
+        where pixels are missing
+    """
+    # Error if the matrix upper symmetric but shape is rectangle or missing
+    # rows and cols are different
+    sm, sn = shape
+    if sym_upper and (sm != sn or len(valid_rows) != len(valid_cols)):
+            raise ValueError("Rectangular matrices cannot be upper symmetric")
+
+    # Get a boolean array of missing (1) and valid (0) rows
+    missing_rows = np.ones(sm)
+    missing_rows[valid_rows] = 0
+    missing_rows = np.where(missing_rows == True)[0]
+    # When matrix is symmetric, rows and cols are synonym, no need to compute 2x
+    if sym_upper:
+        missing_cols = missing_rows
+    else:
+        missing_cols = np.ones(sn)
+        missing_cols[valid_cols] = 0
+        missing_cols = np.where(missing_cols == True)[0]
+
+    # If upper symmetric, fill only upper diagonal up to max_dist. E. g. with bins 1 and 3 missing
+    # and a max_dist of 1:
+    # 0 1 0 0 0
+    # 0 1 1 0 0
+    # 0 0 0 1 0
+    # 0 0 0 1 1
+    # 0 0 0 0 0
+    # For each missing bin, mask is apply 1 pixel upwards and 1 to the right to fill only the upper
+    # triangle up to max_dist
+    if sym_upper:
+        # If no max dist has been specified, we'll fill the whole upper triangle
+        if max_dist is None:
+            max_dist = min(shape)
+        # Generate matrix of distance shifts by row. Shape is len(missing_rows) x (max_dist + 1)
+        # e.g.: 2 missing rows and max dist of 1
+        # 0 0
+        # 1 1
+        row_shifts = np.tile(np.array(range(max_dist)), (len(missing_rows), 1)).T
+        # Compute row positions upwards to diagonal by subtracting missing rows to the shifts
+        # Following the previous example, if missing rows are bins 1 and 3:
+        #  1 3
+        #  0 2
+        rows_before = (missing_rows - row_shifts).flatten('F')
+        # Since we are looking at pixels up from the bins, cols remain the same:
+        # 1 3
+        # 1 3
+        cols_before = np.repeat(missing_rows, max_dist)
+        # Compute column position to the right until diagonal by adding the shift
+        # Note: upper symmetric, so row_shifts = col_shift_
+        # 1 3
+        # 2 4
+        cols_after = (missing_cols + row_shifts).flatten('F')
+        # This time, rows remain constant since we are computing positions to the right
+        rows_after = np.repeat(missing_cols, max_dist)
+        # Combine positions to the right and upwards
+        rows = np.concatenate([rows_before, rows_after])
+        cols = np.concatenate([cols_before, cols_after])
+        data = np.ones(rows.shape, dtype=bool)
+        # Remove entries where rows or cols are negative or larger than shape
+        valid = (cols < sm) & (cols >= 0) & (rows < sm) & (rows >= 0)
+        # Remove duplicate entries and sort data
+        m_data = np.vstack([rows[valid], cols[valid], data[valid]])
+        m_data = np.unique(m_data, axis=1)
+        # Build mask matrix with miss. bins up to max scan distance in upper triangle
+        mask = sp.coo_matrix(
+            (m_data[2, :], (m_data[0, :], m_data[1, :])),
+            shape=shape,
+            dtype=bool
+        ).tocsr()
+    else:
+        mask = sp.csr_matrix(shape, dtype=bool)
+        mask[missing_rows, :] = 1
+        mask[:, missing_cols] = 1
+
+    return mask
+
+
+def zero_pad_sparse(mat, margin_h, margin_v, fmt="coo"):
+    """
+    Adds margin of zeros around an input sparse matrix.
+
+    Parameters
+    ----------
+    mat : scipy.sparse.coo_matrix
+        The matrix to be padded.
+    margin_h : int
+        The width of the horizontal margin to add on the left and right of the
+        matrix.
+    margin_v : int
+        The width of the vertical margin to add on the top and bottom of the
+        matrix.
+    fmt : string
+        The desired scipy sparse format of the output matrix
+    
+    Returns
+    -------
+    scipy.sparse.coo_matrix :
+        The padded matrix of dimensions (m + 2 * margin_h, n + 2 * margin_v).
+    
+    Examples
+    --------
+    >>> m = sp.coo_matrix(np.array([[1, 2], [10, 20]]))
+    >>> zero_pad_sparse(m, 2, 1).toarray()
+    array([[ 0,  0,  0,  0,  0,  0],
+           [ 0,  0,  1,  2,  0,  0],
+           [ 0,  0, 10, 20,  0,  0],
+           [ 0,  0,  0,  0,  0,  0]])
+    """
+
+    matfun = {
+        "coo": sp.coo_matrix,
+        "csr": sp.csr_matrix,
+        "lil": sp.lil_matrix,
+        "csc": sp.csc_matrix,
+    }
+    sm, sn = mat.shape
+    padded_m = sm + 2 * margin_v
+    padded_n = sn + 2 * margin_h
+
+    rows = mat.row + margin_v
+    cols = mat.col + margin_h
+    padded = matfun[fmt](
+        (mat.data, (rows, cols)), shape=(padded_m, padded_n), dtype=mat.dtype
+    )
+
+    return padded
+
+
+def crop_kernel(kernel, target_size):
+    """
+    Crop a kernel matrix to target size horizontally and vertically. If the target size
+    is even, 
+
+    Parameters
+    ----------
+    kernel : numpy.array of floats
+        Image to crop.
+    target_size : tuple of ints
+        Tuple defining the target shape of the kernel, takes the form (rows, cols)
+        where rows and cols are odd numbers.
+
+    Returns
+    -------
+    cropped : numpy.array of floats
+        New image no larger than target dimensions
+    """
+    # Use list for mutability
+    target = [d for d in target_size]
+    adjusted = False
+    for dim in range(len(target)):
+        if not target[dim] % 2:
+            target[dim] += 1
+            adjusted = True
+    if adjusted:
+        sys.stderr.write(
+            "WARNING: Cropped kernel size adjusted to "
+            f"{target[0]}x{target[1]} to keep odd dimensions.\n"
+        )
+
+    source_m, source_n = kernel.shape
+    target_m, target_n = target
+    # Define horizontal and vertical margins to trim
+    if source_m > target_m:
+        margin_rows = (source_m - target_m) // 2
+    else:
+        margin_rows = 0
+    if source_n > target_n:
+        margin_cols = (source_n - target_n) // 2
+    else:
+        margin_cols = 0
+
+    cropped = kernel[
+        margin_rows : (source_m - margin_rows),
+        margin_cols : (source_n - margin_cols),
+    ]
+
+    return cropped
+
+
 def resize_kernel(
     kernel,
     kernel_res=None,
     signal_res=None,
     factor=None,
-    min_size=5,
+    min_size=7,
     max_size=101,
 ):
     """

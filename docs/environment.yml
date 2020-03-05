@@ -1,0 +1,7 @@
+name: chromosight
+dependencies:
+  - chromosight
+  - notebook
+  - sphinx
+  - nbsphinx
+  - recommonmark

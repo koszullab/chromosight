@@ -200,9 +200,17 @@ class HicGenome:
     def load_data(self, mat_path):
         """Load contact, bin and chromosome informations from input path"""
         # Define functions to use for each format
-        format_loader = {"bg2": cio.load_bedgraph2d, "cool": cio.load_cool}
+        format_loader = {
+            "bg2": cio.load_bedgraph2d,
+            "cool": cio.load_cool,
+            "iobg2": cio.load_bedgraph2d,
+        }
         # Guess file format fron file name
-        extension = os.path.splitext(mat_path)[-1].lstrip(".")
+        try:
+            extension = os.path.splitext(mat_path)[-1].lstrip(".")
+        except TypeError:
+            # if mat_path isn't an actual file path but a file object
+            extension = "iobg2"
         if not len(extension) and re.search(r"mcool::", mat_path):
             extension = "cool"
         print("loading: ", mat_path)
@@ -304,6 +312,21 @@ class HicGenome:
         )
         self.sub_mats = sub_mats
         print("Sub matrices extracted")
+
+    def gather_sub_matrices(self):
+        """Gathers all processed sub_matrices into a whole genome matrix """
+        gathered = sp.csr_matrix(self.matrix.shape)
+        # Define shortcut to extract bins for each chromosome
+        c = self.chroms.set_index("name")
+        chr_extent = lambda n: c.loc[n, ["start_bin", "end_bin"]].values
+        # Fill empty whole genome matrix with processed submatrices
+        for i1, r1 in self.sub_mats.iterrows():
+            s1, e1 = chr_extent(r1.chr1)
+            s2, e2 = chr_extent(r1.chr2)
+            # Use each chromosome pair's sub matrix to fill the whole genome matrix
+            gathered[s1:e1, s2:e2] = r1.contact_map.matrix
+        gathered = sp.triu(gathered)
+        return gathered
 
     def get_full_mat_pattern(self, chr1, chr2, patterns):
         """
@@ -423,6 +446,7 @@ class HicGenome:
                 coords.reset_index().rename(columns={"index": "coord_idx"}),
                 left_on=["chrom", "start"],
                 right_on=["chrom", "pos"],
+                how="right",
             )
             .set_index("bin_idx")
             .sort_values("coord_idx")
@@ -520,8 +544,8 @@ class ContactMap:
         )
         self.matrix = self.matrix.tocoo()
         # Fill diagonals of the lower triangle that might overlap the kernel
-        for i in range(1, min(self.matrix.shape[0], self.largest_kernel)):
-            self.matrix.setdiag(1, -i)
+        # for i in range(1, min(self.matrix.shape[0], self.largest_kernel)):
+        #    self.matrix.setdiag(1, -i)
 
     @property
     def keep_distance(self):

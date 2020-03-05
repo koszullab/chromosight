@@ -27,7 +27,7 @@ def load_bedgraph2d(mat_path):
 
     Parameters
     ----------
-    mat_path : str
+    mat_path : str, file-like object
         Path to the matrix in 2D bedgraph format.
 
     Returns
@@ -43,7 +43,13 @@ def load_bedgraph2d(mat_path):
     bin_size : int
         Matrix resolution. Corresponds to the number of base pairs per matrix bin.
     """
-    bg2 = pd.read_csv(mat_path, delimiter="\t", header=None)
+
+    # Check if input is file-like object containing a csv (which has 8 columns
+    # instead of 7 and whose 0th column needs to be trimmed)
+    if hasattr(mat_path, "read"):
+        bg2 = pd.read_csv(mat_path, header=None, usecols=list(range(1, 8)))
+    else:
+        bg2 = pd.read_csv(mat_path, delimiter="\t", header=None)
     bg2.head()
     bg2.columns = [
         "chr1",
@@ -271,7 +277,7 @@ def load_kernel_config(kernel, custom=False):
         "min_dist": int,
         "max_iterations": int,
         "max_perc_undetected": float,
-        "precision": float
+        "pearson": float
         "resolution": int
     }
     ```
@@ -287,7 +293,7 @@ def load_kernel_config(kernel, custom=False):
     * max_dist : maximum distance in basepairs to scan from the diagonal
     * max_iterations: maximum number of scanning iterations to perform
     * max_perc_undetected: Maximum percentage of undetected bins to include a pattern
-    * precision: Increasing this value reduces false positive patterns.
+    * pearson: Increasing this value reduces false positive patterns.
     * resolution: Basepair resolution for the kernel matrix.
 
     Parameters
@@ -314,7 +320,7 @@ def load_kernel_config(kernel, custom=False):
             "max_dist": {"type": "number", "minimum": 0},
             "max_iterations": {"type": "number", "minimum": 0},
             "min_separation": {"type": "number", "minimum": 1},
-            "precision": {"type": "number"},
+            "pearson": {"type": "number"},
             "resolution": {"type": "number"},
         },
         "required": [
@@ -324,7 +330,7 @@ def load_kernel_config(kernel, custom=False):
             "max_dist",
             "max_iterations",
             "min_separation",
-            "precision",
+            "pearson",
             "resolution",
         ],
     }
@@ -448,7 +454,9 @@ def progress(count, total, status=""):
     percents = round(100.0 * count / float(total), 1)
     bar = "=" * filled_len + "-" * (bar_len - filled_len)
 
-    sys.stderr.write(" [%s] %s%s %s\r" % (bar, percents, "%", status))
+    # Clear current line, write status and erase everything to the end of
+    # the line using ANSI code
+    sys.stderr.write("\r [%s] %s%s %s\033[K" % (bar, percents, "%", status))
     sys.stderr.flush()
 
 
@@ -482,4 +490,11 @@ def load_bed2d(path):
             names=["chrom1", "start1", "end1", "chrom2", "start2", "end2"],
             usecols=range(6),
         )
+    # Make sure start1 is always the left anchor for intrachromosomal pairs
+    inverted = (bed2d.start2 < bed2d.start1) & (bed2d.chrom1 == bed2d.chrom2)
+    bed2d.start1[inverted], bed2d.start2[inverted] = (
+        bed2d.start2[inverted],
+        bed2d.start1[inverted],
+    )
+
     return bed2d

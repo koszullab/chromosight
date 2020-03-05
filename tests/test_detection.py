@@ -40,8 +40,8 @@ def gauss_mat(meanx, meany, std, shape=(100, 100)):
 # Zeros with two isolated points -> speckles
 point_mat = np.zeros((10, 10), dtype=float)
 # Add isolated 1-pixel points
-point_mat[5, 5] = 1
-point_mat[2, 2] = 1
+point_mat[5, 5] = 0.3
+point_mat[2, 2] = 0.3
 # Get into upper symmetric sparse format
 point_mat = sp.coo_matrix(np.triu(point_mat))
 
@@ -139,7 +139,7 @@ def test_pattern_detector(matrix):
     kernel_matrix = gauss_mat(0, 0, 5, shape=(7, 7)).todense()
     kernel_config = {
         "max_dist": 100,
-        "precision": 1,
+        "pearson": 0.5,
         "max_perc_undetected": 10,
     }
     kernel_matrix = (
@@ -168,7 +168,7 @@ def test_remove_neighbours(win_size):
 
 def test_picker_speckles():
     """Test if speckles are discarded by picker"""
-    obs_coords, obs_mat = cud.picker(point_mat, precision=None)
+    obs_coords, obs_mat = cud.picker(point_mat, pearson=0.1)
     assert obs_coords is None
     assert obs_mat is None
 
@@ -176,13 +176,15 @@ def test_picker_speckles():
 @params(*zip(gauss1_coords, gauss1_mats))
 def test_picker_idx(patterns, matrix):
     """Test that index is not shifted when using picker"""
-    obs_coords, _ = cud.picker(matrix, precision=None)
+    thresh = matrix.data.mean()
+    obs_coords, _ = cud.picker(matrix, pearson=thresh)
     assert np.all(obs_coords[0] == patterns)
 
 
 def test_picker_nloci():
     """Test if the number of foci detected by picker is correct"""
-    obs_coords, _ = cud.picker(gauss12, precision=1)
+    thresh = gauss12.data.mean()
+    obs_coords, _ = cud.picker(gauss12, pearson=thresh)
     assert len(obs_coords) == 2
 
 
@@ -269,7 +271,7 @@ def test_xcorr2(signal):
 @params(*gauss1_mats)
 def test_corrcoef2d(signal):
     """Check if Pearson and cross-product correlations yield appropriate values"""
-    for scaling in ["pearson", "cross"]:
+    for scaling in ["pearson"]:
         corr = cud.corrcoef2d(
             signal,
             gauss_kernel,
@@ -285,7 +287,7 @@ def test_corrcoef2d(signal):
 @params(*gauss1_mats)
 def test_corrcoef2d_dense_sparse(signal):
     """Check if corrcoef2d yields identical values for dense and sparse versions"""
-    for scaling in ["pearson", "cross"]:
+    for scaling in ["pearson", None]:
         corr_d = cud.corrcoef2d(
             signal.todense(),
             gauss_kernel,
@@ -308,7 +310,7 @@ def test_corrcoef2d_kernels(kernel_config):
     """Test corrfoef2d on all built-in patterns"""
     # Loop over the different kernel matrices for the current pattern
     for kernel in kernel_config["kernels"]:
-        for scaling in ["pearson", "cross"]:
+        for scaling in ["pearson", None]:
             km, kn = kernel.shape
             # Generate fake Hi-C matrix: empty with pattern centered at 60,80
             pattern_signal = np.zeros((100, 100), dtype=float)

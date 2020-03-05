@@ -6,15 +6,16 @@ Explore and detect patterns (loops, borders, centromeres, etc.) in Hi-C contact
 maps with pattern matching.
 
 Usage:
-    chromosight detect <contact_map> [<output>] [--kernel-config=FILE]
-                        [--pattern=loops] [--precision=auto] [--iterations=auto]
-                        [--win-fmt={json,npy}] [--subsample=no] [--inter] [--smooth-trend]
-                        [--min-dist=0] [--max-dist=auto] [--no-plotting] [--dump=DIR]
-                        [--min-separation=auto] [--threads=1] [--n-mads=5]
-                        [--resize-kernel] [--perc-undetected=auto]
-    chromosight generate-config <prefix> [--preset loops]
-    chromosight quantify [--inter] [--pattern=loops] [--subsample=no] [--win-fmt=json]
+    chromosight detect  [--kernel-config=FILE] [--pattern=loops] [--pearson=auto]
+                        [--iterations=auto] [--win-fmt={json,npy}] [--full]
+                        [--subsample=no] [--inter] [--smooth-trend] [--n-mads=5]
+                        [--min-dist=0] [--max-dist=auto] [--no-plotting]
+                        [--min-separation=auto] [--threads=1] [--dump=DIR]
+                        [--perc-undetected=auto] <contact_map> [<output>]
+    chromosight generate-config <prefix> [--preset loops] [--click contact_map] [--win-size=auto] [--n-mads=INT]
+    chromosight quantify [--inter] [--pattern=loops] [--subsample=no] [--win-fmt=json] [--kernel-config=FILE]
                          [--n-mads=5] [--win-size=auto] <bed2d> <contact_map> <output>
+    chromosight test
 
     detect: 
         performs pattern detection on a Hi-C contact map using kernel convolution
@@ -28,6 +29,8 @@ Usage:
         Given a list of pairs of positions and a contact map, computes the
         correlation coefficients between those positions and the kernel of the
         selected pattern.
+    test:
+        Download example data and run the program on it.
 
 Arguments for detect:
     -h, --help                  Display this help message.
@@ -40,6 +43,11 @@ Arguments for detect:
                                 a compressed npz of a sparse matrix and can be
                                 loaded using scipy.sparse.load_npz. Disabled
                                 by default.
+    -f, --full                  Enable 'full' convolution mode: The whole matrix
+                                is scanned all the way to edges and missing bins
+                                are masked. This will allow to detect very close
+                                to the diagonal and close to repeated sequences
+                                at the cost of memory and compute time.
     -I, --inter                 Enable to consider interchromosomal contacts.
                                 Warning: Experimental feature with very high
                                 memory consumption is very high, only use with
@@ -52,8 +60,10 @@ Arguments for detect:
                                 config path. Use this to override pattern if 
                                 you do not want to use one of the preset 
                                 patterns.
-    -m, --min-dist=auto         Filter out patterns closer than a target base
-                                pair distance from the diagonal. [default: auto]
+    -m, --min-dist=auto         Minimum distance from the diagonal (in base pairs).
+                                If this value is smaller than the kernel size, the
+                                kernel will be cropped to avoid overlapping the
+                                diagonal, up to a min.size of 7x7. [default: auto]
     -M, --max-dist=auto         Maximum distance from the diagonal (in base pairs)
                                 at which pattern detection should operate. Auto
                                 sets a value based on the kernel configuration
@@ -66,12 +76,10 @@ Arguments for detect:
                                 configurations for the given pattern. Possible
                                 values are: loops, borders, hairpins and
                                 centromeres. [default: loops]
-    -p, --precision=auto        Precision threshold when assessing pattern
+    -p, --pearson=auto          Pearson correlation threshold when assessing pattern
                                 probability in the contact map. A lesser value
                                 leads to potentially more detections, but more
                                 false positives. [default: auto]
-    -r, --resize-kernel         Experimental: Enable to resize kernel based on
-                                input resolution.
     -s, --subsample=INT         If greater than 1, subsample contacts from the 
                                 matrix to INT contacts. If between 0 and 1, subsample
                                 a proportion of contacts instead. This is useful
@@ -100,6 +108,10 @@ Arguments for generate-config:
     -e, --preset=loops          Generate a preset config for the given pattern.
                                 Preset configs available are "loops" and 
                                 "borders". [default: loops]
+    -c, --click contact_map     Show input contact map and uses double clicks from
+                                user to build the kernel. Warning: memory-heavy,
+                                reserve for small genomes or subsetted matrices.
+                                
 Arguments for quantify:
     bed2d                       Tab-separated text files with columns chrom1, start1
                                 end1, chrom2, start2, end2. Each line correspond to
@@ -119,6 +131,8 @@ import numpy as np
 import pandas as pd
 import pathlib
 import os
+import io
+from contextlib import contextmanager
 import sys
 import json
 import docopt
@@ -127,15 +141,39 @@ from chromosight.version import __version__
 from chromosight.utils.contacts_map import HicGenome
 import chromosight.utils.io as cio
 import chromosight.utils.detection as cid
-from chromosight.utils.plotting import pileup_plot
-from chromosight.utils.preprocessing import resize_kernel
+from chromosight.utils.plotting import pileup_plot, click_finder
+from chromosight.utils.preprocessing import resize_kernel, crop_kernel
 import scipy.stats as ss
+import scipy.ndimage as ndi
+import matplotlib.pyplot as plt
+
+
+URL_EXAMPLE_DATASET = (
+    "https://raw.githubusercontent.com/koszullab/"
+    "chromosight/master/data_test/example.bg2"
+)
+
+TEST_LOG = f"""Fetching test dataset at {URL_EXAMPLE_DATASET}...
+Running detection on test dataset...
+pearson set to 0.25 based on config file.
+max_dist set to 500000 based on config file.
+min_dist set to 5000 based on config file.
+min_separation set to 5000 based on config file.
+max_perc_undetected set to 10.0 based on config file.
+Found 690 / 720 detectable bins
+Whole genome matrix normalized
+Preprocessing sub-matrices...
+Sub matrices extracted
+Detecting patterns...
+Minimum pattern separation is : 5
+56 patterns detected
+"""
 
 
 def _override_kernel_config(param_name, param_value, param_type, config):
     """
-    Helper function to determine if config file value should be overriden by
-    user.
+    Helper function to determine if a config file value should be overriden
+    by the user.
     """
 
     if param_value == "auto":
@@ -167,6 +205,7 @@ def cmd_quantify(arguments):
     pattern = arguments["--pattern"]
     inter = arguments["--inter"]
     win_size = arguments["--win-size"]
+    kernel_config_path = arguments["--kernel-config"]
     if win_size != "auto":
         win_size = int(win_size)
     subsample = arguments["--subsample"]
@@ -181,17 +220,22 @@ def cmd_quantify(arguments):
             "Warning: The bed2d file contains interchromosomal patterns. "
             "These patterns will not be scanned unless --inter is used.\n"
         )
-    # Parse kernel config
-    kernel_config = cio.load_kernel_config(pattern, False)
+    if kernel_config_path is not None:
+        custom = True
+        # Loading input path as config
+        config_path = kernel_config_path
+    else:
+        custom = False
+        # Will use a preset config file matching pattern name
+        config_path = pattern
+    cfg = cio.load_kernel_config(config_path, custom)
     # Instantiate and preprocess contact map
-    hic_genome = HicGenome(mat_path, inter=inter, kernel_config=kernel_config)
-    # force full scanning distance in kernel config
-    kernel_config["max_dist"] = (
-        hic_genome.matrix.shape[0] * hic_genome.resolution
-    )
-    kernel_config["min_dist"] = 0
+    hic_genome = HicGenome(mat_path, inter=inter, kernel_config=cfg)
+    # enforce full scanning distance in kernel config
+    cfg["max_dist"] = hic_genome.matrix.shape[0] * hic_genome.resolution
+    cfg["min_dist"] = 0
     # Notify contact map instance of changes in scanning distance
-    hic_genome.kernel_config = kernel_config
+    hic_genome.kernel_config = cfg
     # Subsample Hi-C contacts from the matrix, if requested
     if subsample != "no":
         hic_genome.subsample(subsample)
@@ -208,13 +252,13 @@ def cmd_quantify(arguments):
     if win_size != "auto":
         km = kn = win_size
     else:
-        km, kn = kernel_config["kernels"][0].shape
+        km, kn = cfg["kernels"][0].shape
     windows = np.zeros((positions.shape[0], km, kn))
     # For each position, we use the center of the BED interval
     positions["pos1"] = (positions.start1 + positions.end1) // 2
     positions["pos2"] = (positions.start2 + positions.end2) // 2
     # Use each kernel matrix available for the pattern
-    for kernel_id, kernel_matrix in enumerate(kernel_config["kernels"]):
+    for kernel_id, kernel_matrix in enumerate(cfg["kernels"]):
         # Only resize kernel matrix if explicitely requested
         if win_size != "auto":
             kernel_matrix = resize_kernel(kernel_matrix, factor=win_size / km)
@@ -233,7 +277,17 @@ def cmd_quantify(arguments):
                 sub_pat_ax = sub_pat.loc[:, [f"chrom{ax}", f"pos{ax}"]].rename(
                     columns={f"chrom{ax}": "chrom", f"pos{ax}": "pos"}
                 )
-                sub_pat[f"bin{ax}"] = hic_genome.coords_to_bins(sub_pat_ax)
+                sub_pat_bins = hic_genome.coords_to_bins(sub_pat_ax)
+                sub_pat[f"bin{ax}"] = sub_pat_bins
+
+            # Check for nan bins (coords that do not match any Hi-C fragments
+            fall_out = np.isnan(sub_pat["bin1"]) | np.isnan(sub_pat["bin2"])
+            if np.any(fall_out):
+                n_out = len(sub_pat_bins[fall_out])
+                sys.stderr.write(
+                    f"{n_out} entr{'ies' if n_out > 1 else 'y'} outside "
+                    "genomic coordinates of the Hi-C matrix will be ignored.\n"
+                )
             # Convert bins from whole genome matrix to sub matrix
             sub_pat = hic_genome.get_sub_mat_pattern(
                 mat.chr1, mat.chr2, sub_pat
@@ -242,12 +296,14 @@ def cmd_quantify(arguments):
             # Iterate over patterns from the 2D BED file
             for i, x, y in zip(sub_pat_idx, sub_pat.bin1, sub_pat.bin2):
                 # Check if the window goes out of bound
-                if (
+                if np.all(np.isfinite([x, y])) and (
                     x - kh >= 0
                     and x + kh + 1 < m.shape[0]
                     and y - kw >= 0
                     and y + kw + 1 < m.shape[1]
                 ):
+                    x = int(x)
+                    y = int(y)
                     # For each pattern, compute correlation score with all kernels
                     # but only keep the best
                     win = m[x - kh : x + kh + 1, y - kw : y + kw + 1].toarray()
@@ -284,23 +340,61 @@ def cmd_generate_config(arguments):
     # Parse command line arguments for generate_config
     prefix = arguments["<prefix>"]
     pattern = arguments["--preset"]
+    click_find = arguments["--click"]
+    n_mads = float(arguments["--n-mads"])
+    win_size = arguments["--win-size"]
 
-    kernel_config = cio.load_kernel_config(pattern, False)
+    cfg = cio.load_kernel_config(pattern, False)
 
     # If prefix involves a directory, create it
     if os.path.dirname(prefix):
         os.makedirs(os.path.dirname(prefix), exist_ok=True)
 
+    # If a specific window size if requested, resize all kernels
+    if win_size != "auto":
+        win_size = int(win_size)
+        resize = lambda m: resize_kernel(m, factor=win_size / m.shape[0])
+        cfg["kernels"] = [resize(k) for k in cfg["kernels"]]
+    # Otherwise, just inherit window size from the kernel config
+    else:
+        win_size = cfg["kernels"][0].shape[0]
+
+    # If click mode is enabled, build a kernel from scratch using
+    # graphical display, otherwise, just inherit the pattern's kernel
+    if click_find:
+        hic_genome = HicGenome(click_find, inter=True, kernel_config=cfg)
+        # Normalize (balance) the whole genome matrix
+        hic_genome.normalize(n_mads=n_mads)
+        # enforce full scanning distance in kernel config
+
+        hic_genome.max_dist = (
+            hic_genome.matrix.shape[0] * hic_genome.resolution
+        )
+        # Process each sub-matrix individually (detrend diag for intra)
+        hic_genome.make_sub_matrices()
+        processed_mat = hic_genome.gather_sub_matrices().tocsr()
+        windows = click_finder(processed_mat, half_w=int((win_size - 1) / 2))
+        # Pileup all recorded windows and convert to JSON serializable list
+        pileup = ndi.gaussian_filter(cid.pileup_patterns(windows), 1)
+        cfg["kernels"] = [pileup.tolist()]
+        # Show the newly generate kernel to the user, use zscore to highlight contrast
+        hm = plt.imshow(
+            np.log(pileup), vmax=np.percentile(pileup, 99), cmap="afmhot_r"
+        )
+        cbar = plt.colorbar(hm)
+        cbar.set_label("Log10 Hi-C contacts")
+        plt.title("Manually generated kernel")
+        plt.show()
     # Write kernel matrices to files with input prefix and replace kernels
     # by their path in config
-    for mat_id, mat in enumerate(kernel_config["kernels"]):
+    for mat_id, mat in enumerate(cfg["kernels"]):
         mat_path = f"{prefix}.{mat_id+1}.txt"
         np.savetxt(mat_path, mat)
-        kernel_config["kernels"][mat_id] = mat_path
+        cfg["kernels"][mat_id] = mat_path
 
     # Write config to JSON file using prefix
     with open(f"{prefix}.json", "w") as config_handle:
-        json.dump(kernel_config, config_handle, indent=4)
+        json.dump(cfg, config_handle, indent=4)
 
 
 def _detect_sub_mat(data):
@@ -309,7 +403,7 @@ def _detect_sub_mat(data):
     kernel = data[2]
     dump = data[3]
     chrom_patterns, chrom_windows = cid.pattern_detector(
-        sub.contact_map, config, kernel, dump
+        sub.contact_map, config, kernel, dump, full=config["full"]
     )
     return {
         "coords": chrom_patterns,
@@ -323,6 +417,7 @@ def cmd_detect(arguments):
     # Parse command line arguments for detect
     kernel_config_path = arguments["--kernel-config"]
     dump = arguments["--dump"]
+    full = arguments["--full"]
     interchrom = arguments["--inter"]
     iterations = arguments["--iterations"]
     mat_path = arguments["<contact_map>"]
@@ -332,8 +427,7 @@ def cmd_detect(arguments):
     n_mads = float(arguments["--n-mads"])
     pattern = arguments["--pattern"]
     perc_undetected = arguments["--perc-undetected"]
-    precision = arguments["--precision"]
-    resize = arguments["--resize-kernel"]
+    pearson = arguments["--pearson"]
     threads = arguments["--threads"]
     output = arguments["<output>"]
     win_fmt = arguments["--win-fmt"]
@@ -372,19 +466,16 @@ def cmd_detect(arguments):
     ### 0: LOAD INPUT
     params = {
         "max_iterations": (iterations, int),
-        "precision": (precision, float),
+        "pearson": (pearson, float),
         "max_dist": (max_dist, int),
         "min_dist": (min_dist, int),
         "min_separation": (min_separation, int),
         "max_perc_undetected": (perc_undetected, float),
     }
-    kernel_config = cio.load_kernel_config(config_path, custom)
+    cfg = cio.load_kernel_config(config_path, custom)
     for param_name, (param_value, param_type) in params.items():
-        kernel_config = _override_kernel_config(
-            param_name, param_value, param_type, kernel_config
-        )
+        cfg = _override_kernel_config(param_name, param_value, param_type, cfg)
 
-    # NOTE: Temporary warning
     if interchrom:
         sys.stderr.write(
             "WARNING: Detection on interchromosomal matrices is expensive in RAM\n"
@@ -392,20 +483,12 @@ def cmd_detect(arguments):
     hic_genome = HicGenome(
         mat_path,
         inter=interchrom,
-        kernel_config=kernel_config,
+        kernel_config=cfg,
         dump=dump,
         smooth=smooth_trend,
     )
     ### 1: Process input signal
-    #  Adapt size of kernel matrices based on the signal resolution
-    if resize:
-        for i, mat in enumerate(kernel_config["kernels"]):
-            kernel_config["kernels"][i] = resize_kernel(
-                mat,
-                kernel_res=kernel_config["resolution"],
-                signal_res=hic_genome.resolution,
-            )
-    hic_genome.kernel_config = kernel_config
+    hic_genome.kernel_config = cfg
     # Subsample Hi-C contacts from the matrix, if requested
     # NOTE: Subsampling has to be done before normalisation
     hic_genome.subsample(subsample)
@@ -425,25 +508,36 @@ def cmd_detect(arguments):
     n_sub_mats = hic_genome.sub_mats.shape[0]
     # Loop over the different kernel matrices for input pattern
     run_id = 0
-    total_runs = (
-        len(kernel_config["kernels"]) * kernel_config["max_iterations"]
-    )
+    # Use cfg to inform jobs whether they should run full convolution
+    cfg["full"] = full
+    total_runs = len(cfg["kernels"]) * cfg["max_iterations"]
     sys.stderr.write("Detecting patterns...\n")
-    for kernel_id, kernel_matrix in enumerate(kernel_config["kernels"]):
+    for kernel_id, kernel_matrix in enumerate(cfg["kernels"]):
         # Adjust kernel iteratively
-        for i in range(kernel_config["max_iterations"]):
+        for i in range(cfg["max_iterations"]):
             cio.progress(
-                run_id, total_runs, f"Kernel: {kernel_id}, Iteration: {i}"
+                run_id, total_runs, f"Kernel: {kernel_id}, Iteration: {i}\n"
             )
 
             # Apply detection procedure to all sub matrices in parallel
             sub_mat_data = zip(
                 hic_genome.sub_mats.iterrows(),
-                [kernel_config for i in range(n_sub_mats)],
+                [cfg for i in range(n_sub_mats)],
                 [kernel_matrix for i in range(n_sub_mats)],
                 [dump for i in range(n_sub_mats)],
             )
-            sub_mat_results = pool.map(_detect_sub_mat, sub_mat_data)
+            # Run detection in parallel on different sub matrices, and show progress when
+            # gathering results
+            sub_mat_results = []
+            for s, result in enumerate(
+                pool.imap_unordered(_detect_sub_mat, sub_mat_data, 1)
+            ):
+                chr1 = hic_genome.sub_mats.chr1[s]
+                chr2 = hic_genome.sub_mats.chr2[s]
+                cio.progress(s, n_sub_mats, f"{chr1}-{chr2}")
+                sub_mat_results.append(result)
+            # sub_mat_results = list(map(_detect_sub_mat, sub_mat_data))
+
             # Convert coordinates from chromosome to whole genome bins
             kernel_coords = [
                 hic_genome.get_full_mat_pattern(
@@ -481,7 +575,6 @@ def cmd_detect(arguments):
             kernel_matrix = cid.pileup_patterns(kernel_windows)
             run_id += 1
     cio.progress(run_id, total_runs, f"Kernel: {kernel_id}, Iteration: {i}\n")
-
     # If no pattern detected on any chromosome, with any kernel, exit gracefully
     if len(all_pattern_coords) == 0:
         sys.stderr.write("No pattern detected ! Exiting.\n")
@@ -495,9 +588,7 @@ def cmd_detect(arguments):
     all_pattern_windows = np.concatenate(all_pattern_windows, axis=0)
 
     # Compute minimum separation in bins and make sure it has a reasonable value
-    separation_bins = int(
-        kernel_config["min_separation"] // hic_genome.resolution
-    )
+    separation_bins = int(cfg["min_separation"] // hic_genome.resolution)
     if separation_bins < 1:
         separation_bins = 1
     print(f"Minimum pattern separation is : {separation_bins}")
@@ -529,7 +620,7 @@ def cmd_detect(arguments):
         all_pattern_coords.chrom1 == all_pattern_coords.chrom2
     ) & (
         np.abs(all_pattern_coords.start2 - all_pattern_coords.start1)
-        < int(kernel_config["min_dist"])
+        < cfg["min_dist"]
     )
     # Reorder columns at the same time
     all_pattern_coords = all_pattern_coords.loc[
@@ -553,25 +644,54 @@ def cmd_detect(arguments):
     ### 3: WRITE OUTPUT
     sys.stderr.write(f"{all_pattern_coords.shape[0]} patterns detected\n")
     # Save patterns and their coordinates in a tsv file
-    cio.write_patterns(
-        all_pattern_coords, kernel_config["name"] + "_out", output
-    )
+    cio.write_patterns(all_pattern_coords, cfg["name"] + "_out", output)
     # Save windows as an array in an npy file
     cio.save_windows(
-        all_pattern_windows,
-        kernel_config["name"] + "_out",
-        output,
-        format=win_fmt,
+        all_pattern_windows, cfg["name"] + "_out", output, format=win_fmt
     )
 
     # Generate pileup visualisations if requested
     if plotting_enabled:
         # Compute and plot pileup
         pileup_fname = ("pileup_of_{n}_{pattern}").format(
-            pattern=kernel_config["name"], n=all_pattern_windows.shape[0]
+            pattern=cfg["name"], n=all_pattern_windows.shape[0]
         )
         windows_pileup = cid.pileup_patterns(all_pattern_windows)
         pileup_plot(windows_pileup, name=pileup_fname, output=output)
+
+
+def cmd_test(arguments):
+
+    sys.stderr.write(f"Fetching test dataset at {URL_EXAMPLE_DATASET}...\n")
+    test_data = pd.read_csv(URL_EXAMPLE_DATASET, sep="\t")
+
+    # Turn dataframe into file like object for the detector to parse
+    test_stream = io.StringIO()
+    test_data.to_csv(test_stream)
+    test_stream.seek(0)
+
+    sys.stderr.write(f"Running detection on test dataset...\n")
+
+    arguments["<contact_map>"] = test_stream
+    cmd_detect(arguments)
+
+
+@contextmanager
+def capture_ouput(stderr_to=None):
+    """Capture the stderr of the test run. """
+
+    try:
+        stderr = sys.stderr
+        sys.stderr = c2 = stderr_to or io.StringIO()
+        yield c2
+
+    finally:
+        sys.stderr = stderr
+        try:
+            c2.flush()
+            c2.seek(0)
+        except (ValueError, IOError):
+            pass
 
 
 def main():
@@ -579,7 +699,30 @@ def main():
     detect = arguments["detect"]
     generate_config = arguments["generate-config"]
     quantify = arguments["quantify"]
-    if detect:
+    test = arguments["test"]
+    if test:
+        with capture_ouput() as stderr:
+            cmd_test(arguments)
+
+        actual_log = stderr.read()
+        sys.stderr.write(actual_log)
+
+        # remove progress bars and \r chars
+        actual_log_lines = {
+            u.strip("\r") for u in set(actual_log.split("\n")) if "[" not in u
+        }
+        expected_log_lines = set(TEST_LOG.split("\n"))
+
+        if expected_log_lines not in actual_log_lines:
+            sys.stderr.write(
+                "\nWarning, the test log differed from the "
+                "expected one. This means the program changed its output from"
+                "previous versions. You may ignore this if you are not a "
+                "developer.\n\n"
+                f"Here is the expected log:\n\n{TEST_LOG}\n"
+            )
+
+    elif detect:
         cmd_detect(arguments)
     elif generate_config:
         cmd_generate_config(arguments)
