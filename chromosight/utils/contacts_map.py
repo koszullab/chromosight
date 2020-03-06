@@ -1,6 +1,7 @@
 # Implementation of a contact map class.
 from __future__ import absolute_import
 from . import io as cio
+import multiprocessing as mp
 import cooler
 from . import preprocessing as preproc
 import os
@@ -100,12 +101,10 @@ class HicGenome:
     sample : int, float or None
         Proportion of contacts to sample from the data if between 0 and 1. Number
         of contacts to keep if above 1. Keep all if None.
-    force_norm : bool
-        Ignore existing weights in the cool file and recompute matrix balancing.
     """
 
     def __init__(
-        self, path, inter=False, kernel_config=None, dump=None, smooth=False, sample=None, force_norm=False
+        self, path, inter=False, kernel_config=None, dump=None, smooth=False, sample=None,
     ):
         # Load Hi-C matrix and associated metadata
         try:
@@ -120,7 +119,6 @@ class HicGenome:
         self.sub_mats = None
         self.detectable_bins = np.array(range(self.clr.shape[0]))
         self.inter = inter
-        self.force_norm = force_norm
         self.compute_max_dist()
         if sample is None:
             self.sample = 1
@@ -148,7 +146,7 @@ class HicGenome:
             self.largest_kernel = 3
 
     @DumpMatrix("02_normalized")
-    def normalize(self, n_mads=5):
+    def normalize(self, force_norm=False, n_mads=5, threads=1):
         """
         If the instance's cooler is not balanced, finds detectable bins and
         applies ICE normalisation to the whole genome matrix. Newly computed
@@ -157,15 +155,27 @@ class HicGenome:
 
         Parameters
         ----------
+        force_norm : bool
+            Whether to force recomputing of or reuse existing weights in the
+            cool file.
         n_mads : float
             Maximum number of median absoluted deviations (MADs) below the
             median of the distribution of logged bin sums to consider a bin
             detectable.
+        threads : int
+            Number of parallel threads to use for normalization.
         """
-        if 'weight' in self.bins.columns and not self.force_norm:
+        if 'weight' in self.bins.columns and not force_norm:
             sys.stderr.write('Matrix already balanced, reusing weights\n')
         else:
-            cooler.balance_cooler(self.clr, mad_max=n_mads, cis_only=not self.inter, store=True) 
+            pool = mp.Pool(threads)
+            cooler.balance_cooler(
+                self.clr,
+                mad_max=n_mads,
+                cis_only=not self.inter,
+                store=True,
+                map=pool.imap_unordered
+            ) 
             print("Whole genome matrix balanced")
         # Bins with NaN weight are missing, matrix already balanced
         self.detectable_bins = np.where(np.isfinite(self.bins.weight))[0]

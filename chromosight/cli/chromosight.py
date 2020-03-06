@@ -432,7 +432,7 @@ def cmd_detect(arguments):
     pattern = arguments["--pattern"]
     perc_undetected = arguments["--perc-undetected"]
     pearson = arguments["--pearson"]
-    threads = arguments["--threads"]
+    threads = int(arguments["--threads"])
     output = arguments["<output>"]
     win_fmt = arguments["--win-fmt"]
     subsample = arguments["--subsample"]
@@ -491,12 +491,11 @@ def cmd_detect(arguments):
         dump=dump,
         smooth=smooth_trend,
         sample=subsample,
-        force_norm=force_norm,
     )
     ### 1: Process input signal
     hic_genome.kernel_config = cfg
     # Normalize (balance) matrix using ICE
-    hic_genome.normalize(n_mads=n_mads)
+    hic_genome.normalize(force_norm=force_norm, n_mads=n_mads, threads=threads)
     # Define how many diagonals should be used in intra-matrices
     hic_genome.compute_max_dist()
     # Split whole genome matrix into intra- and inter- sub matrices. Each sub
@@ -507,7 +506,7 @@ def cmd_detect(arguments):
     all_pattern_windows = []
 
     ### 2: DETECTION ON EACH SUBMATRIX
-    pool = mp.Pool(int(threads))
+    pool = mp.Pool(threads)
     n_sub_mats = hic_genome.sub_mats.shape[0]
     # Loop over the different kernel matrices for input pattern
     run_id = 0
