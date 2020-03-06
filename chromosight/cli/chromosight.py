@@ -7,7 +7,7 @@ maps with pattern matching.
 
 Usage:
     chromosight detect  [--kernel-config=FILE] [--pattern=loops] [--pearson=auto]
-                        [--iterations=auto] [--win-fmt={json,npy}] [--full]
+                        [--iterations=auto] [--win-fmt={json,npy}] [--force-norm] [--full]
                         [--subsample=no] [--inter] [--smooth-trend] [--n-mads=5]
                         [--min-dist=0] [--max-dist=auto] [--no-plotting]
                         [--min-separation=auto] [--threads=1] [--dump=DIR]
@@ -48,6 +48,9 @@ Arguments for detect:
                                 are masked. This will allow to detect very close
                                 to the diagonal and close to repeated sequences
                                 at the cost of memory and compute time.
+    -F, --force-norm            Re-compute matrix normalization (balancing) and
+                                overwrite weights present in the cool files instead
+                                of reusing them.
     -I, --inter                 Enable to consider interchromosomal contacts.
                                 Warning: Experimental feature with very high
                                 memory consumption is very high, only use with
@@ -417,6 +420,7 @@ def cmd_detect(arguments):
     # Parse command line arguments for detect
     kernel_config_path = arguments["--kernel-config"]
     dump = arguments["--dump"]
+    force_norm = arguments['--force-norm']
     full = arguments["--full"]
     interchrom = arguments["--inter"]
     iterations = arguments["--iterations"]
@@ -486,7 +490,8 @@ def cmd_detect(arguments):
         kernel_config=cfg,
         dump=dump,
         smooth=smooth_trend,
-        sample=subsample
+        sample=subsample,
+        force_norm=force_norm,
     )
     ### 1: Process input signal
     hic_genome.kernel_config = cfg

@@ -80,8 +80,8 @@ class HicGenome:
         the whole genome
     sub_mats : pandas.DataFrame
         Table containing intra- and optionally inter-chromosomal matrices.
-    detectable_bins : list of arrays of ints
-        List of two arrays containing indices of detectable rows and columns.
+    detectable_bins : array of ints
+        Array containing indices of detectable rows and columns.
     bins : pandas.DataFrame
         Table containing bin related informations.
     inter : bool
@@ -100,10 +100,12 @@ class HicGenome:
     sample : int, float or None
         Proportion of contacts to sample from the data if between 0 and 1. Number
         of contacts to keep if above 1. Keep all if None.
+    force_norm : bool
+        Ignore existing weights in the cool file and recompute matrix balancing.
     """
 
     def __init__(
-        self, path, inter=False, kernel_config=None, dump=None, smooth=False, sample=None
+        self, path, inter=False, kernel_config=None, dump=None, smooth=False, sample=None, force_norm=False
     ):
         # Load Hi-C matrix and associated metadata
         try:
@@ -118,6 +120,7 @@ class HicGenome:
         self.sub_mats = None
         self.detectable_bins = np.array(range(self.clr.shape[0]))
         self.inter = inter
+        self.force_norm = force_norm
         self.compute_max_dist()
         if sample is None:
             self.sample = 1
@@ -159,10 +162,10 @@ class HicGenome:
             median of the distribution of logged bin sums to consider a bin
             detectable.
         """
-        if 'weight' in self.bins.columns:
+        if 'weight' in self.bins.columns and not self.force_norm:
             sys.stderr.write('Matrix already balanced, reusing weights\n')
         else:
-            cooler.balance_cooler(self.c, mad_max=n_mads, cis_only=not self.inter, store=True) 
+            cooler.balance_cooler(self.clr, mad_max=n_mads, cis_only=not self.inter, store=True) 
             print("Whole genome matrix balanced")
         # Bins with NaN weight are missing, matrix already balanced
         self.detectable_bins = np.where(np.isfinite(self.bins.weight))[0]
