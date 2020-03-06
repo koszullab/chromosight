@@ -236,7 +236,9 @@ def cmd_quantify(arguments):
     if subsample == "no":
         subsample = None
     # Instantiate and preprocess contact map
-    hic_genome = HicGenome(mat_path, inter=inter, kernel_config=cfg, sample=subsample)
+    hic_genome = HicGenome(
+        mat_path, inter=inter, kernel_config=cfg, sample=subsample
+    )
     # enforce full scanning distance in kernel config
     cfg["max_dist"] = hic_genome.matrix.shape[0] * hic_genome.clr.binsize
     cfg["min_dist"] = 0
@@ -405,9 +407,12 @@ def _detect_sub_mat(data):
     config = data[1]
     kernel = data[2]
     dump = data[3]
+    sub.contact_map.create_mat()
     chrom_patterns, chrom_windows = cid.pattern_detector(
         sub.contact_map, config, kernel, dump, full=config["full"]
     )
+    sub.contact_map.matrix = None
+
     return {
         "coords": chrom_patterns,
         "windows": chrom_windows,
@@ -420,7 +425,7 @@ def cmd_detect(arguments):
     # Parse command line arguments for detect
     kernel_config_path = arguments["--kernel-config"]
     dump = arguments["--dump"]
-    force_norm = arguments['--force-norm']
+    force_norm = arguments["--force-norm"]
     full = arguments["--full"]
     interchrom = arguments["--inter"]
     iterations = arguments["--iterations"]

@@ -104,7 +104,13 @@ class HicGenome:
     """
 
     def __init__(
-        self, path, inter=False, kernel_config=None, dump=None, smooth=False, sample=None,
+        self,
+        path,
+        inter=False,
+        kernel_config=None,
+        dump=None,
+        smooth=False,
+        sample=None,
     ):
         # Load Hi-C matrix and associated metadata
         try:
@@ -120,14 +126,15 @@ class HicGenome:
         self.detectable_bins = np.array(range(self.clr.shape[0]))
         self.inter = inter
         self.compute_max_dist()
-        if sample is None:
-            self.sample = 1
-        elif sample > 1:
-            self.sample = sample / self.clr.info['sum']
-        elif sample > 0:
-            self.sample = sample
+        if sample is not None:
+            if sample > 1:
+                self.sample = sample / self.clr.info["sum"]
+            elif sample > 0:
+                self.sample = sample
+            else:
+                raise ValueError("Sample must be a positive value or None")
         else:
-            raise ValueError("Sample must be a positive value or None")
+            self.sample = sample
 
     def compute_max_dist(self):
         """Use the kernel config to compute max_dist"""
@@ -165,8 +172,8 @@ class HicGenome:
         threads : int
             Number of parallel threads to use for normalization.
         """
-        if 'weight' in self.bins.columns and not force_norm:
-            sys.stderr.write('Matrix already balanced, reusing weights\n')
+        if "weight" in self.bins.columns and not force_norm:
+            sys.stderr.write("Matrix already balanced, reusing weights\n")
         else:
             pool = mp.Pool(threads)
             cooler.balance_cooler(
@@ -174,15 +181,14 @@ class HicGenome:
                 mad_max=n_mads,
                 cis_only=not self.inter,
                 store=True,
-                map=pool.imap_unordered
-            ) 
+                map=pool.imap_unordered,
+            )
             print("Whole genome matrix balanced")
         # Bins with NaN weight are missing, matrix already balanced
         self.detectable_bins = np.where(np.isfinite(self.bins.weight))[0]
         print(
             f"Found {len(self.detectable_bins)} / {self.clr.shape[0]} detectable bins"
         )
-
 
     def load_data(self, mat_path):
         """Load contact, bin and chromosome informations from input path"""
@@ -252,26 +258,25 @@ class HicGenome:
         # in the upper triangle matrix
         sys.stderr.write("Preprocessing sub-matrices...\n")
         sub_mat_idx = 0
-        mat_view = self.clr.matrix(sparse=True, balance=True)
+        # mat_view = self.clr.matrix(sparse=True, balance=True)
         for i1, chr1 in enumerate(self.clr.chromnames):
             for i2, chr2 in enumerate(self.clr.chromnames):
                 s1, e1 = self.clr.extent(chr1)
                 s2, e2 = self.clr.extent(chr2)
                 if i1 == i2 or (i1 < i2 and self.inter):
                     cio.progress(
-                        sub_mat_idx,
-                        sub_mats.shape[0],
-                        f"{chr1}-{chr2}",
+                        sub_mat_idx, sub_mats.shape[0], f"{chr1}-{chr2}"
                     )
                     # Subset intra / inter sub_matrix and matching detectable bins
-                    sub_mat = mat_view[s1:e1, s2:e2]
+                    # sub_mat = mat_view[s1:e1, s2:e2]
                     sub_mat_detectable_bins = (
                         d[(d >= s1) & (d < e1)] - s1,
                         d[(d >= s2) & (d < e2)] - s2,
                     )
                     if i1 == i2:
                         sub_mats.contact_map[sub_mat_idx] = ContactMap(
-                            sub_mat,
+                            self.clr,
+                            extent=[(s1, e1), (s2, e2)],
                             detectable_bins=sub_mat_detectable_bins,
                             inter=False,
                             max_dist=self.max_dist,
@@ -279,16 +284,17 @@ class HicGenome:
                             dump=self.dump,
                             name=f"{chr1}-{chr2}",
                             smooth=self.smooth,
-                            sample=self.sample
+                            sample=self.sample,
                         )
                     else:
                         sub_mats.contact_map[sub_mat_idx] = ContactMap(
-                            sub_mat,
+                            self.clr,
+                            extent=[(s1, e1), (s2, e2)],
                             detectable_bins=sub_mat_detectable_bins,
                             inter=True,
                             dump=self.dump,
                             name=f"{chr1}-{chr2}",
-                            sample=self.sample
+                            sample=self.sample,
                         )
                     sub_mats.chr1[sub_mat_idx] = chr1
                     sub_mats.chr2[sub_mat_idx] = chr2
@@ -439,9 +445,11 @@ class ContactMap:
 
     Attributes:
     -----------
-    matrix : scipy.sparse.coo_matrix
-        Sparse matrix object containing the Hi-C contact data. Either intra or
-        interchromosomal matrix.
+    clr : cooler.Cooler
+        Reference to a cooler object containing Hi-C data.
+    extent : list of tuples of ints
+        List of two tuples containing the start and end bin numbers of both
+        chromosomes from the submatrix.
     detectable_bins : tuple of arrays
         List containing two arrays (rows and columns) of indices from bins
         considered detectable in the matrix.
@@ -467,7 +475,8 @@ class ContactMap:
 
     def __init__(
         self,
-        matrix,
+        clr,
+        extent,
         name="",
         detectable_bins=None,
         inter=False,
@@ -477,25 +486,31 @@ class ContactMap:
         smooth=False,
         sample=None,
     ):
+        self.clr = clr
+        self.extent = extent
         self.smooth = smooth
         self.despeckle = False
         self.snr = False
-        self.matrix = matrix
         self.inter = inter
         self.max_dist = max_dist
         self.name = name
         self.largest_kernel = largest_kernel
         self.dump = dump
+        self.matrix = None
         # If detectable were not provided, compute them from the input matrix
         if detectable_bins is None:
             detectable_bins = preproc.get_detectable_bins(
                 self.matrix, inter=self.inter
             )
         self.detectable_bins = detectable_bins
-        # Subsample contacts if requested
         self.sample = sample
+
+    def create_mat(self):
+        (s1, e1), (s2, e2) = self.extent
+        self.matrix = self.clr.matrix(sparse=True, balance=True)[s1:e1, s2:e2]
+        # Subsample contacts if requested
         if self.sample is not None:
-            self.subsample(sample)
+            self.subsample(self.sample)
         # Apply preprocessing steps on the input matrix
         if self.inter:
             self.preprocess_inter_matrix()
@@ -514,9 +529,7 @@ class ContactMap:
         """
         subsample = float(sub)
         if subsample < 0:
-            raise ValueError(
-                "Error: Subsample must be strictly positive."
-            )
+            raise ValueError("Error: Subsample must be strictly positive.")
         if subsample < 1:
             subsample *= self.matrix.sum()
         if subsample < self.matrix.sum():
@@ -529,6 +542,7 @@ class ContactMap:
             print(
                 "Skipping subsampling: Value is higher than the number of contacts in the matrix."
             )
+
     @DumpMatrix("01_process_inter")
     def preprocess_inter_matrix(self):
         self.matrix /= np.median(self.matrix.data)

@@ -103,7 +103,7 @@ class DummyMap:
 def test_validate_patterns(matrix, coords):
     """Test pattern validation"""
     contact_map = DummyMap(matrix)
-    conv_mat = cud.corrcoef2d(
+    conv_mat = cud.normxcorr2(
         matrix, gauss_kernel, max_dist=None, sym_upper=False, scaling="pearson"
     )
     cud.validate_patterns(
@@ -250,7 +250,7 @@ def test_xcorr2(signal):
     # Use scipy result as base truth to compare chromosight results
     corr_mat_scipy = np.zeros(signal.shape)
     kh, kw = (np.array(gauss_kernel.shape) - 1) // 2
-    corr_mat_scipy[kh:-kh, kw:-kw] = sig.correlate2d(
+    corr_mat_scipy[kh:-kh, kw:-kw] = sig.xcorr2(
         signal.todense(), gauss_kernel, "valid"
     )
     # Apply threshold to scipy result for comparison with xcorr2
@@ -269,10 +269,10 @@ def test_xcorr2(signal):
 
 
 @params(*gauss1_mats)
-def test_corrcoef2d(signal):
+def test_normxcorr2(signal):
     """Check if Pearson and cross-product correlations yield appropriate values"""
     for scaling in ["pearson"]:
-        corr = cud.corrcoef2d(
+        corr = cud.normxcorr2(
             signal,
             gauss_kernel,
             max_dist=None,
@@ -285,17 +285,17 @@ def test_corrcoef2d(signal):
 
 
 @params(*gauss1_mats)
-def test_corrcoef2d_dense_sparse(signal):
-    """Check if corrcoef2d yields identical values for dense and sparse versions"""
+def test_normxcorr2_dense_sparse(signal):
+    """Check if normxcorr2 yields identical values for dense and sparse versions"""
     for scaling in ["pearson", None]:
-        corr_d = cud.corrcoef2d(
+        corr_d = cud.normxcorr2(
             signal.todense(),
             gauss_kernel,
             max_dist=None,
             sym_upper=False,
             scaling=scaling,
         )
-        corr_s = cud.corrcoef2d(
+        corr_s = cud.normxcorr2(
             signal,
             gauss_kernel,
             max_dist=None,
@@ -306,7 +306,7 @@ def test_corrcoef2d_dense_sparse(signal):
 
 
 @params(ck.loops, ck.borders, ck.hairpins)
-def test_corrcoef2d_kernels(kernel_config):
+def test_normxcorr2_kernels(kernel_config):
     """Test corrfoef2d on all built-in patterns"""
     # Loop over the different kernel matrices for the current pattern
     for kernel in kernel_config["kernels"]:
@@ -320,7 +320,7 @@ def test_corrcoef2d_kernels(kernel_config):
             ] = kernel
             pattern_signal = sp.coo_matrix(np.triu(pattern_signal))
             # Compute correlation between fake matrix and kernel
-            corr = cud.corrcoef2d(
+            corr = cud.normxcorr2(
                 pattern_signal,
                 kernel,
                 max_dist=None,

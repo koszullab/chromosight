@@ -11,6 +11,7 @@ import scipy.sparse as sp
 import scipy.ndimage as ndi
 from sklearn.isotonic import IsotonicRegression
 
+
 def erase_missing(signal, valid_rows, valid_cols, sym_upper=True):
     """
     Given an input sparse matrix, set missing (invalid) bins to 0.
@@ -37,7 +38,9 @@ def erase_missing(signal, valid_rows, valid_cols, sym_upper=True):
                 "Valid rows and columns must be identical with sym_upper=True"
             )
         if signal.shape[0] != signal.shape[1]:
-            raise Value("Input matrix must be square when using sym_upper=True")
+            raise Value(
+                "Input matrix must be square when using sym_upper=True"
+            )
         # Make a boolean mask from good bins
         good_mask = np.isin(range(signal.shape[0]), valid_rows)
         # Set all pixels in a nondetectable bin to 0
@@ -63,6 +66,7 @@ def erase_missing(signal, valid_rows, valid_cols, sym_upper=True):
         erased[:, missing_cols] = 0
 
     return erased
+
 
 def normalize(B, good_bins=None, iterations=10):
     """
@@ -506,35 +510,6 @@ def subsample_contacts(M, n_contacts):
     )
 
 
-def sparse_division(m1, m2):
-    """Divide nonzero values of one sparse matrix by corresponding values in
-    another sparse matrix.
-
-    Parameters
-    ----------
-    m1 : scipy.sparse.coo_matrix
-        Matrix whose values should be divided.
-    m2 : scipy.sparse.coo_matrix
-        Matrix whose values should be the denominator.
-    
-    Returns
-    -------
-    scipy.sparse.coo_matrix
-    """
-    # Get coords of non-zero (nz) values in the numerator
-    nz_vals = m1.nonzero()
-    div = m1.copy()
-    # Divide them by corresponding entries in the numerator
-    denom = m2.tocsr()
-    try:
-        div.data /= denom[nz_vals].A1
-    # Case there are no nonzero values in m2
-    except AttributeError:
-        pass
-
-    return div
-
-
 def make_exterior_frame(mask, kernel_shape, sym_upper=False, max_dist=None):
     """
     Adds a frame around input mask, given a kernel. The goal of this
@@ -572,7 +547,7 @@ def make_exterior_frame(mask, kernel_shape, sym_upper=False, max_dist=None):
         The input mask with 
     """
     if mask.dtype != bool:
-        raise ValueError('Mask must contain boolean values')
+        raise ValueError("Mask must contain boolean values")
     ms, ns = mask.shape
     mk, nk = kernel_shape
     if sym_upper and (max_dist is not None):
@@ -612,14 +587,16 @@ def make_exterior_frame(mask, kernel_shape, sym_upper=False, max_dist=None):
         mask = mask.tolil()
         # Add margin below diagonal
         big_k = max(nk, mk)
-        dia_margin = np.ones(big_k // 2 -1)
+        dia_margin = np.ones(big_k // 2 - 1)
         dia_offsets = np.arange(-1, -big_k // 2 + 1, -1)
-        mask += sp.diags(dia_margin, dia_offsets, shape=mask.shape, format="lil", dtype=bool)
+        mask += sp.diags(
+            dia_margin, dia_offsets, shape=mask.shape, format="lil", dtype=bool
+        )
         mask = mask.tocsr()
     return mask
 
 
-def check_ismissing(signal, mask):
+def check_mask(signal, mask):
     """
     Ensure all elements defined as missing by the mask are set to zero in the signal.
     If this is not the case, raises an error.
@@ -634,15 +611,27 @@ def check_ismissing(signal, mask):
 
     if sp.issparse(mask):
         # Check if there are nonzero values in the signal reported as missing by the mask
-        missing_with_signal = np.nonzero(abs(signal[mask.nonzero()[0], mask.nonzero()[1]])>0)[0]
-        if len(missing_with_signal)>0:
-            raise ValueError('There are', len(missing_with_signal), 'non-zero elements reported as missing.')
+        missing_with_signal = np.nonzero(
+            abs(signal[mask.nonzero()[0], mask.nonzero()[1]]) > 0
+        )[0]
+        if len(missing_with_signal) > 0:
+            raise ValueError(
+                "There are",
+                len(missing_with_signal),
+                "non-zero elements reported as missing.",
+            )
     else:
-        if (np.sum(abs(signal[mask>0]))>1e-10):
-            raise ValueError('There are', str(np.sum(abs(signal[mask>0]))), 'non-zero elements reported as missing.')
+        if np.sum(abs(signal[mask > 0])) > 1e-10:
+            raise ValueError(
+                "There are",
+                str(np.sum(abs(signal[mask > 0]))),
+                "non-zero elements reported as missing.",
+            )
 
 
-def missing_bins_mask(shape, valid_rows, valid_cols, max_dist=None, sym_upper=False):
+def make_missing_mask(
+    shape, valid_rows, valid_cols, max_dist=None, sym_upper=False
+):
     """
     Given lists of valid rows and columns, generate a sparse matrix mask with
     missing pixels denoted as 1 and valid pixels as 0. If a max_dist is provided, upper
@@ -671,7 +660,7 @@ def missing_bins_mask(shape, valid_rows, valid_cols, max_dist=None, sym_upper=Fa
     # rows and cols are different
     sm, sn = shape
     if sym_upper and (sm != sn or len(valid_rows) != len(valid_cols)):
-            raise ValueError("Rectangular matrices cannot be upper symmetric")
+        raise ValueError("Rectangular matrices cannot be upper symmetric")
 
     # Get a boolean array of missing (1) and valid (0) rows
     missing_rows = np.ones(sm)
@@ -702,12 +691,14 @@ def missing_bins_mask(shape, valid_rows, valid_cols, max_dist=None, sym_upper=Fa
         # e.g.: 2 missing rows and max dist of 1
         # 0 0
         # 1 1
-        row_shifts = np.tile(np.array(range(max_dist)), (len(missing_rows), 1)).T
+        row_shifts = np.tile(
+            np.array(range(max_dist)), (len(missing_rows), 1)
+        ).T
         # Compute row positions upwards to diagonal by subtracting missing rows to the shifts
         # Following the previous example, if missing rows are bins 1 and 3:
         #  1 3
         #  0 2
-        rows_before = (missing_rows - row_shifts).flatten('F')
+        rows_before = (missing_rows - row_shifts).flatten("F")
         # Since we are looking at pixels up from the bins, cols remain the same:
         # 1 3
         # 1 3
@@ -716,7 +707,7 @@ def missing_bins_mask(shape, valid_rows, valid_cols, max_dist=None, sym_upper=Fa
         # Note: upper symmetric, so row_shifts = col_shift_
         # 1 3
         # 2 4
-        cols_after = (missing_cols + row_shifts).flatten('F')
+        cols_after = (missing_cols + row_shifts).flatten("F")
         # This time, rows remain constant since we are computing positions to the right
         rows_after = np.repeat(missing_cols, max_dist)
         # Combine positions to the right and upwards
@@ -725,14 +716,9 @@ def missing_bins_mask(shape, valid_rows, valid_cols, max_dist=None, sym_upper=Fa
         data = np.ones(rows.shape, dtype=bool)
         # Remove entries where rows or cols are negative or larger than shape
         valid = (cols < sm) & (cols >= 0) & (rows < sm) & (rows >= 0)
-        # Remove duplicate entries and sort data
-        m_data = np.vstack([rows[valid], cols[valid], data[valid]])
-        m_data = np.unique(m_data, axis=1)
         # Build mask matrix with miss. bins up to max scan distance in upper triangle
         mask = sp.coo_matrix(
-            (m_data[2, :], (m_data[0, :], m_data[1, :])),
-            shape=shape,
-            dtype=bool
+            (data[valid], (rows[valid], cols[valid])), shape=shape, dtype=bool
         ).tocsr()
     else:
         mask = sp.csr_matrix(shape, dtype=bool)
