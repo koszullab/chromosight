@@ -229,16 +229,16 @@ def cmd_quantify(arguments):
         # Will use a preset config file matching pattern name
         config_path = pattern
     cfg = cio.load_kernel_config(config_path, custom)
+    # Subsample Hi-C contacts from the matrix, if requested
+    if subsample == "no":
+        subsample = None
     # Instantiate and preprocess contact map
-    hic_genome = HicGenome(mat_path, inter=inter, kernel_config=cfg)
+    hic_genome = HicGenome(mat_path, inter=inter, kernel_config=cfg, sample=subsample)
     # enforce full scanning distance in kernel config
-    cfg["max_dist"] = hic_genome.matrix.shape[0] * hic_genome.resolution
+    cfg["max_dist"] = hic_genome.matrix.shape[0] * hic_genome.clr.binsize
     cfg["min_dist"] = 0
     # Notify contact map instance of changes in scanning distance
     hic_genome.kernel_config = cfg
-    # Subsample Hi-C contacts from the matrix, if requested
-    if subsample != "no":
-        hic_genome.subsample(subsample)
     # Normalize (balance) matrix using ICE
     hic_genome.normalize(n_mads)
     # Define how many diagonals should be used in intra-matrices
@@ -368,7 +368,7 @@ def cmd_generate_config(arguments):
         # enforce full scanning distance in kernel config
 
         hic_genome.max_dist = (
-            hic_genome.matrix.shape[0] * hic_genome.resolution
+            hic_genome.matrix.shape[0] * hic_genome.clr.binsize
         )
         # Process each sub-matrix individually (detrend diag for intra)
         hic_genome.make_sub_matrices()
@@ -486,12 +486,10 @@ def cmd_detect(arguments):
         kernel_config=cfg,
         dump=dump,
         smooth=smooth_trend,
+        sample=subsample
     )
     ### 1: Process input signal
     hic_genome.kernel_config = cfg
-    # Subsample Hi-C contacts from the matrix, if requested
-    # NOTE: Subsampling has to be done before normalisation
-    hic_genome.subsample(subsample)
     # Normalize (balance) matrix using ICE
     hic_genome.normalize(n_mads=n_mads)
     # Define how many diagonals should be used in intra-matrices
@@ -588,7 +586,7 @@ def cmd_detect(arguments):
     all_pattern_windows = np.concatenate(all_pattern_windows, axis=0)
 
     # Compute minimum separation in bins and make sure it has a reasonable value
-    separation_bins = int(cfg["min_separation"] // hic_genome.resolution)
+    separation_bins = int(cfg["min_separation"] // hic_genome.clr.binsize)
     if separation_bins < 1:
         separation_bins = 1
     print(f"Minimum pattern separation is : {separation_bins}")
