@@ -207,8 +207,12 @@ def cmd_quantify(arguments):
     n_mads = float(arguments["--n-mads"])
     pattern = arguments["--pattern"]
     inter = arguments["--inter"]
-    win_size = arguments["--win-size"]
     kernel_config_path = arguments["--kernel-config"]
+    win_fmt = arguments["--win-fmt"]
+    if win_fmt not in ["npy", "json"]:
+        sys.stderr.write("Error: --win-fmt must be either json or npy.\n")
+        sys.exit(1)
+    win_size = arguments["--win-size"]
     if win_size != "auto":
         win_size = int(win_size)
     subsample = arguments["--subsample"]
@@ -271,8 +275,8 @@ def cmd_quantify(arguments):
         kw = (kn - 1) // 2
         # Iterate over intra- and inter-chromosomal sub-matrices
         for sub_mat in hic_genome.sub_mats.iterrows():
-            mat.contact_map.create_mat()
             mat = sub_mat[1]
+            mat.contact_map.create_mat()
             # Filter patterns falling onto this sub-matrix
             sub_pat = positions.loc[
                 (positions.chrom1 == mat.chr1) & (positions.chrom2 == mat.chr2)
@@ -337,7 +341,7 @@ def cmd_quantify(arguments):
             windows,
             f"{pattern}_quant",
             output_dir=output,
-            format=arguments["--win-fmt"],
+            format=win_fmt,
         )
         # with open(output / f"{pattern}_quant.json", "w") as win_handle:
         #    windows = {idx: win for idx, win in enumerate(windows)}
