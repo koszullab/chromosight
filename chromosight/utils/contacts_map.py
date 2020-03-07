@@ -521,6 +521,11 @@ class ContactMap:
         else:
             self.preprocess_intra_matrix()
 
+    def destroy_mat(self):
+        """Destroys contact map to clean up memory"""
+        del self.matrix
+        self.matrix = None
+    
     @DumpMatrix("01_subsampled")
     def subsample(self, sub):
         """

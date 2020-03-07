@@ -150,7 +150,6 @@ import scipy.stats as ss
 import scipy.ndimage as ndi
 import matplotlib.pyplot as plt
 
-
 URL_EXAMPLE_DATASET = (
     "https://raw.githubusercontent.com/koszullab/"
     "chromosight/master/data_test/example.bg2"
@@ -333,7 +332,9 @@ def cmd_quantify(arguments):
                 if kernel_id == 0:
                     windows[i, :, :] = win
             # Free space from current submatrix
-            mat.contact_map.matrix = m = None
+            mat.contact_map.destroy_mat()
+            del m
+            m = None
         bed2d.to_csv(
             output / f"{pattern}_quant.txt", sep="\t", header=True, index=False
         )
@@ -421,7 +422,7 @@ def _detect_sub_mat(data):
     chrom_patterns, chrom_windows = cid.pattern_detector(
         sub.contact_map, config, kernel, dump, full=config["full"]
     )
-    sub.contact_map.matrix = None
+    sub.contact_map.destroy_mat()
 
     return {
         "coords": chrom_patterns,
@@ -429,7 +430,6 @@ def _detect_sub_mat(data):
         "chr1": sub.chr1,
         "chr2": sub.chr2,
     }
-
 
 def cmd_detect(arguments):
     # Parse command line arguments for detect
@@ -551,11 +551,11 @@ def cmd_detect(arguments):
                 dispatcher = pool.imap_unordered(_detect_sub_mat, sub_mat_data, 1)
             else:
                 dispatcher = map(_detect_sub_mat, sub_mat_data)
-                for s, result in enumerate(dispatcher):
-                    chr1 = hic_genome.sub_mats.chr1[s]
-                    chr2 = hic_genome.sub_mats.chr2[s]
-                    cio.progress(s, n_sub_mats, f"{chr1}-{chr2}")
-                    sub_mat_results.append(result)
+            for s, result in enumerate(dispatcher):
+                chr1 = hic_genome.sub_mats.chr1[s]
+                chr2 = hic_genome.sub_mats.chr2[s]
+                cio.progress(s, n_sub_mats, f"{chr1}-{chr2}")
+                sub_mat_results.append(result)
 
             # Convert coordinates from chromosome to whole genome bins
             kernel_coords = [

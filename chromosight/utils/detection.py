@@ -172,7 +172,6 @@ def pileup_patterns(pattern_windows):
     """
     return np.apply_along_axis(np.nanmean, 0, pattern_windows)
 
-
 def pattern_detector(
     contact_map, kernel_config, kernel_matrix, dump=None, full=False
 ):
@@ -269,7 +268,7 @@ def pattern_detector(
         # pileups and do not count them as missing (otherwise all patterns on
         # diagonal would have 50% missing
         big_k = max(kh, kw)
-        mat = mat.tolil()
+        mat = mat.tocsr()
         for i in range(1, big_k):
             mat.setdiag(mat.diagonal(i), -i)
 
