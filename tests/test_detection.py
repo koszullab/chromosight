@@ -284,8 +284,8 @@ def test_normxcorr2(signal):
 
 @params(*gauss1_mats)
 def test_normxcorr2_dense_sparse(signal):
-        """Check if normxcorr2 yields identical values for dense and sparse versions"""
-        corr_d = cud.normxcorr2(
+    """Check if normxcorr2 yields identical values for dense and sparse versions"""
+    corr_d = cud.normxcorr2(
         signal.todense(),
         gauss_kernel,
         max_dist=None,
@@ -319,7 +319,6 @@ def test_normxcorr2_kernels(kernel_config):
             kernel,
             max_dist=None,
             sym_upper=False,
-            scaling=scaling,
         )
 
         # Check if the max correlation is where we inserted the pattern

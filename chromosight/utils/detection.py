@@ -788,9 +788,6 @@ def _normxcorr2_sparse(
     sym_upper : False
         Whether the matrix is symmetric and upper triangle. True for intrachromosomal
         matrices.
-    scaling : str
-        Which metric to use when computing correlation coefficients. Either 'pearson'
-        for Pearson correlation or None for basic convolution.
     missing_mask : scipy.sparse.coo_matrix of bools
         Matrix defining which pixels are missing (True) or not (False).
     full : bool
@@ -922,7 +919,7 @@ def _normxcorr2_sparse(
             * (kernel_mean_wm * ker1_coo.data)
             / (kernel_mean * kernel_size)
         )
-        out = xcorr2(framed_sig, kernel / kernel_size, algo) - out
+        out = xcorr2(framed_sig, kernel / kernel_size) - out
         out[ker1_coo.row, ker1_coo.col] = np.array(
             out[ker1_coo.row, ker1_coo.col]
         ) * (kernel_size / ker1_coo.data)
@@ -973,9 +970,6 @@ def _normxcorr2_dense(
     sym_upper : False
         Whether the matrix is symmetric and upper triangle. True for intrachromosomal
         matrices.
-    scaling : str
-        Which metric to use when computing correlation coefficients. Either 'pearson'
-        for Pearson correlation or None for basic convolution.
 
     Returns
     -------
@@ -991,33 +985,25 @@ def _normxcorr2_dense(
 
     kernel_size = kernel.shape[0] * kernel.shape[1]
     kernel1 = np.ones(kernel.shape)
-    # Plain old convolution
-    if scaling is None:
-        conv = xcorr2(signal, kernel)
     # Pearson correlation
-    elif scaling == "pearson":
-        mean_kernel = float(kernel.mean())
-        std_kernel = float(kernel.std())
-        if not (std_kernel > 0):
-            raise ValueError(
-                "Cannot have scaling=pearson when kernel"
-                "is flat. Use scaling=cross."
-            )
-
-        kernel1 = np.ones(kernel.shape)
-        mean_signal = xcorr2(signal, kernel1 / kernel_size)
-
-        std_signal = (
-            xcorr2(signal ** 2, kernel1 / kernel_size) - mean_signal ** 2
+    mean_kernel = float(kernel.mean())
+    std_kernel = float(kernel.std())
+    if not (std_kernel > 0):
+        raise ValueError(
+            "Cannot have flat kernel."
         )
-        std_signal = np.sqrt(std_signal)
-        conv = xcorr2(signal, kernel / kernel_size) - mean_signal * mean_kernel
-        denom = std_signal * std_kernel
 
-        conv /= denom
-    else:
-        raise ValueError("scaling must be either None or pearson.")
+    kernel1 = np.ones(kernel.shape)
+    mean_signal = xcorr2(signal, kernel1 / kernel_size)
 
+    std_signal = (
+        xcorr2(signal ** 2, kernel1 / kernel_size) - mean_signal ** 2
+    )
+    std_signal = np.sqrt(std_signal)
+    conv = xcorr2(signal, kernel / kernel_size) - mean_signal * mean_kernel
+    denom = std_signal * std_kernel
+
+    conv /= denom
     if (max_dist is not None) and sym_upper:
         # Trim diagonals further than max_scan_distance
         conv = preproc.diag_trim(conv, max_dist)
