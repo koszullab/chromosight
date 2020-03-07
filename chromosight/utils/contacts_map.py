@@ -127,12 +127,16 @@ class HicGenome:
         self.inter = inter
         self.compute_max_dist()
         if sample is not None:
-            if sample > 1:
-                self.sample = sample / self.clr.info["sum"]
-            elif sample > 0:
-                self.sample = sample
-            else:
-                raise ValueError("Sample must be a positive value or None")
+            try:
+                if sample > 1:
+                    self.sample = sample / self.clr.info["sum"]
+                elif sample > 0:
+                    self.sample = sample
+                else:
+                    raise ValueError("Sample must be a positive value or None")
+            except TypeError:
+                sys.stderr.write('sample must be a positive float or integer')
+                raise
         else:
             self.sample = sample
 
