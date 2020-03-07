@@ -240,7 +240,7 @@ def cmd_quantify(arguments):
         mat_path, inter=inter, kernel_config=cfg, sample=subsample
     )
     # enforce full scanning distance in kernel config
-    cfg["max_dist"] = hic_genome.matrix.shape[0] * hic_genome.clr.binsize
+    cfg["max_dist"] = hic_genome.clr.shape[0] * hic_genome.clr.binsize
     cfg["min_dist"] = 0
     # Notify contact map instance of changes in scanning distance
     hic_genome.kernel_config = cfg
@@ -271,6 +271,7 @@ def cmd_quantify(arguments):
         kw = (kn - 1) // 2
         # Iterate over intra- and inter-chromosomal sub-matrices
         for sub_mat in hic_genome.sub_mats.iterrows():
+            mat.contact_map.create_mat()
             mat = sub_mat[1]
             # Filter patterns falling onto this sub-matrix
             sub_pat = positions.loc[
@@ -327,6 +328,8 @@ def cmd_quantify(arguments):
                     bed2d["score"][i] = np.nan
                 if kernel_id == 0:
                     windows[i, :, :] = win
+            # Free space from current submatrix
+            mat.contact_map.matrix = m = None
         bed2d.to_csv(
             output / f"{pattern}_quant.txt", sep="\t", header=True, index=False
         )
@@ -373,10 +376,13 @@ def cmd_generate_config(arguments):
         # enforce full scanning distance in kernel config
 
         hic_genome.max_dist = (
-            hic_genome.matrix.shape[0] * hic_genome.clr.binsize
+            hic_genome.clr.shape[0] * hic_genome.clr.binsize
         )
         # Process each sub-matrix individually (detrend diag for intra)
         hic_genome.make_sub_matrices()
+        for sub in hic_genome.sub_mats.iterrows():
+            sub_mat = sub[1]
+            sub_mat.contact_map.create_mat()
         processed_mat = hic_genome.gather_sub_matrices().tocsr()
         windows = click_finder(processed_mat, half_w=int((win_size - 1) / 2))
         # Pileup all recorded windows and convert to JSON serializable list

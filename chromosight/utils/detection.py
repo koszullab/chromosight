@@ -853,7 +853,7 @@ def _normxcorr2_sparse(
         denom = denom.sqrt() * kernel_std
         # quick and dirty hack to robustify: numerical-zeros are turned into
         # real-zeros
-        denom[abs(denom) < 1e-10] = 0.0
+        denom.data[np.abs(denom.data) < 1e-10] = 0.0
         denom.data = 1.0 / denom.data
 
         # store numerator directly in 'out' to avoid multiple replication of data

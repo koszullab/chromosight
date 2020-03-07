@@ -104,7 +104,7 @@ def test_validate_patterns(matrix, coords):
     """Test pattern validation"""
     contact_map = DummyMap(matrix)
     conv_mat = cud.normxcorr2(
-        matrix, gauss_kernel, max_dist=None, sym_upper=False, scaling="pearson"
+        matrix, gauss_kernel, max_dist=None, sym_upper=False
     )
     cud.validate_patterns(
         np.array([coords]),
@@ -250,7 +250,7 @@ def test_xcorr2(signal):
     # Use scipy result as base truth to compare chromosight results
     corr_mat_scipy = np.zeros(signal.shape)
     kh, kw = (np.array(gauss_kernel.shape) - 1) // 2
-    corr_mat_scipy[kh:-kh, kw:-kw] = sig.xcorr2(
+    corr_mat_scipy[kh:-kh, kw:-kw] = sig.correlate2d(
         signal.todense(), gauss_kernel, "valid"
     )
     # Apply threshold to scipy result for comparison with xcorr2
@@ -271,38 +271,33 @@ def test_xcorr2(signal):
 @params(*gauss1_mats)
 def test_normxcorr2(signal):
     """Check if Pearson and cross-product correlations yield appropriate values"""
-    for scaling in ["pearson"]:
-        corr = cud.normxcorr2(
-            signal,
-            gauss_kernel,
-            max_dist=None,
-            sym_upper=False,
-            scaling=scaling,
-        )
-        if len(corr.data):
-            assert np.min(corr.data) >= 0
-            assert np.max(corr.data) <= 1
+    corr = cud.normxcorr2(
+        signal,
+        gauss_kernel,
+        max_dist=None,
+        sym_upper=False,
+    )
+    if len(corr.data):
+        assert np.min(corr.data) >= 0
+        assert np.max(corr.data) <= 1
 
 
 @params(*gauss1_mats)
 def test_normxcorr2_dense_sparse(signal):
-    """Check if normxcorr2 yields identical values for dense and sparse versions"""
-    for scaling in ["pearson", None]:
+        """Check if normxcorr2 yields identical values for dense and sparse versions"""
         corr_d = cud.normxcorr2(
-            signal.todense(),
-            gauss_kernel,
-            max_dist=None,
-            sym_upper=False,
-            scaling=scaling,
-        )
-        corr_s = cud.normxcorr2(
-            signal,
-            gauss_kernel,
-            max_dist=None,
-            sym_upper=False,
-            scaling=scaling,
-        )
-        assert np.allclose(corr_s.todense(), corr_d, rtol=10e-4)
+        signal.todense(),
+        gauss_kernel,
+        max_dist=None,
+        sym_upper=False,
+    )
+    corr_s = cud.normxcorr2(
+        signal,
+        gauss_kernel,
+        max_dist=None,
+        sym_upper=False,
+    )
+    assert np.allclose(corr_s.todense(), corr_d, rtol=10e-4)
 
 
 @params(ck.loops, ck.borders, ck.hairpins)
@@ -310,30 +305,29 @@ def test_normxcorr2_kernels(kernel_config):
     """Test corrfoef2d on all built-in patterns"""
     # Loop over the different kernel matrices for the current pattern
     for kernel in kernel_config["kernels"]:
-        for scaling in ["pearson", None]:
-            km, kn = kernel.shape
-            # Generate fake Hi-C matrix: empty with pattern centered at 60,80
-            pattern_signal = np.zeros((100, 100), dtype=float)
-            pattern_signal[
-                60 - km // 2 : 60 + (km // 2 + 1),
-                80 - kn // 2 : 80 + (kn // 2 + 1),
-            ] = kernel
-            pattern_signal = sp.coo_matrix(np.triu(pattern_signal))
-            # Compute correlation between fake matrix and kernel
-            corr = cud.normxcorr2(
-                pattern_signal,
-                kernel,
-                max_dist=None,
-                sym_upper=False,
-                scaling=scaling,
-            )
+        km, kn = kernel.shape
+        # Generate fake Hi-C matrix: empty with pattern centered at 60,80
+        pattern_signal = np.zeros((100, 100), dtype=float)
+        pattern_signal[
+            60 - km // 2 : 60 + (km // 2 + 1),
+            80 - kn // 2 : 80 + (kn // 2 + 1),
+        ] = kernel
+        pattern_signal = sp.coo_matrix(np.triu(pattern_signal))
+        # Compute correlation between fake matrix and kernel
+        corr = cud.normxcorr2(
+            pattern_signal,
+            kernel,
+            max_dist=None,
+            sym_upper=False,
+            scaling=scaling,
+        )
 
-            # Check if the max correlation is where we inserted the pattern
-            corr = corr.tocoo()
-            obs_row = corr.row[np.where(corr.data == np.max(corr.data))]
-            obs_col = corr.col[np.where(corr.data == np.max(corr.data))]
-            assert obs_row == 60
-            assert obs_col == 80
+        # Check if the max correlation is where we inserted the pattern
+        corr = corr.tocoo()
+        obs_row = corr.row[np.where(corr.data == np.max(corr.data))]
+        obs_col = corr.col[np.where(corr.data == np.max(corr.data))]
+        assert obs_row == 60
+        assert obs_col == 80
 
 
 # TODO: Add tests for inter (asymmetric) matrices
