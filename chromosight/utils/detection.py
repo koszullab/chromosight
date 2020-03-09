@@ -231,7 +231,6 @@ def pattern_detector(
 
     # Find foci of highly correlated pixels
     chrom_pattern_coords, foci_mat = picker(mat_conv, kernel_config["pearson"])
-
     if chrom_pattern_coords is None:
         return None, None
     if dump:

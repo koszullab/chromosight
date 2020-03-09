@@ -12,9 +12,7 @@ import itertools as it
 import json
 from jsonschema import validate, ValidationError
 from os.path import join
-from scipy.sparse import coo_matrix, lil_matrix, csc_matrix, csr_matrix, triu
-import warnings
-import h5py
+from scipy.sparse import coo_matrix, csr_matrix, triu
 
 
 def load_bedgraph2d(mat_path):
@@ -424,8 +422,6 @@ def save_windows(windows, pattern_name, output_dir=".", format="json"):
         file_path = join(output_dir, file_name)
         np.save(file_path, windows)
     elif format == "json":
-        import json
-
         file_name = pattern_name + ".json"
         file_path = join(output_dir, file_name)
         json_wins = {idx: win.tolist() for idx, win in enumerate(windows)}
