@@ -38,7 +38,7 @@ def erase_missing(signal, valid_rows, valid_cols, sym_upper=True):
                 "Valid rows and columns must be identical with sym_upper=True"
             )
         if signal.shape[0] != signal.shape[1]:
-            raise Value(
+            raise ValueError(
                 "Input matrix must be square when using sym_upper=True"
             )
         # Make a boolean mask from good bins
@@ -133,12 +133,13 @@ def set_mat_diag(mat, diag=0, val=0):
 
 def diag_trim(mat, n):
     """
-    Trim an upper triangle sparse matrix so that only the first n diagonals are kept.
+    Trim an upper triangle sparse matrix so that only the first n diagonals
+    are kept.
 
     Parameters
     ----------
 
-    mat : scipy.sparse.dia_matrix or numpy.array
+    mat : scipy.sparse.csr_matrix or numpy.array
         The sparse matrix to be trimmed
     n : int
         The number of diagonals from the center to keep (0-based).
@@ -146,7 +147,8 @@ def diag_trim(mat, n):
     Returns
     -------
     scipy.sparse.dia_matrix or numpy.array:
-        The diagonally trimmed upper triangle matrix with only the first n diagonal.
+        The diagonally trimmed upper triangle matrix with only the first
+        n diagonal.
     """
     if not sp.issparse(mat):
         trimmed = mat.copy()
@@ -155,13 +157,11 @@ def diag_trim(mat, n):
             set_mat_diag(trimmed, diag, 0)
         return trimmed
 
-    if mat.format != "dia":
-        raise ValueError("input type must be scipy.sparse.dia_matrix")
-    # Create a new matrix from the diagonals below max dist (faster than removing them)
-    keep_offsets = np.where((mat.offsets <= n) & (mat.offsets >= 0))[0]
-    trimmed = sp.dia_matrix(
-        (mat.data[keep_offsets], mat.offsets[keep_offsets]), shape=mat.shape
-    )
+    if mat.format != "csr":
+        raise ValueError("input type must be scipy.sparse.csr_matrix")
+    # Trim diagonals by removing all elements further than n in the upper triangle
+    trimmed = sp.tril(mat, n, format='csr')
+    trimmed = sp.triu(trimmed, format='csr')
 
     return trimmed
 
@@ -552,7 +552,7 @@ def make_exterior_frame(mask, kernel_shape, sym_upper=False, max_dist=None):
     mk, nk = kernel_shape
     if sym_upper and (max_dist is not None):
         # Remove diagonals further than scan distance in the input mask
-        mask = diag_trim(mask.todia(), max_dist + max(nk, mk)).tocsr()
+        mask = diag_trim(mask, max_dist + max(nk, mk)).tocsr()
         max_m = max_dist + mk
         max_n = max_dist + nk
     else:

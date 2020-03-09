@@ -119,7 +119,7 @@ def test_normalize(matrix):
 def test_diag_trim(matrix):
     """Check if trimming diagonals preserves shape and sets diagonals to zero."""
     for d in range(matrix.shape[0]):
-        trimmed = preproc.diag_trim(matrix.todia(), d)
+        trimmed = preproc.diag_trim(matrix.tocsr(), d)
         diag_sums = [
             trimmed.diagonal(d).sum() for d in range(trimmed.shape[0])
         ]

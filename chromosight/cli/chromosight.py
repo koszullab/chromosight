@@ -17,10 +17,10 @@ Usage:
                          [--n-mads=5] [--win-size=auto] <bed2d> <contact_map> <output>
     chromosight test
 
-    detect: 
+    detect:
         performs pattern detection on a Hi-C contact map using kernel convolution
     generate-config:
-        Generate pre-filled config files to use for `chromosight detect`. 
+        Generate pre-filled config files to use for `chromosight detect`.
         A config consists of a JSON file describing analysis parameters for the
         detection and path pointing to kernel matrices files. Those matrices
         files are tsv files with numeric values ordered in a square dense matrix
@@ -145,7 +145,7 @@ from chromosight.utils.contacts_map import HicGenome
 import chromosight.utils.io as cio
 import chromosight.utils.detection as cid
 from chromosight.utils.plotting import pileup_plot, click_finder
-from chromosight.utils.preprocessing import resize_kernel, crop_kernel
+from chromosight.utils.preprocessing import resize_kernel
 import scipy.stats as ss
 import scipy.ndimage as ndi
 import matplotlib.pyplot as plt

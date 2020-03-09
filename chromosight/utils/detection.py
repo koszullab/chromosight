@@ -1,27 +1,12 @@
 from __future__ import absolute_import
-import sys
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
-import scipy.stats as ss
 import pathlib
 import warnings
 import chromosight.utils.preprocessing as preproc
 
 warnings.filterwarnings("ignore")
-
-
-def numba_jit():
-    try:
-        import numba
-        import numba.autojit as jit
-    except ImportError:
-        warnings.warn(
-            "Numba was not detected on this system, jit will not be enabled",
-            ImportWarning,
-        )
-        jit = lambda u: u
-    return jit
 
 
 def validate_patterns(
@@ -172,6 +157,7 @@ def pileup_patterns(pattern_windows):
     """
     return np.apply_along_axis(np.nanmean, 0, pattern_windows)
 
+
 def pattern_detector(
     contact_map, kernel_config, kernel_matrix, dump=None, full=False
 ):
@@ -190,8 +176,8 @@ def pattern_detector(
     kernel_matrix : numpy.array
         The kernel matrix to use for convolution as a 2D numpy array
     dump : str or None
-        Folder in which dumps should be generated after each step of the detection
-        process. If None, no dump is generated
+        Folder in which dumps should be generated after each step of the
+        detection process. If None, no dump is generated
 
     Returns
     -------
@@ -237,7 +223,7 @@ def pattern_detector(
     mat_conv.data[np.isnan(mat_conv.data)] = 0
     # Only keep corrcoefs in scannable range
     if not contact_map.inter:
-        mat_conv = preproc.diag_trim(mat_conv.todia(), contact_map.max_dist)
+        mat_conv = preproc.diag_trim(mat_conv.tocsr(), contact_map.max_dist)
         if dump:
             save_dump("04_diag_trim", mat_conv)
     mat_conv = mat_conv.tocoo()
@@ -299,7 +285,7 @@ def remove_neighbours(patterns, win_size=8):
         2D Array of patterns, with 3 columns: bin1, bin2 and score.
     win_size : int
         The maximum number of pixels at which patterns are considered overlapping.
-    
+
     Returns
     -------
     numpy.array of bool :
@@ -394,7 +380,7 @@ def label_foci(matrix):
     """
     Given a sparse matrix of 1 and 0 values, find
     all foci of continuously neighbouring positive pixels
-    and assign them a label according to their focus. Horizontal 
+    and assign them a label according to their focus. Horizontal
     and vertical (4-way) adjacency is considered.
 
     Parameters
@@ -402,7 +388,7 @@ def label_foci(matrix):
     matrix : scipy.sparse.coo_matrix of ints
         The input matrix where to label foci. Should be filled with 1
         and 0s.
-    
+
     Returns
     -------
     num_foci : int
@@ -410,7 +396,7 @@ def label_foci(matrix):
     foci_mat : scipy.sparse.coo_matrix:
         The matrix with values replaced by their respective foci
         labels.
-    
+
     Example
     -------
     >>> M.todense()
@@ -502,7 +488,7 @@ def filter_foci(foci_mat, min_size=2):
     min_size : int
         Minimum number of pixels required to keep a focus. Pixels belonging to
         smaller foci will be set to 0.
-    
+
     Returns
     -------
     num_filtered : int
@@ -780,22 +766,22 @@ def _normxcorr2_sparse(
     kernel : numpy.array
         The pattern kernel to use for convolution.
     max_dist : int
-        Maximum scan distance, in number of bins from the diagonal. If None, the whole
-        matrix is convoluted. Otherwise, pixels further than this distance from the
-        diagonal are set to 0 and ignored for performance. Only useful for 
-        intrachromosomal matrices.
+        Maximum scan distance, in number of bins from the diagonal. If None,
+        the whole matrix is convoluted. Otherwise, pixels further than this
+        distance from the diagonal are set to 0 and ignored for performance.
+        Only useful for intrachromosomal matrices.
     sym_upper : False
-        Whether the matrix is symmetric and upper triangle. True for intrachromosomal
-        matrices.
+        Whether the matrix is symmetric and upper triangle. True for
+        intrachromosomal matrices.
     missing_mask : scipy.sparse.coo_matrix of bools
         Matrix defining which pixels are missing (True) or not (False).
     full : bool
-        Whether to run in 'full' mode, which means enclosing the signal in an exterior
-        frame and computing the correlation up to the edges.
+        Whether to run in 'full' mode, which means enclosing the signal in an
+        exterior frame and computing the correlation up to the edges.
     missing_tol : float
         Proportion of missing values allowed in windows to keep the correlation
         coefficients.
-    
+
     Returns
     -------
     scipy.sparse.csr_matrix
@@ -929,7 +915,7 @@ def _normxcorr2_sparse(
 
     if (max_dist is not None) and sym_upper:
         # Trim diagonals further than max_scan_distance
-        out = preproc.diag_trim(out.todia(), max_dist)
+        out = preproc.diag_trim(out.tocsr(), max_dist)
 
     if sym_upper:
         out = sp.triu(out)
@@ -939,7 +925,7 @@ def _normxcorr2_sparse(
     out.eliminate_zeros()
     out = out.tocsr()
     if full:
-        out = out.tocsr()[mk - 1 : -mk + 1, nk - 1 : -nk + 1]
+        out = out.tocsr()[mk - 1: -mk + 1, nk - 1: -nk + 1]
     return out
 
 
@@ -962,13 +948,13 @@ def _normxcorr2_dense(
     kernel : numpy.array
         The pattern kernel to use for convolution.
     max_dist : int
-        Maximum scan distance, in number of bins from the diagonal. If None, the whole
-        matrix is convoluted. Otherwise, pixels further than this distance from the
-        diagonal are set to 0 and ignored for performance. Only useful for 
-        intrachromosomal matrices.
+        Maximum scan distance, in number of bins from the diagonal. If None,
+        the whole matrix is convoluted. Otherwise, pixels further than this
+        distance from the diagonal are set to 0 and ignored for performance.
+        Only useful for intrachromosomal matrices.
     sym_upper : False
-        Whether the matrix is symmetric and upper triangle. True for intrachromosomal
-        matrices.
+        Whether the matrix is symmetric and upper triangle. True for
+        intrachromosomal matrices.
 
     Returns
     -------

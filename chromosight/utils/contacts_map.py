@@ -574,9 +574,8 @@ class ContactMap:
     def remove_diags(self):
         # Create a new matrix from the diagonals below max dist (faster than removing them)
         self.matrix = preproc.diag_trim(
-            self.matrix.todia(), self.keep_distance
+            self.matrix.tocsr(), self.keep_distance
         )
-        self.matrix = self.matrix.tocoo()
         # Fill diagonals of the lower triangle that might overlap the kernel
         # for i in range(1, min(self.matrix.shape[0], self.largest_kernel)):
         #    self.matrix.setdiag(1, -i)
