@@ -157,7 +157,6 @@ def pileup_patterns(pattern_windows):
     """
     return np.apply_along_axis(np.nanmean, 0, pattern_windows)
 
-
 def pattern_detector(
     contact_map, kernel_config, kernel_matrix, dump=None, full=False
 ):
@@ -888,7 +887,7 @@ def _normxcorr2_sparse(
 
         # quick and dirty hack to robustify:
         # numerical-zeros are turned into real-zeros (to be improved)
-        denom[abs(denom) < 1e-10] = 0.0
+        denom.data[abs(denom.data) < 1e-10] = 0.0
 
         # ensure that enough data points are inside of window
         denom[
