@@ -22,7 +22,7 @@ CLASSIFIERS = [
 name = "chromosight"
 
 MAJOR = 0
-MINOR = 6
+MINOR = 7
 MAINTENANCE = 0
 VERSION = "{}.{}.{}".format(MAJOR, MINOR, MAINTENANCE)
 
