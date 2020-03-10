@@ -51,14 +51,16 @@ chromosight detect --threads 8 --min-dist 20000 --max-dist 200000 hic_data.cool 
 
 ## Input
 
-Input Hi-C contact maps can be either in bedgraph2d or cool format. Bedgraph2d is defined as a tab-separated text file with 7 columns: chr1 start1 end1 chr2 start2 end2 contacts. The cool format is an efficient and compact format for Hi-C data based on HDF5. It is maintained by the Mirny lab and documented here: https://mirnylab.github.io/cooler/
+Input Hi-C contact maps should be in cool format. The cool format is an efficient and compact format for Hi-C data based on HDF5. It is maintained by the Mirny lab and documented here: https://mirnylab.github.io/cooler/
+
+Most other Hi-C data formats (hic, homer, hic-pro), can be converted to cool using [hicexplorer's hicConvertFormat](https://hicexplorer.readthedocs.io/en/latest/content/tools/hicConvertFormat.html). Bedgraph2 format can be converted directly using cooler with the command `cooler load -f bg2 <chrom.sizes>:<binsize> in.bg2.gz out.cool`. For more informations, see the [cooler documentation](https://cooler.readthedocs.io/en/latest/cli.html#cooler-load)
 
 ## Output
 Two files are generated in the output directory (replace pattern by the pattern used, e.g. loops or borders):
   * `pattern_out.txt`: List of genomic coordinates, bin ids and correlation scores for the pattern identified
   * `pattern_out.json`: JSON file containing the windows (of the same size as the kernel used) around the patterns from pattern.txt
 
-Alternatively, one can set the `--win-fmt=npy` option to dump windows into a npy file instead of JSO. This format can easily be loaded into a 3D array using numpy's `np.load` function.
+Alternatively, one can set the `--win-fmt=npy` option to dump windows into a npy file instead of JSON. This format can easily be loaded into a 3D array using numpy's `np.load` function.
 
 ## Options
 
