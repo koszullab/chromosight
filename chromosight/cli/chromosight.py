@@ -7,7 +7,7 @@ maps with pattern matching.
 
 Usage:
     chromosight detect  [--kernel-config=FILE] [--pattern=loops] [--pearson=auto]
-                        [--iterations=auto] [--win-fmt={json,npy}] [--full]
+                        [--iterations=auto] [--win-fmt={json,npy}] [--force-norm] [--full]
                         [--subsample=no] [--inter] [--smooth-trend] [--n-mads=5]
                         [--min-dist=0] [--max-dist=auto] [--no-plotting]
                         [--min-separation=auto] [--threads=1] [--dump=DIR]
@@ -17,10 +17,10 @@ Usage:
                          [--n-mads=5] [--win-size=auto] <bed2d> <contact_map> <output>
     chromosight test
 
-    detect: 
+    detect:
         performs pattern detection on a Hi-C contact map using kernel convolution
     generate-config:
-        Generate pre-filled config files to use for `chromosight detect`. 
+        Generate pre-filled config files to use for `chromosight detect`.
         A config consists of a JSON file describing analysis parameters for the
         detection and path pointing to kernel matrices files. Those matrices
         files are tsv files with numeric values ordered in a square dense matrix
@@ -48,6 +48,9 @@ Arguments for detect:
                                 are masked. This will allow to detect very close
                                 to the diagonal and close to repeated sequences
                                 at the cost of memory and compute time.
+    -F, --force-norm            Re-compute matrix normalization (balancing) and
+                                overwrite weights present in the cool files instead
+                                of reusing them.
     -I, --inter                 Enable to consider interchromosomal contacts.
                                 Warning: Experimental feature with very high
                                 memory consumption is very high, only use with
@@ -142,11 +145,10 @@ from chromosight.utils.contacts_map import HicGenome
 import chromosight.utils.io as cio
 import chromosight.utils.detection as cid
 from chromosight.utils.plotting import pileup_plot, click_finder
-from chromosight.utils.preprocessing import resize_kernel, crop_kernel
+from chromosight.utils.preprocessing import resize_kernel
 import scipy.stats as ss
 import scipy.ndimage as ndi
 import matplotlib.pyplot as plt
-
 
 URL_EXAMPLE_DATASET = (
     "https://raw.githubusercontent.com/koszullab/"
@@ -204,8 +206,12 @@ def cmd_quantify(arguments):
     n_mads = float(arguments["--n-mads"])
     pattern = arguments["--pattern"]
     inter = arguments["--inter"]
-    win_size = arguments["--win-size"]
     kernel_config_path = arguments["--kernel-config"]
+    win_fmt = arguments["--win-fmt"]
+    if win_fmt not in ["npy", "json"]:
+        sys.stderr.write("Error: --win-fmt must be either json or npy.\n")
+        sys.exit(1)
+    win_size = arguments["--win-size"]
     if win_size != "auto":
         win_size = int(win_size)
     subsample = arguments["--subsample"]
@@ -229,16 +235,18 @@ def cmd_quantify(arguments):
         # Will use a preset config file matching pattern name
         config_path = pattern
     cfg = cio.load_kernel_config(config_path, custom)
+    # Subsample Hi-C contacts from the matrix, if requested
+    if subsample == "no":
+        subsample = None
     # Instantiate and preprocess contact map
-    hic_genome = HicGenome(mat_path, inter=inter, kernel_config=cfg)
+    hic_genome = HicGenome(
+        mat_path, inter=inter, kernel_config=cfg, sample=subsample
+    )
     # enforce full scanning distance in kernel config
-    cfg["max_dist"] = hic_genome.matrix.shape[0] * hic_genome.resolution
+    cfg["max_dist"] = hic_genome.clr.shape[0] * hic_genome.clr.binsize
     cfg["min_dist"] = 0
     # Notify contact map instance of changes in scanning distance
     hic_genome.kernel_config = cfg
-    # Subsample Hi-C contacts from the matrix, if requested
-    if subsample != "no":
-        hic_genome.subsample(subsample)
     # Normalize (balance) matrix using ICE
     hic_genome.normalize(n_mads)
     # Define how many diagonals should be used in intra-matrices
@@ -267,6 +275,7 @@ def cmd_quantify(arguments):
         # Iterate over intra- and inter-chromosomal sub-matrices
         for sub_mat in hic_genome.sub_mats.iterrows():
             mat = sub_mat[1]
+            mat.contact_map.create_mat()
             # Filter patterns falling onto this sub-matrix
             sub_pat = positions.loc[
                 (positions.chrom1 == mat.chr1) & (positions.chrom2 == mat.chr2)
@@ -322,6 +331,10 @@ def cmd_quantify(arguments):
                     bed2d["score"][i] = np.nan
                 if kernel_id == 0:
                     windows[i, :, :] = win
+            # Free space from current submatrix
+            mat.contact_map.destroy_mat()
+            del m
+            m = None
         bed2d.to_csv(
             output / f"{pattern}_quant.txt", sep="\t", header=True, index=False
         )
@@ -329,7 +342,7 @@ def cmd_quantify(arguments):
             windows,
             f"{pattern}_quant",
             output_dir=output,
-            format=arguments["--win-fmt"],
+            format=win_fmt,
         )
         # with open(output / f"{pattern}_quant.json", "w") as win_handle:
         #    windows = {idx: win for idx, win in enumerate(windows)}
@@ -368,10 +381,13 @@ def cmd_generate_config(arguments):
         # enforce full scanning distance in kernel config
 
         hic_genome.max_dist = (
-            hic_genome.matrix.shape[0] * hic_genome.resolution
+            hic_genome.clr.shape[0] * hic_genome.clr.binsize
         )
         # Process each sub-matrix individually (detrend diag for intra)
         hic_genome.make_sub_matrices()
+        for sub in hic_genome.sub_mats.iterrows():
+            sub_mat = sub[1]
+            sub_mat.contact_map.create_mat()
         processed_mat = hic_genome.gather_sub_matrices().tocsr()
         windows = click_finder(processed_mat, half_w=int((win_size - 1) / 2))
         # Pileup all recorded windows and convert to JSON serializable list
@@ -402,9 +418,12 @@ def _detect_sub_mat(data):
     config = data[1]
     kernel = data[2]
     dump = data[3]
+    sub.contact_map.create_mat()
     chrom_patterns, chrom_windows = cid.pattern_detector(
         sub.contact_map, config, kernel, dump, full=config["full"]
     )
+    sub.contact_map.destroy_mat()
+
     return {
         "coords": chrom_patterns,
         "windows": chrom_windows,
@@ -412,11 +431,11 @@ def _detect_sub_mat(data):
         "chr2": sub.chr2,
     }
 
-
 def cmd_detect(arguments):
     # Parse command line arguments for detect
     kernel_config_path = arguments["--kernel-config"]
     dump = arguments["--dump"]
+    force_norm = arguments["--force-norm"]
     full = arguments["--full"]
     interchrom = arguments["--inter"]
     iterations = arguments["--iterations"]
@@ -428,7 +447,7 @@ def cmd_detect(arguments):
     pattern = arguments["--pattern"]
     perc_undetected = arguments["--perc-undetected"]
     pearson = arguments["--pearson"]
-    threads = arguments["--threads"]
+    threads = int(arguments["--threads"])
     output = arguments["<output>"]
     win_fmt = arguments["--win-fmt"]
     subsample = arguments["--subsample"]
@@ -486,14 +505,12 @@ def cmd_detect(arguments):
         kernel_config=cfg,
         dump=dump,
         smooth=smooth_trend,
+        sample=subsample,
     )
     ### 1: Process input signal
     hic_genome.kernel_config = cfg
-    # Subsample Hi-C contacts from the matrix, if requested
-    # NOTE: Subsampling has to be done before normalisation
-    hic_genome.subsample(subsample)
     # Normalize (balance) matrix using ICE
-    hic_genome.normalize(n_mads=n_mads)
+    hic_genome.normalize(force_norm=force_norm, n_mads=n_mads, threads=threads)
     # Define how many diagonals should be used in intra-matrices
     hic_genome.compute_max_dist()
     # Split whole genome matrix into intra- and inter- sub matrices. Each sub
@@ -504,7 +521,7 @@ def cmd_detect(arguments):
     all_pattern_windows = []
 
     ### 2: DETECTION ON EACH SUBMATRIX
-    pool = mp.Pool(int(threads))
+    pool = mp.Pool(threads)
     n_sub_mats = hic_genome.sub_mats.shape[0]
     # Loop over the different kernel matrices for input pattern
     run_id = 0
@@ -529,14 +546,16 @@ def cmd_detect(arguments):
             # Run detection in parallel on different sub matrices, and show progress when
             # gathering results
             sub_mat_results = []
-            for s, result in enumerate(
-                pool.imap_unordered(_detect_sub_mat, sub_mat_data, 1)
-            ):
+            # Run in multiprocessing subprocesses
+            if threads > 1:
+                dispatcher = pool.imap_unordered(_detect_sub_mat, sub_mat_data, 1)
+            else:
+                dispatcher = map(_detect_sub_mat, sub_mat_data)
+            for s, result in enumerate(dispatcher):
                 chr1 = hic_genome.sub_mats.chr1[s]
                 chr2 = hic_genome.sub_mats.chr2[s]
                 cio.progress(s, n_sub_mats, f"{chr1}-{chr2}")
                 sub_mat_results.append(result)
-            # sub_mat_results = list(map(_detect_sub_mat, sub_mat_data))
 
             # Convert coordinates from chromosome to whole genome bins
             kernel_coords = [
@@ -588,7 +607,7 @@ def cmd_detect(arguments):
     all_pattern_windows = np.concatenate(all_pattern_windows, axis=0)
 
     # Compute minimum separation in bins and make sure it has a reasonable value
-    separation_bins = int(cfg["min_separation"] // hic_genome.resolution)
+    separation_bins = int(cfg["min_separation"] // hic_genome.clr.binsize)
     if separation_bins < 1:
         separation_bins = 1
     print(f"Minimum pattern separation is : {separation_bins}")
