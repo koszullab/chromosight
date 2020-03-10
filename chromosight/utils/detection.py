@@ -157,6 +157,7 @@ def pileup_patterns(pattern_windows):
     """
     return np.apply_along_axis(np.nanmean, 0, pattern_windows)
 
+
 def pattern_detector(
     contact_map, kernel_config, kernel_matrix, dump=None, full=False
 ):
@@ -858,30 +859,28 @@ def _normxcorr2_sparse(
         # Compute mean corrected with with number of missing elements (wm)
         kernel_mean_wm = (
             kernel_sum
-            - np.array(xcorr2(framed_mask, kernel)[ker1_coo.row, ker1_coo.col])
+            - xcorr2(framed_mask, kernel)[ker1_coo.row, ker1_coo.col].A1
         ) / ker1_coo.data
         kernel2_mean_wm = (
             kernel2_sum
-            - np.array(
-                xcorr2(framed_mask, kernel ** 2)[ker1_coo.row, ker1_coo.col]
-            )
+            - xcorr2(framed_mask, kernel ** 2)[ker1_coo.row, ker1_coo.col].A1
         ) / ker1_coo.data
 
         # store signal mean directly in 'out' to avoid multiple replication of data
         out = xcorr2(framed_sig, kernel1 / kernel_size)
-        out[ker1_coo.row, ker1_coo.col] = np.array(
-            out[ker1_coo.row, ker1_coo.col]
-        ) * np.array(kernel_size / ker1_coo.data)
+        out[ker1_coo.row, ker1_coo.col] = (
+            out[ker1_coo.row, ker1_coo.col].A1 * kernel_size / ker1_coo.data
+        )
 
         denom = xcorr2(framed_sig.power(2), kernel1 / kernel_size)
-        denom[ker1_coo.row, ker1_coo.col] = np.array(
-            denom[ker1_coo.row, ker1_coo.col]
-        ) * np.array(kernel_size / ker1_coo.data)
+        denom[ker1_coo.row, ker1_coo.col] = (
+            denom[ker1_coo.row, ker1_coo.col].A1 * kernel_size / ker1_coo.data
+        )
 
         denom = (denom - out.power(2)) * (kernel2_mean - kernel_mean ** 2)
         denom[ker1_coo.row, ker1_coo.col] = (
-            np.array(denom[ker1_coo.row, ker1_coo.col])
-            / np.array(kernel2_mean - kernel_mean ** 2)
+            denom[ker1_coo.row, ker1_coo.col].A1 / kernel2_mean
+            - kernel_mean ** 2
         ) * (kernel2_mean_wm - kernel_mean_wm ** 2)
         denom = denom.sqrt()
 
@@ -898,14 +897,15 @@ def _normxcorr2_sparse(
         # store numerator directly in 'out' to avoid multiple replication of data
         out *= kernel_mean
         out[ker1_coo.row, ker1_coo.col] = (
-            np.array(out[ker1_coo.row, ker1_coo.col])
-            * np.array(kernel_mean_wm * ker1_coo.data)
+            out[ker1_coo.row, ker1_coo.col].A1
+            * kernel_mean_wm
+            * ker1_coo.data
             / (kernel_mean * kernel_size)
         )
         out = xcorr2(framed_sig, kernel / kernel_size) - out
-        out[ker1_coo.row, ker1_coo.col] = np.array(
-            out[ker1_coo.row, ker1_coo.col]
-        ) * np.array(kernel_size / ker1_coo.data)
+        out[ker1_coo.row, ker1_coo.col] = (
+            out[ker1_coo.row, ker1_coo.col].A1 * kernel_size / ker1_coo.data
+        )
 
         # take inverse, because 2 sparse matrices cannot be divided (only multiplied)
         denom.data = 1 / denom.data
@@ -923,7 +923,7 @@ def _normxcorr2_sparse(
     out.eliminate_zeros()
     out = out.tocsr()
     if full:
-        out = out.tocsr()[mk - 1: -mk + 1, nk - 1: -nk + 1]
+        out = out.tocsr()[mk - 1 : -mk + 1, nk - 1 : -nk + 1]
     return out
 
 
@@ -972,16 +972,12 @@ def _normxcorr2_dense(
     mean_kernel = float(kernel.mean())
     std_kernel = float(kernel.std())
     if not (std_kernel > 0):
-        raise ValueError(
-            "Cannot have flat kernel."
-        )
+        raise ValueError("Cannot have flat kernel.")
 
     kernel1 = np.ones(kernel.shape)
     mean_signal = xcorr2(signal, kernel1 / kernel_size)
 
-    std_signal = (
-        xcorr2(signal ** 2, kernel1 / kernel_size) - mean_signal ** 2
-    )
+    std_signal = xcorr2(signal ** 2, kernel1 / kernel_size) - mean_signal ** 2
     std_signal = np.sqrt(std_signal)
     conv = xcorr2(signal, kernel / kernel_size) - mean_signal * mean_kernel
     denom = std_signal * std_kernel
@@ -996,4 +992,3 @@ def _normxcorr2_dense(
     conv[~np.isfinite(conv)] = 0.0
     conv[conv < 0] = 0.0
     return conv
-
