@@ -27,6 +27,7 @@ Demo
     :maxdepth: 2
 
     notebooks/g1_metaphase_yeast_example.ipynb
+    notebooks/plot_output.ipynb
 
 
 Reference API
