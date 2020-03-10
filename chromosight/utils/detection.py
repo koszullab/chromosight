@@ -871,17 +871,17 @@ def _normxcorr2_sparse(
         out = xcorr2(framed_sig, kernel1 / kernel_size)
         out[ker1_coo.row, ker1_coo.col] = np.array(
             out[ker1_coo.row, ker1_coo.col]
-        ) * (kernel_size / ker1_coo.data)
+        ) * np.array(kernel_size / ker1_coo.data)
 
         denom = xcorr2(framed_sig.power(2), kernel1 / kernel_size)
         denom[ker1_coo.row, ker1_coo.col] = np.array(
             denom[ker1_coo.row, ker1_coo.col]
-        ) * (kernel_size / ker1_coo.data)
+        ) * np.array(kernel_size / ker1_coo.data)
 
         denom = (denom - out.power(2)) * (kernel2_mean - kernel_mean ** 2)
         denom[ker1_coo.row, ker1_coo.col] = (
             np.array(denom[ker1_coo.row, ker1_coo.col])
-            / (kernel2_mean - kernel_mean ** 2)
+            / np.array(kernel2_mean - kernel_mean ** 2)
         ) * (kernel2_mean_wm - kernel_mean_wm ** 2)
         denom = denom.sqrt()
 
@@ -899,13 +899,13 @@ def _normxcorr2_sparse(
         out *= kernel_mean
         out[ker1_coo.row, ker1_coo.col] = (
             np.array(out[ker1_coo.row, ker1_coo.col])
-            * (kernel_mean_wm * ker1_coo.data)
+            * np.array(kernel_mean_wm * ker1_coo.data)
             / (kernel_mean * kernel_size)
         )
         out = xcorr2(framed_sig, kernel / kernel_size) - out
         out[ker1_coo.row, ker1_coo.col] = np.array(
             out[ker1_coo.row, ker1_coo.col]
-        ) * (kernel_size / ker1_coo.data)
+        ) * np.array(kernel_size / ker1_coo.data)
 
         # take inverse, because 2 sparse matrices cannot be divided (only multiplied)
         denom.data = 1 / denom.data
