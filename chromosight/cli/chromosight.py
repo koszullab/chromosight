@@ -6,7 +6,7 @@ Explore and detect patterns (loops, borders, centromeres, etc.) in Hi-C contact
 maps with pattern matching.
 
 Usage:
-    chromosight detect  [--kernel-config=FILE] [--pattern=loops] [--pearson=auto]
+    chromosight detect  [--kernel-config=FILE] [--pattern=loops] [--pearson=auto] [--win-size=auto]
                         [--iterations=auto] [--win-fmt={json,npy}] [--force-norm] [--full]
                         [--subsample=no] [--inter] [--smooth-trend] [--n-mads=5]
                         [--min-dist=0] [--max-dist=auto] [--no-plotting]
@@ -102,6 +102,13 @@ Arguments for detect:
                                 around each pattern. Window order match
                                 patterns inside the associated text file.
                                 Possible formats are json and npy. [default: json]
+    -W, --win-size=auto         Window size (width), in pixels, to use for the
+                                kernel when computing correlations. The pattern
+                                kernel will be resized to match this size. If
+                                the pattern must be enlarged, linear
+                                interpolation is used to fill between pixels.
+                                If not specified, the default kernel size will
+                                be used instead. [default: auto]
 
 Arguments for generate-config:
     prefix                      Path prefix for config files. If prefix is a/b,
@@ -122,12 +129,6 @@ Arguments for quantify:
     contact_map                 Path to the contact map, in bedgraph2d or
                                 cool format.
     output                      output directory where files should be generated.
-    -W, --win-size=auto         Window size, in basepairs, in which to compute the
-                                correlation. The pattern kernel will be resized to
-                                match this size. If the pattern must be enlarged,
-                                linear interpolation is used to fill between pixels.
-                                If not specified, the default kernel size will
-                                be used instead. [default: auto]
 
 """
 import numpy as np
@@ -433,24 +434,25 @@ def _detect_sub_mat(data):
 
 def cmd_detect(arguments):
     # Parse command line arguments for detect
-    kernel_config_path = arguments["--kernel-config"]
     dump = arguments["--dump"]
     force_norm = arguments["--force-norm"]
     full = arguments["--full"]
     interchrom = arguments["--inter"]
     iterations = arguments["--iterations"]
+    kernel_config_path = arguments["--kernel-config"]
     mat_path = arguments["<contact_map>"]
     max_dist = arguments["--max-dist"]
     min_dist = arguments["--min-dist"]
     min_separation = arguments["--min-separation"]
     n_mads = float(arguments["--n-mads"])
-    pattern = arguments["--pattern"]
-    perc_undetected = arguments["--perc-undetected"]
-    pearson = arguments["--pearson"]
-    threads = int(arguments["--threads"])
     output = arguments["<output>"]
-    win_fmt = arguments["--win-fmt"]
+    pattern = arguments["--pattern"]
+    pearson = arguments["--pearson"]
+    perc_undetected = arguments["--perc-undetected"]
     subsample = arguments["--subsample"]
+    threads = int(arguments["--threads"])
+    win_fmt = arguments["--win-fmt"]
+    win_size = arguments["--win-size"]
     if subsample == "no":
         subsample = None
     plotting_enabled = False if arguments["--no-plotting"] else True
@@ -494,6 +496,11 @@ def cmd_detect(arguments):
     cfg = cio.load_kernel_config(config_path, custom)
     for param_name, (param_value, param_type) in params.items():
         cfg = _override_kernel_config(param_name, param_value, param_type, cfg)
+
+    # Resize kernels if requested
+    if win_size != "auto":
+        resize = lambda m: resize_kernel(m, factor=int(win_size) / m.shape[0])
+        cfg["kernels"] = [resize(k) for k in cfg["kernels"]]
 
     if interchrom:
         sys.stderr.write(
