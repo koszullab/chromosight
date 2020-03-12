@@ -7,7 +7,7 @@ from setuptools import setup, find_packages
 import codecs
 
 CLASSIFIERS = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: Artistic License",
     "Programming Language :: Python",
@@ -22,8 +22,8 @@ CLASSIFIERS = [
 name = "chromosight"
 
 MAJOR = 0
-MINOR = 7
-MAINTENANCE = 3
+MINOR = 8
+MAINTENANCE = 0
 VERSION = "{}.{}.{}".format(MAJOR, MINOR, MAINTENANCE)
 
 LICENSE = "GPLv3"
