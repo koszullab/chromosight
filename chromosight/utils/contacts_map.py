@@ -127,6 +127,7 @@ class HicGenome:
         self.inter = inter
         self.compute_max_dist()
         if sample is not None:
+            sample = float(sample)
             try:
                 if sample > 1:
                     self.sample = sample / self.clr.info["sum"]
@@ -512,6 +513,9 @@ class ContactMap:
     def create_mat(self):
         (s1, e1), (s2, e2) = self.extent
         self.matrix = self.clr.matrix(sparse=True, balance=True)[s1:e1, s2:e2]
+        # Remove NaN values to store them as implicit zeroes
+        self.matrix.data[np.isnan(self.matrix.data)] = 0
+        self.matrix.eliminate_zeros()
         # Subsample contacts if requested
         if self.sample is not None:
             self.subsample(self.sample)
@@ -539,7 +543,7 @@ class ContactMap:
         subsample = float(sub)
         if subsample < 0:
             raise ValueError("Error: Subsample must be strictly positive.")
-        if subsample < 1:
+        elif subsample < 1:
             subsample *= self.matrix.sum()
         if subsample < self.matrix.sum():
             subsample = int(subsample)

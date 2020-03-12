@@ -77,17 +77,20 @@ class TestHicGenome(unittest.TestCase):
     def test_hic_genome_subsample(self, path):
         """Check results and error handling of contacts subsampling"""
         with self.assertRaises(ValueError):
-            hic_genome = ccm.HicGenome(path, sample=-1)
-        with self.assertRaises(TypeError):
-            hic_genome = ccm.HicGenome(path, sample="a")
-        hic_genome = ccm.HicGenome(path, sample=0.7)
-        original_contacts = hic_genome.clr.info['sum']
+            ccm.HicGenome(path, sample=-1)
+        with self.assertRaises(ValueError):
+            ccm.HicGenome(path, sample="a")
+        hic_genome = ccm.HicGenome(path)
         hic_genome.make_sub_matrices()
-        #assert np.isclose(hic_genome.matrix.sum(), 0.7 * original_contacts)
-        #hic_genome = ccm.HicGenome(path)
-        #target_contacts = hic_genome.matrix.sum() * 0.2
-        #hic_genome.subsample(target_contacts)
-        #assert np.isclose(hic_genome.matrix.sum(), target_contacts)
+        for sub in hic_genome.sub_mats.contact_map:
+            (s1, e1), (s2, e2) = sub.extent
+            sub.matrix = sub.clr.matrix(sparse=True, balance=True)[s1:e1, s2:e2]
+            sub.matrix.data[np.isnan(sub.matrix.data)] = 0
+            sub.matrix.eliminate_zeros()
+            ori_sum = sub.matrix.sum()
+            sub.subsample(0.7)
+            print(0.7 * ori_sum, sub.matrix.sum())
+            assert np.isclose(int(0.7 * ori_sum), sub.matrix.sum())
 
 
 @params(COOL_TEST)
