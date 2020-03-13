@@ -10,12 +10,7 @@ warnings.filterwarnings("ignore")
 
 
 def validate_patterns(
-    coords,
-    matrix,
-    conv_mat,
-    detectable_bins,
-    kernel_matrix,
-    max_undetected_perc,
+    coords, matrix, conv_mat, detectable_bins, kernel_matrix, max_undetected_perc
 ):
     """
     Given a list of pattern coordinates and a contact map, remove patterns in low
@@ -60,11 +55,7 @@ def validate_patterns(
 
     # Copy coords object and append column for scores
     validated_coords = pd.DataFrame(
-        {
-            "bin1": coords[:, 0],
-            "bin2": coords[:, 1],
-            "score": np.zeros(coords.shape[0]),
-        }
+        {"bin1": coords[:, 0], "bin2": coords[:, 1], "score": np.zeros(coords.shape[0])}
     )
     # validated_coords = np.append(coords, np.zeros((coords.shape[0], 1)), 1)
     # Initialize structure to store pattern windows
@@ -92,18 +83,12 @@ def validate_patterns(
             n_rows, n_cols = pattern_window.shape
             tot_pixels = n_rows * n_cols
             # Compute number of missing rows and cols
-            n_bad_rows = n_rows - len(
-                set(win_rows).intersection(detectable_rows)
-            )
-            n_bad_cols = n_cols - len(
-                set(win_cols).intersection(detectable_cols)
-            )
+            n_bad_rows = n_rows - len(set(win_rows).intersection(detectable_rows))
+            n_bad_cols = n_cols - len(set(win_cols).intersection(detectable_cols))
 
             # Number of undetected pixels is "bad rows area" + "bad cols area" - "bad rows x bad cols intersection"
             tot_undetected_pixels = (
-                n_bad_rows * n_cols
-                + n_bad_cols * n_rows
-                - n_bad_rows * n_bad_cols
+                n_bad_rows * n_cols + n_bad_cols * n_rows - n_bad_rows * n_bad_cols
             )
             # Number of uncovered pixels
             tot_zero_pixels = len(pattern_window[pattern_window == 0])
@@ -158,9 +143,7 @@ def pileup_patterns(pattern_windows):
     return np.apply_along_axis(np.nanmean, 0, pattern_windows)
 
 
-def pattern_detector(
-    contact_map, kernel_config, kernel_matrix, dump=None, full=False
-):
+def pattern_detector(contact_map, kernel_config, kernel_matrix, dump=None, full=False):
     """
     Detect patterns in a contact map by kernel matching, and extract windows
     around the detected patterns.
@@ -538,7 +521,7 @@ def xcorr2(signal, kernel, threshold=1e-4):
     return conv
 
 
-def _xcorr2_sparse(signal, kernel, threshold=1e-4):
+def _xcorr2_sparse(signal, kernel, threshold=1e-6):
     """
     Cross correlate a sparse 2D signal with a dense 2D kernel.
 
@@ -592,15 +575,12 @@ def _xcorr2_sparse(signal, kernel, threshold=1e-4):
     else:
         for kj in range(kn):
             subkernel_sp = sp.diags(
-                kernel[:, kj],
-                np.arange(km),
-                shape=(sm - km + 1, sm),
-                format="csr",
+                kernel[:, kj], np.arange(km), shape=(sm - km + 1, sm), format="csr"
             )
             out += subkernel_sp.dot(signal[:, kj : sn - kn + 1 + kj])
 
     # Set very low pixels to 0
-    out.data[out.data < threshold] = 0
+    out.data[np.abs(out.data) < threshold] = 0
     out.eliminate_zeros()
 
     # Resize matrix: increment rows and cols by half kernel and set shape to input
@@ -611,7 +591,7 @@ def _xcorr2_sparse(signal, kernel, threshold=1e-4):
     return out
 
 
-def _xcorr2_dense(signal, kernel, threshold=1e-4):
+def _xcorr2_dense(signal, kernel, threshold=1e-6):
     """Cross correlate a dense 2D signal with a dense 2D kernel.
 
     Parameters
@@ -650,10 +630,7 @@ def _xcorr2_dense(signal, kernel, threshold=1e-4):
     else:
         for kj in range(kn):
             subkernel_sp = sp.diags(
-                kernel[:, kj],
-                np.arange(km),
-                shape=(sm - km + 1, sm),
-                format="csr",
+                kernel[:, kj], np.arange(km), shape=(sm - km + 1, sm), format="csr"
             )
             out_wo_margin += subkernel_sp.dot(signal[:, kj : sn - kn + 1 + kj])
 
@@ -661,17 +638,12 @@ def _xcorr2_dense(signal, kernel, threshold=1e-4):
     out = np.zeros([sm, sn])
     out[kh:-kh, kw:-kw] = out_wo_margin
     # Set very low pixels to 0
-    out[out < threshold] = 0
+    out[np.abs(out) < threshold] = 0
     return out
 
 
 def normxcorr2(
-    signal,
-    kernel,
-    max_dist=None,
-    sym_upper=False,
-    full=False,
-    missing_mask=None,
+    signal, kernel, max_dist=None, sym_upper=False, full=False, missing_mask=None
 ):
     """
     Computes the normalized cross-correlation of a dense or sparse signal and a
@@ -713,9 +685,7 @@ def normxcorr2(
         if not sp.issparse(missing_mask):
             raise ValueError("Missing mask must be a sparse matrix.")
         if not signal.shape == missing_mask.shape:
-            raise ValueError(
-                "Signal and missing mask do not have the same shape"
-            )
+            raise ValueError("Signal and missing mask do not have the same shape")
         if missing_mask.dtype != bool:
             raise ValueError(
                 f"Missing mask data type is {missing_mask.dtype}. Should be bool."
@@ -723,6 +693,13 @@ def normxcorr2(
 
         if min(kernel.shape) >= max(signal.shape):
             raise ValueError("cannot have kernel bigger than signal")
+        preproc.check_missing_mask(signal, missing_mask)
+
+    if sp.issparse(kernel):
+        raise ValueError("cannot handle kernel in sparse format")
+
+    if not (kernel.std() > 0):
+        raise ValueError("Cannot have flat kernel.")
 
     if sp.issparse(signal):
         corr = _normxcorr2_sparse(
@@ -772,7 +749,7 @@ def _normxcorr2_sparse(
     sym_upper : False
         Whether the matrix is symmetric and upper triangle. True for
         intrachromosomal matrices.
-    missing_mask : scipy.sparse.coo_matrix of bools
+    missing_mask : scipy.sparse.csr_matrix of bools
         Matrix defining which pixels are missing (True) or not (False).
     full : bool
         Whether to run in 'full' mode, which means enclosing the signal in an
@@ -798,7 +775,7 @@ def _normxcorr2_sparse(
     # be centered on the edges.
     if full:
         # Create a vertical margin and use it to pad the signal
-        # TODO: delegate signal framing to make_exterior_frame
+        # TODO: delegate signal framing to frame
         tmp = sp.csr_matrix((mk - 1, ns))
         framed_sig = sp.vstack([tmp, signal, tmp], format=signal.format)
         # Same for the horizontal margin
@@ -807,30 +784,23 @@ def _normxcorr2_sparse(
         # If a missing mask was specified, use it
         if missing_mask is not None:
             # Add margins around missing mask.
-            framed_mask = preproc.make_exterior_frame(
-                missing_mask,
-                kernel.shape,
-                sym_upper=sym_upper,
-                max_dist=max_dist,
+            framed_missing_mask = preproc.frame_missing_mask(
+                missing_mask, kernel.shape, sym_upper=sym_upper, max_dist=max_dist
             )
     else:
         framed_sig = signal.copy()
         if missing_mask is None:
-            framed_mask = None
+            framed_missing_mask = None
         else:
-            framed_mask = missing_mask.copy()
+            framed_missing_mask = missing_mask.copy()
     # Ignore missing values
-    if framed_mask is None:
+    if framed_missing_mask is None:
         kernel_mean = float(kernel.mean())
         kernel_std = float(kernel.std())
-        if not (kernel_std > 0):
-            raise ValueError("Cannot have flat kernel.")
         # out contains framed_sig mean
         out = xcorr2(framed_sig, kernel1 / kernel_size)
 
-        denom = xcorr2(framed_sig.power(2), kernel1 / kernel_size) - out.power(
-            2
-        )
+        denom = xcorr2(framed_sig.power(2), kernel1 / kernel_size) - out.power(2)
         denom = denom.sqrt() * kernel_std
         # quick and dirty hack to robustify: numerical-zeros are turned into
         # real-zeros
@@ -844,7 +814,7 @@ def _normxcorr2_sparse(
 
     else:
         # Safety check to make sure mask matches signal
-        preproc.check_mask(framed_sig, framed_mask)
+        preproc.check_missing_mask(framed_sig, framed_missing_mask)
         kernel_sum = np.sum(kernel)
         kernel_mean = kernel_sum / kernel_size
         kernel_std = float(kernel.std())
@@ -852,18 +822,18 @@ def _normxcorr2_sparse(
         kernel2_mean = kernel2_sum / kernel_size
         # Compute convolution of uniform kernel with missing mask to get number
         # of missing pixels in each window. Will be plugged into Pearson at the end.
-        ker1_coo = xcorr2(framed_mask, kernel1).tocoo()
+        ker1_coo = xcorr2(framed_missing_mask, kernel1).tocoo()
         # From now on, ker1_coo.data contains the number of 'present' samples.
         # (where there is at least one missing pixel)
         ker1_coo.data = kernel_size - ker1_coo.data
         # Compute mean corrected with with number of missing elements (wm)
         kernel_mean_wm = (
             kernel_sum
-            - xcorr2(framed_mask, kernel)[ker1_coo.row, ker1_coo.col].A1
+            - xcorr2(framed_missing_mask, kernel)[ker1_coo.row, ker1_coo.col].A1
         ) / ker1_coo.data
         kernel2_mean_wm = (
             kernel2_sum
-            - xcorr2(framed_mask, kernel ** 2)[ker1_coo.row, ker1_coo.col].A1
+            - xcorr2(framed_missing_mask, kernel ** 2)[ker1_coo.row, ker1_coo.col].A1
         ) / ker1_coo.data
 
         # store signal mean directly in 'out' to avoid multiple replication of data
@@ -879,8 +849,7 @@ def _normxcorr2_sparse(
 
         denom = (denom - out.power(2)) * (kernel2_mean - kernel_mean ** 2)
         denom[ker1_coo.row, ker1_coo.col] = (
-            denom[ker1_coo.row, ker1_coo.col].A1 / kernel2_mean
-            - kernel_mean ** 2
+            denom[ker1_coo.row, ker1_coo.col].A1 / kernel2_mean - kernel_mean ** 2
         ) * (kernel2_mean_wm - kernel_mean_wm ** 2)
         denom = denom.sqrt()
 
@@ -911,9 +880,9 @@ def _normxcorr2_sparse(
         denom.data = 1 / denom.data
         out = out.multiply(denom)
 
-    if (max_dist is not None) and sym_upper:
-        # Trim diagonals further than max_scan_distance
-        out = preproc.diag_trim(out.tocsr(), max_dist)
+    # if (max_dist is not None) and sym_upper:
+    #    # Trim diagonals further than max_scan_distance
+    #    out = preproc.diag_trim(out.tocsr(), max_dist)
 
     if sym_upper:
         out = sp.triu(out)
@@ -928,12 +897,7 @@ def _normxcorr2_sparse(
 
 
 def _normxcorr2_dense(
-    signal,
-    kernel,
-    max_dist=None,
-    sym_upper=False,
-    full=None,
-    missing_mask=None,
+    signal, kernel, max_dist=None, sym_upper=False, full=None, missing_mask=None
 ):
     """Computes the normalized cross-correlation of a dense or sparse signal
     and a dense kernel. The resulting matrix contains Pearson correlation
@@ -953,12 +917,17 @@ def _normxcorr2_dense(
     sym_upper : False
         Whether the matrix is symmetric and upper triangle. True for
         intrachromosomal matrices.
+    full : bool
+    missing_mask : numpy.array of bools
+        Nump
 
     Returns
     -------
     numpy.array
         The sparse matrix of correlation coefficients
     """
+    mk, nk = kernel.shape
+    ms, ns = signal.shape
 
     # Convert numpy matrices to array to avoid operator overloading
     if isinstance(signal, np.matrix):
@@ -966,29 +935,61 @@ def _normxcorr2_dense(
     if isinstance(kernel, np.matrix):
         kernel = np.array(kernel)
 
+    if missing_mask is not None:
+        return xcorr2(signal, kernel)
+
     kernel_size = kernel.shape[0] * kernel.shape[1]
     kernel1 = np.ones(kernel.shape)
+    if full:
+        framed_sig = np.zeros([ms + 2 * (mk - 1), ns + 2 * (nk - 1)])
+        framed_sig[mk - 1 : -mk + 1, nk - 1 : -nk + 1] = signal
+        framed_missing_mask = preproc.frame_missing_mask(ms, ns, mk, nk, missing_mask)
+    else:
+        framed_sig = signal
+        framed_missing_mask = None
+        if missing_mask is not None:
+            framed_missing_mask = missing_mask.copy()
     # Pearson correlation
-    mean_kernel = float(kernel.mean())
-    std_kernel = float(kernel.std())
-    if not (std_kernel > 0):
-        raise ValueError("Cannot have flat kernel.")
+    kernel_mean = float(kernel.mean())
+    kernel_std = float(kernel.std())
 
     kernel1 = np.ones(kernel.shape)
-    mean_signal = xcorr2(signal, kernel1 / kernel_size)
+    framed_sig_mean = xcorr2(framed_sig, kernel1 / kernel_size)
 
-    std_signal = xcorr2(signal ** 2, kernel1 / kernel_size) - mean_signal ** 2
-    std_signal = np.sqrt(std_signal)
-    conv = xcorr2(signal, kernel / kernel_size) - mean_signal * mean_kernel
-    denom = std_signal * std_kernel
+    if missing_mask is None:
+        out = xcorr2(framed_sig, kernel / kernel_size) - framed_sig_mean * kernel_mean
+        out /= kernel_std * np.sqrt(
+            xcorr2(framed_sig ** 2, kernel1 / kernel_size) - framed_sig_mean ** 2
+        )
+    else:
+        kernel_size = mk * nk - xcorr2(framed_missing_mask, kernel1).toarray()
+        kernel_mean = (
+            np.sum(kernel) / kernel_size
+            - xcorr2(framed_missing_mask, kernel / kernel_size).toarray()
+        )
+        # store signal0_mean directly in 'out' to avoid multiple replication of data
+        out = xcorr2(framed_sig, kernel1) / kernel_size
+        denom = xcorr2(framed_sig ** 2, kernel1) / kernel_size
+        # Use multiplicative coefficient to correct denom by number of missing values
+        denom = np.sqrt(
+            (denom - out ** 2)
+            * (
+                (
+                    np.sum(kernel ** 2)
+                    - xcorr2(framed_missing_mask, kernel ** 2).toarray()
+                )
+                / kernel_size
+                - kernel_mean ** 2
+            )
+        )
 
-    conv /= denom
-    if (max_dist is not None) and sym_upper:
-        # Trim diagonals further than max_scan_distance
-        conv = preproc.diag_trim(conv, max_dist)
+        # store numerator directly in 'out' to avoid multiple replication of data
+        out = xcorr2(framed_sig, kernel) / kernel_size - out * kernel_mean
+
+        out /= denom
 
     if sym_upper:
-        conv = np.triu(conv)
-    conv[~np.isfinite(conv)] = 0.0
-    conv[conv < 0] = 0.0
-    return conv
+        out = np.triu(out)
+    out[~np.isfinite(out)] = 0.0
+    out[out < 0] = 0.0
+    return out

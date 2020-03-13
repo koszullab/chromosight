@@ -510,7 +510,7 @@ def subsample_contacts(M, n_contacts):
     )
 
 
-def make_exterior_frame(mask, kernel_shape, sym_upper=False, max_dist=None):
+def frame_missing_mask(mask, kernel_shape, sym_upper=False, max_dist=None):
     """
     Adds a frame around input mask, given a kernel. The goal of this
     frame is define margins around the matrix where the kernel will not perform
@@ -543,16 +543,21 @@ def make_exterior_frame(mask, kernel_shape, sym_upper=False, max_dist=None):
 
     Returns
     -------
-    exterior_frame : scipy.sparse.csr_matrix of bool
-        The input mask with 
+    framed_mask : scipy.sparse.csr_matrix of bool
+        The input mask with a padding of True around the edges. If sym_upper is True,
+        a padding is also added below the diagonal.
     """
     if mask.dtype != bool:
         raise ValueError("Mask must contain boolean values")
+    if not sp.issparse(mask):
+        raise ValueError("Mask must be a sparse matrix")
+
+    framed_mask = mask.copy()
     ms, ns = mask.shape
     mk, nk = kernel_shape
     if sym_upper and (max_dist is not None):
         # Remove diagonals further than scan distance in the input mask
-        mask = diag_trim(mask, max_dist + max(nk, mk)).tocsr()
+        framed_mask = diag_trim(framed_mask, max_dist + max(nk, mk)).tocsr()
         max_m = max_dist + mk
         max_n = max_dist + nk
     else:
@@ -566,7 +571,7 @@ def make_exterior_frame(mask, kernel_shape, sym_upper=False, max_dist=None):
     else:
         margin_1[:, :] = 1
         margin_2[:, :] = 1
-    mask = sp.vstack([margin_1, mask, margin_2], format="csr")
+    framed_mask = sp.vstack([margin_1, framed_mask, margin_2], format="csr")
 
     # Left and right
     margin_1 = sp.csr_matrix((ms + 2 * (mk - 1), nk - 1), dtype=bool)
@@ -574,29 +579,29 @@ def make_exterior_frame(mask, kernel_shape, sym_upper=False, max_dist=None):
 
     if sym_upper and (max_dist is not None):
         # Margin 2 (right) is in upper triangle-> fill missing up to scan dist
-        margin_2[-(max_m + 1) :, :] = 1
+        margin_2[-(max_m + 1):, :] = 1
         # Fill only the start of left margin for the top-left corner
         margin_1[: mk - 1, :] = 1
     else:
         margin_1[:, :] = 1
         margin_2[:, :] = 1
-    mask = sp.hstack([margin_1, mask, margin_2], format="csr")
+    framed_mask = sp.hstack([margin_1, framed_mask, margin_2], format="csr")
 
     if sym_upper:
         # LIL format is much faster when changing sparsity
-        mask = mask.tolil()
+        framed_mask = framed_mask.tolil()
         # Add margin below diagonal
         big_k = max(nk, mk)
         dia_margin = np.ones(big_k // 2 - 1)
         dia_offsets = np.arange(-1, -big_k // 2 + 1, -1)
-        mask += sp.diags(
-            dia_margin, dia_offsets, shape=mask.shape, format="lil", dtype=bool
+        framed_mask += sp.diags(
+            dia_margin, dia_offsets, shape=framed_mask.shape, format="lil", dtype=bool
         )
-        mask = mask.tocsr()
-    return mask
+        framed_mask = framed_mask.tocsr()
+    return framed_mask
 
 
-def check_mask(signal, mask):
+def check_missing_mask(signal, mask):
     """
     Ensure all elements defined as missing by the mask are set to zero in the signal.
     If this is not the case, raises an error.
