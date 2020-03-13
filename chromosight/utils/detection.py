@@ -529,8 +529,9 @@ def _xcorr2_sparse(signal, kernel, threshold=1e-6):
     ----------
     signal: scipy.sparse.csr_matrix
         A 2-dimensional numpy array Ms x Ns acting as the detrended Hi-C map.
-    kernel: array_like
-        A 2-dimensional numpy array Mk x Nk acting as the pattern template.
+    kernel: numpy.array of floats or tuple of numpy.arrays
+        A 2-dimensional numpy array Mk x Nk acting as the pattern template. Can
+        also be a factorised kernel.
     threshold : float
         Convolution score below which pixels will be set back to zero to save
         on time and memory.
@@ -539,55 +540,66 @@ def _xcorr2_sparse(signal, kernel, threshold=1e-6):
     out: scipy.sparse.csr_matrix
         Convolution product of signal by kernel.
     """
-
     sm, sn = signal.shape
-    km, kn = kernel.shape
 
-    # Kernel (half) height and width
-    kh = (km - 1) // 2
-    kw = (kn - 1) // 2
-
-    # Sanity checks
-    if sp.issparse(kernel):
-        raise ValueError("cannot handle kernel in sparse format")
-    if not sp.issparse(signal):
-        raise ValueError("cannot handle signal in dense format")
-    # Check of kernel is constant (uniform)
-    constant_kernel = np.nan
-    if np.allclose(kernel, np.tile(kernel[0, 0], kernel.shape), rtol=1e-08):
-        constant_kernel = kernel[0, 0]
-
-    out = sp.csc_matrix((sm - km + 1, sn - kn + 1), dtype=np.float64)
-
-    # Simplified convolution for the special case where kernel is constant:
-    if np.isfinite(constant_kernel):
-        l_subkernel_sp = sp.diags(
-            constant_kernel * np.ones(km),
-            np.arange(km),
-            shape=(sm - km + 1, sm),
-            format="dia",
-        )
-        r_subkernel_sp = sp.diags(
-            np.ones(kn), -np.arange(kn), shape=(sn, sn - kn + 1), format="dia"
-        )
-        out = (l_subkernel_sp @ signal) @ r_subkernel_sp
-    # Convolution code for general case
+    if type(kernel) is tuple:
+        kernel_l, kernel_r = kernel
+        km = kernel_l.shape[0]
+        kn = kernel_r.shape[1]
+        if kernel_l.shape[1] != kernel_r.shape[0]:
+            raise ValueError("Kernel factorisation is invalid")
+        n_factors = kernel_l.shape[1]
+        for f in range(n_factors):
+            subkernel_l = sp.diags(kernel_l[:, f], np.arange(km), shape=(sm-km+1, sm), format="dia")
+            subkernel_r = sp.diags(kernel_r[f, :], -np.arange(kn), shape=(sn, sn-kn+1), format="dia")
+            if f == 0:
+                out = (subkernel_l @ signal) @ subkernel_r
+            else:
+                out += (subkernel_l @ signal) @ subkernel_r
+        return out
     else:
-        for kj in range(kn):
-            subkernel_sp = sp.diags(
-                kernel[:, kj], np.arange(km), shape=(sm - km + 1, sm), format="csr"
+        km, kn = kernel.shape
+
+
+        # Sanity checks
+        if sp.issparse(kernel):
+            raise ValueError("cannot handle kernel in sparse format")
+        if not sp.issparse(signal):
+            raise ValueError("cannot handle signal in dense format")
+        # Check of kernel is constant (uniform)
+        constant_kernel = np.nan
+        if np.allclose(kernel, np.tile(kernel[0, 0], kernel.shape), rtol=1e-08):
+            constant_kernel = kernel[0, 0]
+
+        out = sp.csc_matrix((sm - km + 1, sn - kn + 1), dtype=np.float64)
+
+        # Simplified convolution for the special case where kernel is constant:
+        if np.isfinite(constant_kernel):
+            l_subkernel_sp = sp.diags(
+                constant_kernel * np.ones(km),
+                np.arange(km),
+                shape=(sm - km + 1, sm),
+                format="dia",
             )
-            out += subkernel_sp.dot(signal[:, kj : sn - kn + 1 + kj])
+            r_subkernel_sp = sp.diags(
+                np.ones(kn), -np.arange(kn), shape=(sn, sn - kn + 1), format="dia"
+            )
+            out = (l_subkernel_sp @ signal) @ r_subkernel_sp
+        # Convolution code for general case
+        else:
+            for kj in range(kn):
+                subkernel_sp = sp.diags(
+                    kernel[:, kj], np.arange(km), shape=(sm - km + 1, sm), format="csr"
+                )
+                out += subkernel_sp.dot(signal[:, kj : sn - kn + 1 + kj])
 
-    # Set very low pixels to 0
-    out.data[np.abs(out.data) < threshold] = 0
-    out.eliminate_zeros()
+        # Set very low pixels to 0
+        out.data[np.abs(out.data) < threshold] = 0
+        out.eliminate_zeros()
 
-    # Resize matrix: increment rows and cols by half kernel and set shape to input
-    # matrix, effectively adding margins.
-    out = out.tocoo()
-    out = preproc.zero_pad_sparse(out, margin_h=kw, margin_v=kh, fmt="csr")
-
+        # Resize matrix: increment rows and cols by half kernel and set shape to input
+        # matrix, effectively adding margins.
+        out = preproc.zero_pad_sparse(out, margin_h=(kn - 1) // 2, margin_v=(km - 1) // 2, fmt="csr")
     return out
 
 
@@ -740,7 +752,8 @@ def _normxcorr2_sparse(
     signal : scipy.sparse.csr_matrix
         The input processed Hi-C matrix.
     kernel : numpy.array
-        The pattern kernel to use for convolution.
+        The pattern kernel to use for convolution. Can be a factorised kernel
+        stored in a tuple.
     max_dist : int
         Maximum scan distance, in number of bins from the diagonal. If None,
         the whole matrix is convoluted. Otherwise, pixels further than this
@@ -907,8 +920,9 @@ def _normxcorr2_dense(
     ----------
     signal : numpy.array
         The input processed Hi-C matrix.
-    kernel : numpy.array
-        The pattern kernel to use for convolution.
+    kernel : numpy.array or tuple of numpy.arrays
+        The pattern kernel to use for convolution. Can be a factorised kernel
+        stored in a tuple.
     max_dist : int
         Maximum scan distance, in number of bins from the diagonal. If None,
         the whole matrix is convoluted. Otherwise, pixels further than this

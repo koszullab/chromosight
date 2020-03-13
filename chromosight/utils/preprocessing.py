@@ -739,7 +739,7 @@ def zero_pad_sparse(mat, margin_h, margin_v, fmt="coo"):
 
     Parameters
     ----------
-    mat : scipy.sparse.coo_matrix
+    mat : scipy.sparse.csr_matrix
         The matrix to be padded.
     margin_h : int
         The width of the horizontal margin to add on the left and right of the
@@ -752,12 +752,12 @@ def zero_pad_sparse(mat, margin_h, margin_v, fmt="coo"):
     
     Returns
     -------
-    scipy.sparse.coo_matrix :
+    scipy.sparse.csr_matrix :
         The padded matrix of dimensions (m + 2 * margin_h, n + 2 * margin_v).
     
     Examples
     --------
-    >>> m = sp.coo_matrix(np.array([[1, 2], [10, 20]]))
+    >>> m = sp.csr_matrix(np.array([[1, 2], [10, 20]]))
     >>> zero_pad_sparse(m, 2, 1).toarray()
     array([[ 0,  0,  0,  0,  0,  0],
            [ 0,  0,  1,  2,  0,  0],
@@ -765,23 +765,15 @@ def zero_pad_sparse(mat, margin_h, margin_v, fmt="coo"):
            [ 0,  0,  0,  0,  0,  0]])
     """
 
-    matfun = {
-        "coo": sp.coo_matrix,
-        "csr": sp.csr_matrix,
-        "lil": sp.lil_matrix,
-        "csc": sp.csc_matrix,
-    }
     sm, sn = mat.shape
-    padded_m = sm + 2 * margin_v
-    padded_n = sn + 2 * margin_h
+    padded_mat = mat.copy()
+    # Up and down margins initialized with zeros and filled as needed
+    margin_h_0 = sp.csr_matrix((sm, margin_h), dtype=mat.dtype)
+    margin_v_0 = sp.csr_matrix((margin_v, sn + 2 * margin_h), dtype=mat.dtype)
+    padded_mat = sp.hstack([margin_h_0, padded_mat, margin_h_0], format="csr")
+    padded_mat = sp.vstack([margin_v_0, padded_mat, margin_v_0], format="csr")
 
-    rows = mat.row + margin_v
-    cols = mat.col + margin_h
-    padded = matfun[fmt](
-        (mat.data, (rows, cols)), shape=(padded_m, padded_n), dtype=mat.dtype
-    )
-
-    return padded
+    return padded_mat
 
 
 def crop_kernel(kernel, target_size):
@@ -911,3 +903,14 @@ def resize_kernel(
         resized_kernel = ndi.zoom(kernel, adj_resize_factor, order=1)
 
     return resized_kernel
+
+
+def factorise_kernel(kernel, min_energy=0.999):
+    """
+    kernel : numpy.array
+    min_energy : float
+    returns
+    tuple of numpy.array
+    already multiplied by singular values
+    """
+    ...
