@@ -10,36 +10,43 @@ warnings.filterwarnings("ignore")
 
 
 def validate_patterns(
-    coords, matrix, conv_mat, detectable_bins, kernel_matrix, max_undetected_perc
+    coords,
+    matrix,
+    conv_mat,
+    detectable_bins,
+    kernel_matrix,
+    max_undetected_perc,
 ):
     """
-    Given a list of pattern coordinates and a contact map, remove patterns in low
-    detectability regions or too close to matrix boundaries. Also returns the
-    surrounding window of Hi-C contacts around each detected pattern.
+    Given a list of pattern coordinates and a contact map, remove patterns in
+    low detectability regions or too close to matrix boundaries. Also returns
+    the surrounding window of Hi-C contacts around each detected pattern.
 
     Parameters
     ----------
     coords : numpy.array of ints
-        Coordinates of all detected patterns in the sub matrix. One pattern per
-        row, the first column is the matrix row, second column is the matrix col.
+        Coordinates of all detected patterns in the sub matrix. One pattern
+        per row, the first column is the matrix row, second column is the
+        matrix col.
     matrix : scipy.sparse.csr_matrix
         Hi-C contact map of the sub matrix.
     conv_mat : scipy.sparse.csr_matrix
         Convolution product of the kernel with the Hi-C sub matrix.
     detectable_bins : list of numpy.array
-        List of two 1D numpy arrays of ints representing ids of detectable rows
-        and columns, respectively.
+        List of two 1D numpy arrays of ints representing ids of detectable
+        rows and columns, respectively.
     kernel_matrix : numpy.array of float
         The kernel that was used for pattern detection on the Hi-C matrix.
     max_undetected_perc : float
-        Proportion of undetectable pixels allowed in a pattern window to consider
-        it valid.
+        Proportion of undetectable pixels allowed in a pattern window to
+        consider it valid.
 
     Returns
     -------
     filtered_coords : pandas.DataFrame
         Table of coordinates that passed the filters. The dataframe has 3:
-        columns: bin1 (rows), bin2 (col) and score (the correlation coefficient).
+        columns: bin1 (rows), bin2 (col) and score (the correlation
+        coefficient).
     filtered_windows : numpy.array
         3D numpy array of signal windows around detected patterns. Each window
         spans axes 1 and 2, and they are stacked along axis 0.
@@ -55,7 +62,11 @@ def validate_patterns(
 
     # Copy coords object and append column for scores
     validated_coords = pd.DataFrame(
-        {"bin1": coords[:, 0], "bin2": coords[:, 1], "score": np.zeros(coords.shape[0])}
+        {
+            "bin1": coords[:, 0],
+            "bin2": coords[:, 1],
+            "score": np.zeros(coords.shape[0]),
+        }
     )
     # validated_coords = np.append(coords, np.zeros((coords.shape[0], 1)), 1)
     # Initialize structure to store pattern windows
@@ -83,12 +94,19 @@ def validate_patterns(
             n_rows, n_cols = pattern_window.shape
             tot_pixels = n_rows * n_cols
             # Compute number of missing rows and cols
-            n_bad_rows = n_rows - len(set(win_rows).intersection(detectable_rows))
-            n_bad_cols = n_cols - len(set(win_cols).intersection(detectable_cols))
+            n_bad_rows = n_rows - len(
+                set(win_rows).intersection(detectable_rows)
+            )
+            n_bad_cols = n_cols - len(
+                set(win_cols).intersection(detectable_cols)
+            )
 
-            # Number of undetected pixels is "bad rows area" + "bad cols area" - "bad rows x bad cols intersection"
+            # Number of undetected pixels is "bad rows area" + "bad cols
+            # area" - "bad rows x bad cols intersection"
             tot_undetected_pixels = (
-                n_bad_rows * n_cols + n_bad_cols * n_rows - n_bad_rows * n_bad_cols
+                n_bad_rows * n_cols
+                + n_bad_cols * n_rows
+                - n_bad_rows * n_bad_cols
             )
             # Number of uncovered pixels
             tot_zero_pixels = len(pattern_window[pattern_window == 0])
@@ -143,7 +161,9 @@ def pileup_patterns(pattern_windows):
     return np.apply_along_axis(np.nanmean, 0, pattern_windows)
 
 
-def pattern_detector(contact_map, kernel_config, kernel_matrix, dump=None, full=False):
+def pattern_detector(
+    contact_map, kernel_config, kernel_matrix, dump=None, full=False
+):
     """
     Detect patterns in a contact map by kernel matching, and extract windows
     around the detected patterns.
@@ -266,7 +286,8 @@ def remove_neighbours(patterns, win_size=8):
     patterns : numpy.array of float
         2D Array of patterns, with 3 columns: bin1, bin2 and score.
     win_size : int
-        The maximum number of pixels at which patterns are considered overlapping.
+        The maximum number of pixels at which patterns are considered
+        overlapping.
 
     Returns
     -------
@@ -296,26 +317,28 @@ def remove_neighbours(patterns, win_size=8):
 
 def picker(mat_conv, pearson):
     """
-    Pick coordinates of local maxima in a sparse 2D convolution heatmap. A threshold
-    computed based on the pearson argument is applied to the heatmap. All values below
-    that threshold are set to 0. The coordinate of the maximum value in each focus is
-    returned.
+    Pick coordinates of local maxima in a sparse 2D convolution heatmap. A
+    threshold computed based on the pearson argument is applied to the
+    heatmap. All values below that threshold are set to 0. The coordinate
+    of the maximum value in each focus is returned.
 
     Parameters
     ----------
     mat_conv : scipy.sparse.coo_matrix of floats
         A 2D sparse convolution heatmap.
     pearson : float
-        Minimum correlation coefficient required to consider a pixel as candidate.
-        Increasing this value reduces the amount of false positive patterns.
+        Minimum correlation coefficient required to consider a pixel as
+        candidate. Increasing this value reduces the amount of false
+        positive patterns.
     Returns
     -------
     foci_coords : numpy.array of ints
-        2D array of coordinates for identified patterns corresponding to foci maxima.
-        None is no pattern was detected.
+        2D array of coordinates for identified patterns corresponding to
+        foci maxima. None is no pattern was detected.
     labelled_mat : scipy.sparse.coo_matrix
-        The map of detected foci. Pixels which were assigned to a focus are given
-        an integer as their focus ID. Pixels not assigned to a focus are set to 0.
+        The map of detected foci. Pixels which were assigned to a focus are
+        given an integer as their focus ID. Pixels not assigned to a focus
+        are set to 0.
     """
 
     candidate_mat = mat_conv.copy()
@@ -550,8 +573,18 @@ def _xcorr2_sparse(signal, kernel, threshold=1e-6):
             raise ValueError("Kernel factorisation is invalid")
         n_factors = kernel_l.shape[1]
         for f in range(n_factors):
-            subkernel_l = sp.diags(kernel_l[:, f], np.arange(km), shape=(sm-km+1, sm), format="dia")
-            subkernel_r = sp.diags(kernel_r[f, :], -np.arange(kn), shape=(sn, sn-kn+1), format="dia")
+            subkernel_l = sp.diags(
+                kernel_l[:, f],
+                np.arange(km),
+                shape=(sm - km + 1, sm),
+                format="dia",
+            )
+            subkernel_r = sp.diags(
+                kernel_r[f, :],
+                -np.arange(kn),
+                shape=(sn, sn - kn + 1),
+                format="dia",
+            )
             if f == 0:
                 out = (subkernel_l @ signal) @ subkernel_r
             else:
@@ -560,7 +593,6 @@ def _xcorr2_sparse(signal, kernel, threshold=1e-6):
     else:
         km, kn = kernel.shape
 
-
         # Sanity checks
         if sp.issparse(kernel):
             raise ValueError("cannot handle kernel in sparse format")
@@ -568,7 +600,9 @@ def _xcorr2_sparse(signal, kernel, threshold=1e-6):
             raise ValueError("cannot handle signal in dense format")
         # Check of kernel is constant (uniform)
         constant_kernel = np.nan
-        if np.allclose(kernel, np.tile(kernel[0, 0], kernel.shape), rtol=1e-08):
+        if np.allclose(
+            kernel, np.tile(kernel[0, 0], kernel.shape), rtol=1e-08
+        ):
             constant_kernel = kernel[0, 0]
 
         out = sp.csc_matrix((sm - km + 1, sn - kn + 1), dtype=np.float64)
@@ -582,14 +616,20 @@ def _xcorr2_sparse(signal, kernel, threshold=1e-6):
                 format="dia",
             )
             r_subkernel_sp = sp.diags(
-                np.ones(kn), -np.arange(kn), shape=(sn, sn - kn + 1), format="dia"
+                np.ones(kn),
+                -np.arange(kn),
+                shape=(sn, sn - kn + 1),
+                format="dia",
             )
             out = (l_subkernel_sp @ signal) @ r_subkernel_sp
         # Convolution code for general case
         else:
             for kj in range(kn):
                 subkernel_sp = sp.diags(
-                    kernel[:, kj], np.arange(km), shape=(sm - km + 1, sm), format="csr"
+                    kernel[:, kj],
+                    np.arange(km),
+                    shape=(sm - km + 1, sm),
+                    format="csr",
                 )
                 out += subkernel_sp.dot(signal[:, kj : sn - kn + 1 + kj])
 
@@ -597,9 +637,11 @@ def _xcorr2_sparse(signal, kernel, threshold=1e-6):
         out.data[np.abs(out.data) < threshold] = 0
         out.eliminate_zeros()
 
-        # Resize matrix: increment rows and cols by half kernel and set shape to input
-        # matrix, effectively adding margins.
-        out = preproc.zero_pad_sparse(out, margin_h=(kn - 1) // 2, margin_v=(km - 1) // 2, fmt="csr")
+        # Resize matrix: increment rows and cols by half kernel and set shape
+        # to input matrix, effectively adding margins.
+        out = preproc.zero_pad_sparse(
+            out, margin_h=(kn - 1) // 2, margin_v=(km - 1) // 2, fmt="csr"
+        )
     return out
 
 
@@ -642,7 +684,10 @@ def _xcorr2_dense(signal, kernel, threshold=1e-6):
     else:
         for kj in range(kn):
             subkernel_sp = sp.diags(
-                kernel[:, kj], np.arange(km), shape=(sm - km + 1, sm), format="csr"
+                kernel[:, kj],
+                np.arange(km),
+                shape=(sm - km + 1, sm),
+                format="csr",
             )
             out_wo_margin += subkernel_sp.dot(signal[:, kj : sn - kn + 1 + kj])
 
@@ -655,11 +700,17 @@ def _xcorr2_dense(signal, kernel, threshold=1e-6):
 
 
 def normxcorr2(
-    signal, kernel, max_dist=None, sym_upper=False, full=False, missing_mask=None
+    signal,
+    kernel,
+    max_dist=None,
+    sym_upper=False,
+    full=False,
+    missing_mask=None,
 ):
     """
     Computes the normalized cross-correlation of a dense or sparse signal and a
-    dense kernel. The resulting matrix contains Pearson correlation coefficients.
+    dense kernel. The resulting matrix contains Pearson correlation
+    coefficients.
 
     Parameters
     ----------
@@ -668,39 +719,43 @@ def normxcorr2(
     kernel : numpy.array
         The pattern kernel to use for convolution.
     max_dist : int
-        Maximum scan distance, in number of bins from the diagonal. If None, the whole
-        matrix is convoluted. Otherwise, pixels further than this distance from the
-        diagonal are set to 0 and ignored for performance. Only useful for 
-        intrachromosomal matrices.
+        Maximum scan distance, in number of bins from the diagonal. If None,
+        the whole matrix is convoluted. Otherwise, pixels further than this
+        distance from the diagonal are set to 0 and ignored for performance.
+        Only useful for intrachromosomal matrices.
     sym_upper : False
-        Whether the matrix is symmetric and upper triangle. True for intrachromosomal
+        Whether the matrix is symmetric and upper triangle. True for
+        intrachromosomal
         matrices.
     missing_mask : scipy.sparse.coo_matrix of ints
         Matrix defining which pixels are missing (1) or not (0).
     full : bool
         If True, convolutions will be made in 'full' mode; the matrix is first
-        padded with margins to allow scanning to the edges, and missing bins are
-        also masked to exclude them when computing correlation scores. Computationally
-        intensive
+        padded with margins to allow scanning to the edges, and missing bins
+        are also masked to exclude them when computing correlation scores.
+        Computationally intensive
     missing_mask : scipy.sparse.csr_matrix of bool or None
         Mask matrix denoting missing bins, where missing is denoted as True and
-        valid as False. Can be None to ignore missing bin information. Only taken
-        into account when full=True.
+        valid as False. Can be None to ignore missing bin information. Only
+        taken into account when full=True.
 
     Returns
     -------
     scipy.sparse.csr_matrix or numpy.array
-        The sparse matrix of correlation coefficients. Same type as the input signal.
+        The sparse matrix of correlation coefficients. Same type as the input
+        signal.
     """
 
     if missing_mask is not None:
         if not sp.issparse(missing_mask):
             raise ValueError("Missing mask must be a sparse matrix.")
         if not signal.shape == missing_mask.shape:
-            raise ValueError("Signal and missing mask do not have the same shape")
+            raise ValueError(
+                "Signal and missing mask do not have the same shape"
+            )
         if missing_mask.dtype != bool:
             raise ValueError(
-                f"Missing mask data type is {missing_mask.dtype}. Should be bool."
+                f"Missing mask dtype is {missing_mask.dtype}. Should be bool."
             )
 
         if min(kernel.shape) >= max(signal.shape):
@@ -798,7 +853,10 @@ def _normxcorr2_sparse(
         if missing_mask is not None:
             # Add margins around missing mask.
             framed_missing_mask = preproc.frame_missing_mask(
-                missing_mask, kernel.shape, sym_upper=sym_upper, max_dist=max_dist
+                missing_mask,
+                kernel.shape,
+                sym_upper=sym_upper,
+                max_dist=max_dist,
             )
     else:
         framed_sig = signal.copy()
@@ -813,14 +871,17 @@ def _normxcorr2_sparse(
         # out contains framed_sig mean
         out = xcorr2(framed_sig, kernel1 / kernel_size)
 
-        denom = xcorr2(framed_sig.power(2), kernel1 / kernel_size) - out.power(2)
+        denom = xcorr2(framed_sig.power(2), kernel1 / kernel_size) - out.power(
+            2
+        )
         denom = denom.sqrt() * kernel_std
         # quick and dirty hack to robustify: numerical-zeros are turned into
         # real-zeros
         denom.data[np.abs(denom.data) < 1e-10] = 0.0
         denom.data = 1.0 / denom.data
 
-        # store numerator directly in 'out' to avoid multiple replication of data
+        # store numerator directly in 'out' to avoid multiple replication of
+        # data
         out = xcorr2(framed_sig, kernel / kernel_size) - out * kernel_mean
         # Multiply by invert since sparse division is not allowed
         out = out.multiply(denom)
@@ -834,7 +895,8 @@ def _normxcorr2_sparse(
         kernel2_sum = np.sum(kernel ** 2)
         kernel2_mean = kernel2_sum / kernel_size
         # Compute convolution of uniform kernel with missing mask to get number
-        # of missing pixels in each window. Will be plugged into Pearson at the end.
+        # of missing pixels in each window. Will be plugged into Pearson at
+        # the end.
         ker1_coo = xcorr2(framed_missing_mask, kernel1).tocoo()
         # From now on, ker1_coo.data contains the number of 'present' samples.
         # (where there is at least one missing pixel)
@@ -842,14 +904,19 @@ def _normxcorr2_sparse(
         # Compute mean corrected with with number of missing elements (wm)
         kernel_mean_wm = (
             kernel_sum
-            - xcorr2(framed_missing_mask, kernel)[ker1_coo.row, ker1_coo.col].A1
+            - xcorr2(framed_missing_mask, kernel)[
+                ker1_coo.row, ker1_coo.col
+            ].A1
         ) / ker1_coo.data
         kernel2_mean_wm = (
             kernel2_sum
-            - xcorr2(framed_missing_mask, kernel ** 2)[ker1_coo.row, ker1_coo.col].A1
+            - xcorr2(framed_missing_mask, kernel ** 2)[
+                ker1_coo.row, ker1_coo.col
+            ].A1
         ) / ker1_coo.data
 
-        # store signal mean directly in 'out' to avoid multiple replication of data
+        # store signal mean directly in 'out' to avoid multiple replication of
+        # data
         out = xcorr2(framed_sig, kernel1 / kernel_size)
         out[ker1_coo.row, ker1_coo.col] = (
             out[ker1_coo.row, ker1_coo.col].A1 * kernel_size / ker1_coo.data
@@ -862,7 +929,8 @@ def _normxcorr2_sparse(
 
         denom = (denom - out.power(2)) * (kernel2_mean - kernel_mean ** 2)
         denom[ker1_coo.row, ker1_coo.col] = (
-            denom[ker1_coo.row, ker1_coo.col].A1 / kernel2_mean - kernel_mean ** 2
+            denom[ker1_coo.row, ker1_coo.col].A1 / kernel2_mean
+            - kernel_mean ** 2
         ) * (kernel2_mean_wm - kernel_mean_wm ** 2)
         denom = denom.sqrt()
 
@@ -876,7 +944,7 @@ def _normxcorr2_sparse(
             ker1_coo.col[ker1_coo.data < int((1 - missing_tol) * kernel_size)],
         ] = 0.0
 
-        # store numerator directly in 'out' to avoid multiple replication of data
+        # store numerator directly in 'out' to avoid multiple copies of data
         out *= kernel_mean
         out[ker1_coo.row, ker1_coo.col] = (
             out[ker1_coo.row, ker1_coo.col].A1
@@ -889,7 +957,7 @@ def _normxcorr2_sparse(
             out[ker1_coo.row, ker1_coo.col].A1 * kernel_size / ker1_coo.data
         )
 
-        # take inverse, because 2 sparse matrices cannot be divided (only multiplied)
+        # take inverse, because 2 sparse mats can't be divided
         denom.data = 1 / denom.data
         out = out.multiply(denom)
 
@@ -910,7 +978,12 @@ def _normxcorr2_sparse(
 
 
 def _normxcorr2_dense(
-    signal, kernel, max_dist=None, sym_upper=False, full=None, missing_mask=None
+    signal,
+    kernel,
+    max_dist=None,
+    sym_upper=False,
+    full=None,
+    missing_mask=None,
 ):
     """Computes the normalized cross-correlation of a dense or sparse signal
     and a dense kernel. The resulting matrix contains Pearson correlation
@@ -957,7 +1030,14 @@ def _normxcorr2_dense(
     if full:
         framed_sig = np.zeros([ms + 2 * (mk - 1), ns + 2 * (nk - 1)])
         framed_sig[mk - 1 : -mk + 1, nk - 1 : -nk + 1] = signal
-        framed_missing_mask = preproc.frame_missing_mask(ms, ns, mk, nk, missing_mask)
+        if missing_mask is not None:
+            # Add margins around missing mask.
+            framed_missing_mask = preproc.frame_missing_mask(
+                missing_mask,
+                kernel.shape,
+                sym_upper=sym_upper,
+                max_dist=max_dist,
+            )
     else:
         framed_sig = signal
         framed_missing_mask = None
@@ -971,9 +1051,13 @@ def _normxcorr2_dense(
     framed_sig_mean = xcorr2(framed_sig, kernel1 / kernel_size)
 
     if missing_mask is None:
-        out = xcorr2(framed_sig, kernel / kernel_size) - framed_sig_mean * kernel_mean
+        out = (
+            xcorr2(framed_sig, kernel / kernel_size)
+            - framed_sig_mean * kernel_mean
+        )
         out /= kernel_std * np.sqrt(
-            xcorr2(framed_sig ** 2, kernel1 / kernel_size) - framed_sig_mean ** 2
+            xcorr2(framed_sig ** 2, kernel1 / kernel_size)
+            - framed_sig_mean ** 2
         )
     else:
         kernel_size = mk * nk - xcorr2(framed_missing_mask, kernel1).toarray()
@@ -981,10 +1065,10 @@ def _normxcorr2_dense(
             np.sum(kernel) / kernel_size
             - xcorr2(framed_missing_mask, kernel / kernel_size).toarray()
         )
-        # store signal0_mean directly in 'out' to avoid multiple replication of data
+        # store signal0_mean in 'out' to avoid multiple replication of data
         out = xcorr2(framed_sig, kernel1) / kernel_size
         denom = xcorr2(framed_sig ** 2, kernel1) / kernel_size
-        # Use multiplicative coefficient to correct denom by number of missing values
+        # Use multiplicative coeff to correct denom by number of missing values
         denom = np.sqrt(
             (denom - out ** 2)
             * (
@@ -997,7 +1081,7 @@ def _normxcorr2_dense(
             )
         )
 
-        # store numerator directly in 'out' to avoid multiple replication of data
+        # store numerator directly in 'out' to avoid multiple copies of data
         out = xcorr2(framed_sig, kernel) / kernel_size - out * kernel_mean
 
         out /= denom
