@@ -271,6 +271,10 @@ class HicGenome:
         # Loop over all possible combinations of chromosomes
         # in the upper triangle matrix
         sys.stderr.write("Preprocessing sub-matrices...\n")
+        if self.sample is not None:
+            sys.stderr.write(
+                f"{np.round(100 * self.sample)}% contacts will be subsampled \n"
+            )
         sub_mat_idx = 0
         # mat_view = self.clr.matrix(sparse=True, balance=True)
         for i1, chr1 in enumerate(self.clr.chromnames):
