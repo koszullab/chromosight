@@ -129,7 +129,13 @@ class HicGenome:
         if sample is not None:
             sample = float(sample)
             try:
-                if sample > 1:
+                if sample > self.clr.info["sum"]:
+                    print(
+                        "sample value is higher than total contacts,"
+                        "skipping subsampling."
+                    )
+                    self.sample = sample = None
+                elif sample > 1:
                     self.sample = sample / self.clr.info["sum"]
                 elif sample > 0:
                     self.sample = sample
@@ -194,7 +200,8 @@ class HicGenome:
         # Bins with NaN weight are missing, matrix already balanced
         self.detectable_bins = np.where(np.isfinite(self.bins.weight))[0]
         print(
-            f"Found {len(self.detectable_bins)} / {self.clr.shape[0]} detectable bins"
+            f"Found {len(self.detectable_bins)} / {self.clr.shape[0]}"
+            "detectable bins"
         )
 
     def load_data(self, mat_path):
@@ -531,31 +538,52 @@ class ContactMap:
         """Destroys contact map to clean up memory"""
         del self.matrix
         self.matrix = None
-    
+
     @DumpMatrix("01_subsampled")
-    def subsample(self, sub):
+    def subsample(self, sub, balance=True):
         """
-        Subsample contacts from the Hi-C matrix.
-        
+        Subsample contacts from the raw Hi-C matrix.
+
         Parameters
         ----------
         sub : float
             Proportion of contacts to subsample from the matrix to sample.
+        balance : True
+            Apply balancing on the subsampled matrix using precomputed weights
+            in self.clr.bins
         """
+        (s1, e1), (s2, e2) = self.extent
+        # Extract the submatrix with raw counts
+        self.matrix = self.clr.matrix(sparse=True, balance=False)[s1:e1, s2:e2]
         subsample = float(sub)
         if subsample < 0:
             raise ValueError("Error: Subsample must be strictly positive.")
+        # If subsample is a proportion, convert it to contact count
         elif subsample < 1:
             subsample *= self.matrix.sum()
+        # If the contact count is lower than total, apply subsampling
         if subsample < self.matrix.sum():
             subsample = int(subsample)
-            print(f"Subsampling {subsample} contacts from matrix")
+            # print(f"Subsampling {subsample} contacts from {self.name}")
+            # Apply subsampling on the raw contact matrix
             self.matrix = preproc.subsample_contacts(
                 self.matrix, int(subsample)
             )
+            # Balance the subsampled submatrix using precomputed weights
+            if balance:
+                weights = self.clr.bins()['weight']  # view
+                bias_rows = weights[s1:e1].values
+                bias_cols = weights[s2:e2].values
+                self.matrix.data = (
+                    bias_rows[self.matrix.row] *
+                    bias_cols[self.matrix.col] *
+                    self.matrix.data
+                    )
+                self.matrix.data[np.isnan(self.matrix.data)] = 0
         else:
             print(
-                "Skipping subsampling: Value is higher than the number of contacts in the matrix."
+                "Skipping subsampling: Value is higher than the number"
+                "of contacts in the matrix."
             )
 
     @DumpMatrix("01_process_inter")

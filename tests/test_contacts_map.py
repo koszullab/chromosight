@@ -74,7 +74,7 @@ def test_hic_genome_normalize(path):
 
 class TestHicGenome(unittest.TestCase):
     @params(COOL_TEST)
-    def test_hic_genome_subsample(self, path):
+    def contact_map_subsample(self, path):
         """Check results and error handling of contacts subsampling"""
         with self.assertRaises(ValueError):
             ccm.HicGenome(path, sample=-1)
@@ -87,8 +87,9 @@ class TestHicGenome(unittest.TestCase):
             sub.matrix = sub.clr.matrix(sparse=True, balance=True)[s1:e1, s2:e2]
             sub.matrix.data[np.isnan(sub.matrix.data)] = 0
             sub.matrix.eliminate_zeros()
-            ori_sum = sub.matrix.sum()
-            sub.subsample(0.7)
+            ori_sum = sub.clr.matrix(sparse=True, balance=False)[s1:e1, s2:e2].sum()
+            sub.subsample(0.7, balance=False)
+            breakpoint()
             print(0.7 * ori_sum, sub.matrix.sum())
             assert np.isclose(int(0.7 * ori_sum), sub.matrix.sum())
 
