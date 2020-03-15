@@ -941,9 +941,26 @@ def factorise_kernel(kernel, prop_info=0.999):
 
     Returns
     -------
-    tuple of numpy.array
-        A tuple containing the left and right singular vectors, each
-        multiplied by the square root of their respective singular values.
+    tuple of numpy.arrays
+        A tuple containing the truncated left and right singular matrices,
+        where each singular vector has been multiplied by the square root of
+        their respective singular values.
     """
     u, sigma, v = la.svd(kernel)
+    total_info = np.sum(sigma ** 2)
+    # Compute min. number of singular vectors to retain enough info
+    keep_k = np.where(np.cumsum(sigma ** 2) > prop_info * total_info)[0][0] + 1
+    if keep_k > np.floor(min(kernel.shape) / 2):
+        sys.stderr.write(
+            "Warning: Kernel factorisation required many singular vectors,",
+            "this may result in slow operations.\n",
+        )
+    # Truncate singular matrix to the keep only required vectors
+    u = u[:, :keep_k]
+    v = v[:keep_k, :]
+    # Multiply each singular vector by the sqrt of its singular value
+    for i in range(keep_k):
+        u[:, i] *= np.sqrt(sigma[i])
+        v[i, :] *= np.sqrt(sigma[i])
 
+    return (u, v)

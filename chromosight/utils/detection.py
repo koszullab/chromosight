@@ -162,7 +162,7 @@ def pileup_patterns(pattern_windows):
 
 
 def pattern_detector(
-    contact_map, kernel_config, kernel_matrix, dump=None, full=False
+    contact_map, kernel_config, kernel_matrix, dump=None, full=False, tsvd=None
 ):
     """
     Detect patterns in a contact map by kernel matching, and extract windows
@@ -181,6 +181,12 @@ def pattern_detector(
     dump : str or None
         Folder in which dumps should be generated after each step of the
         detection process. If None, no dump is generated
+    tsvd : float or None
+        If a float between 0 and 1 is given, the input kernel is factorised
+        using truncated SVD, keeping enough singular vectors to retain this
+        proportion of information. Factorisation speeds up convolution at
+        the cost of a loss of information. If the number of singular vectors
+        required to retain the desired information isDisabled by default.
 
     Returns
     -------
@@ -219,6 +225,7 @@ def pattern_detector(
         sym_upper=not contact_map.inter,
         full=full,
         missing_mask=missing_mask,
+        tsvd=tsvd,
     )
     if dump:
         save_dump("03_normxcorr2", mat_conv)
@@ -518,7 +525,7 @@ def filter_foci(foci_mat, min_size=2):
     return num_filtered, filtered_mat
 
 
-def xcorr2(signal, kernel, threshold=1e-4):
+def xcorr2(signal, kernel, threshold=1e-4, tsvd=None):
     """
     Cross correlate a dense or sparse 2D signal with a dense 2D kernel.
 
@@ -531,12 +538,18 @@ def xcorr2(signal, kernel, threshold=1e-4):
     threshold : float
         Convolution score below which pixels will be set back to zero to save
         on time and memory.
-    Returns
+    tsvd : float or None
+        If a float between 0 and 1 is given, the input kernel is factorised
+        using truncated SVD, keeping enough singular vectors to retain this
+        proportion of information. Factorisation speeds up convolution at
+        the cost of a loss of information. If the number of singular vectors
+        required to retain the desired information isDisabled by default.
     -------
     out: scipy.sparse.csr_matrix or numpy.array
         Convolution product of signal by kernel. Same type as the input signal.
     """
-
+    if tsvd is not None:
+        kernel = preproc.factorise_kernel(kernel, prop_info=tsvd)
     if sp.issparse(signal):
         conv = _xcorr2_sparse(signal.tocsr(), kernel, threshold=threshold)
     else:
@@ -589,7 +602,6 @@ def _xcorr2_sparse(signal, kernel, threshold=1e-6):
                 out = (subkernel_l @ signal) @ subkernel_r
             else:
                 out += (subkernel_l @ signal) @ subkernel_r
-        return out
     else:
         km, kn = kernel.shape
 
@@ -633,15 +645,15 @@ def _xcorr2_sparse(signal, kernel, threshold=1e-6):
                 )
                 out += subkernel_sp.dot(signal[:, kj : sn - kn + 1 + kj])
 
-        # Set very low pixels to 0
-        out.data[np.abs(out.data) < threshold] = 0
-        out.eliminate_zeros()
+    # Set very low pixels to 0
+    out.data[np.abs(out.data) < threshold] = 0
+    out.eliminate_zeros()
 
-        # Resize matrix: increment rows and cols by half kernel and set shape
-        # to input matrix, effectively adding margins.
-        out = preproc.zero_pad_sparse(
-            out, margin_h=(kn - 1) // 2, margin_v=(km - 1) // 2, fmt="csr"
-        )
+    # Resize matrix: increment rows and cols by half kernel and set shape
+    # to input matrix, effectively adding margins.
+    out = preproc.zero_pad_sparse(
+        out, margin_h=(kn - 1) // 2, margin_v=(km - 1) // 2, fmt="csr"
+    )
     return out
 
 
@@ -663,33 +675,70 @@ def _xcorr2_dense(signal, kernel, threshold=1e-6):
         Convolution product of signal by kernel.
     """
     sm, sn = signal.shape
-    km, kn = kernel.shape
-    # Kernel (half) height and width
-    kh = (km - 1) // 2
-    kw = (kn - 1) // 2
-    constant_kernel = np.nan
-
-    out_wo_margin = np.zeros([sm - km + 1, sn - kn + 1])
-    # Simplified convolution for the special case where kernel is constant:
-    if np.isfinite(constant_kernel):
-        l_subkernel_sp = sp.diags(
-            np.ones(km), np.arange(km), shape=(sm - km + 1, sm), format="csr"
-        )
-        r_subkernel_sp = sp.diags(
-            np.ones(kn), -np.arange(kn), shape=(sn, sn - kn + 1), format="csr"
-        )
-        out_wo_margin = (l_subkernel_sp @ signal) @ r_subkernel_sp
-        out_wo_margin *= constant_kernel
-    # Convolution code for general case
-    else:
-        for kj in range(kn):
-            subkernel_sp = sp.diags(
-                kernel[:, kj],
+    if type(kernel) is tuple:
+        kernel_l, kernel_r = kernel
+        km = kernel_l.shape[0]
+        kn = kernel_r.shape[1]
+        if kernel_l.shape[1] != kernel_r.shape[0]:
+            raise ValueError("Kernel factorisation is invalid")
+        n_factors = kernel_l.shape[1]
+        for f in range(n_factors):
+            subkernel_l = sp.diags(
+                kernel_l[:, f],
                 np.arange(km),
                 shape=(sm - km + 1, sm),
-                format="csr",
+                format="dia",
             )
-            out_wo_margin += subkernel_sp.dot(signal[:, kj : sn - kn + 1 + kj])
+            subkernel_r = sp.diags(
+                kernel_r[f, :],
+                -np.arange(kn),
+                shape=(sn, sn - kn + 1),
+                format="dia",
+            )
+            if f == 0:
+                out = (subkernel_l @ signal) @ subkernel_r
+            else:
+                out += (subkernel_l @ signal) @ subkernel_r
+    else:
+        km, kn = kernel.shape
+        # Kernel (half) height and width
+        kh = (km - 1) // 2
+        kw = (kn - 1) // 2
+        constant_kernel = np.nan
+        if np.allclose(
+            kernel, np.tile(kernel[0, 0], kernel.shape), rtol=1e-08
+        ):
+            constant_kernel = kernel[0, 0]
+        out_wo_margin = np.zeros([sm - km + 1, sn - kn + 1])
+        # Simplified convolution for the special case where kernel is constant:
+        if np.isfinite(constant_kernel):
+            l_subkernel_sp = sp.diags(
+                constant_kernel * np.ones(km),
+                np.arange(km),
+                shape=(sm - km + 1, sm),
+                format="dia",
+            )
+            r_subkernel_sp = sp.diags(
+                np.ones(kn),
+                -np.arange(kn),
+                shape=(sn, sn - kn + 1),
+                format="dia",
+            )
+            out_wo_margin = (l_subkernel_sp @ signal) @ r_subkernel_sp
+            out_wo_margin *= constant_kernel
+        # convolution code for general case
+        else:
+            for kj in range(kn):
+                subkernel_sp = sp.diags(
+                    kernel[:, kj],
+                    np.arange(km),
+                    shape=(sm - km + 1, sm),
+                    format="csr",
+                )
+                out_wo_margin += (
+                    subkernel_sp @ signal[:, kj : sn - kn + 1 + kj]
+                )
+        out_wo_margin = out_wo_margin.toarray()
 
     # Add margins of zeros where kernel overlaps edges
     out = np.zeros([sm, sn])
@@ -706,6 +755,7 @@ def normxcorr2(
     sym_upper=False,
     full=False,
     missing_mask=None,
+    tsvd=None,
 ):
     """
     Computes the normalized cross-correlation of a dense or sparse signal and a
@@ -738,6 +788,12 @@ def normxcorr2(
         Mask matrix denoting missing bins, where missing is denoted as True and
         valid as False. Can be None to ignore missing bin information. Only
         taken into account when full=True.
+    tsvd : float or None
+        If a float between 0 and 1 is given, the input kernel is factorised
+        using truncated SVD, keeping enough singular vectors to retain this
+        proportion of information. Factorisation speeds up convolution at
+        the cost of a loss of information. If the number of singular vectors
+        required to retain the desired information isDisabled by default.
 
     Returns
     -------
@@ -776,6 +832,7 @@ def normxcorr2(
             sym_upper=sym_upper,
             full=full,
             missing_mask=missing_mask,
+            tsvd=tsvd,
         )
     else:
         corr = _normxcorr2_dense(
@@ -785,6 +842,7 @@ def normxcorr2(
             sym_upper=sym_upper,
             full=full,
             missing_mask=missing_mask,
+            tsvd=tsvd,
         )
     return corr
 
@@ -797,6 +855,7 @@ def _normxcorr2_sparse(
     full=False,
     missing_mask=None,
     missing_tol=0.75,
+    tsvd=None,
 ):
     """Computes the normalized cross-correlation of a sparse signal and a
     dense kernel. The resulting sparse matrix contains Pearson correlation
@@ -825,6 +884,12 @@ def _normxcorr2_sparse(
     missing_tol : float
         Proportion of missing values allowed in windows to keep the correlation
         coefficients.
+    tsvd : float or None
+        If a float between 0 and 1 is given, the input kernel is factorised
+        using truncated SVD, keeping enough singular vectors to retain this
+        proportion of information. Factorisation speeds up convolution at
+        the cost of a loss of information. If the number of singular vectors
+        required to retain the desired information isDisabled by default.
 
     Returns
     -------
@@ -882,7 +947,10 @@ def _normxcorr2_sparse(
 
         # store numerator directly in 'out' to avoid multiple replication of
         # data
-        out = xcorr2(framed_sig, kernel / kernel_size) - out * kernel_mean
+        out = (
+            xcorr2(framed_sig, kernel / kernel_size, tsvd=tsvd)
+            - out * kernel_mean
+        )
         # Multiply by invert since sparse division is not allowed
         out = out.multiply(denom)
 
@@ -904,13 +972,13 @@ def _normxcorr2_sparse(
         # Compute mean corrected with with number of missing elements (wm)
         kernel_mean_wm = (
             kernel_sum
-            - xcorr2(framed_missing_mask, kernel)[
+            - xcorr2(framed_missing_mask, kernel, tsvd=tsvd)[
                 ker1_coo.row, ker1_coo.col
             ].A1
         ) / ker1_coo.data
         kernel2_mean_wm = (
             kernel2_sum
-            - xcorr2(framed_missing_mask, kernel ** 2)[
+            - xcorr2(framed_missing_mask, kernel ** 2, tsvd=tsvd)[
                 ker1_coo.row, ker1_coo.col
             ].A1
         ) / ker1_coo.data
@@ -952,7 +1020,7 @@ def _normxcorr2_sparse(
             * ker1_coo.data
             / (kernel_mean * kernel_size)
         )
-        out = xcorr2(framed_sig, kernel / kernel_size) - out
+        out = xcorr2(framed_sig, kernel / kernel_size, tsvd=tsvd) - out
         out[ker1_coo.row, ker1_coo.col] = (
             out[ker1_coo.row, ker1_coo.col].A1 * kernel_size / ker1_coo.data
         )
@@ -984,6 +1052,7 @@ def _normxcorr2_dense(
     sym_upper=False,
     full=None,
     missing_mask=None,
+    tsvd=None,
 ):
     """Computes the normalized cross-correlation of a dense or sparse signal
     and a dense kernel. The resulting matrix contains Pearson correlation
@@ -1007,6 +1076,12 @@ def _normxcorr2_dense(
     full : bool
     missing_mask : numpy.array of bools
         Nump
+    tsvd : float or None
+        If a float between 0 and 1 is given, the input kernel is factorised
+        using truncated SVD, keeping enough singular vectors to retain this
+        proportion of information. Factorisation speeds up convolution at
+        the cost of a loss of information. If the number of singular vectors
+        required to retain the desired information isDisabled by default.
 
     Returns
     -------
