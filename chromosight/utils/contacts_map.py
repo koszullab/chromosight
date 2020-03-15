@@ -189,6 +189,8 @@ class HicGenome:
                 map=pool.imap_unordered,
             )
             print("Whole genome matrix balanced")
+            # Reload bins attribute to include the weight  column
+            self.bins = self.clr.bins()[:]
         # Bins with NaN weight are missing, matrix already balanced
         self.detectable_bins = np.where(np.isfinite(self.bins.weight))[0]
         print(
