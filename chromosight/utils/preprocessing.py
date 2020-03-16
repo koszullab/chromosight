@@ -672,7 +672,7 @@ def make_missing_mask(
         The maximum diagonal distance at which masking should take place.
     sym_upper : bool
         Whether the matrix is symmetric upper. If so, max_dist is ignored
-    
+
     Returns
     -------
     scipy.sparse.csr_matrix of bool
@@ -686,16 +686,16 @@ def make_missing_mask(
         raise ValueError("Rectangular matrices cannot be upper symmetric")
 
     # Get a boolean array of missing (1) and valid (0) rows
-    missing_rows = np.ones(sm)
-    missing_rows[valid_rows] = 0
-    missing_rows = np.where(missing_rows is True)[0]
+    missing_rows = np.ones(sm, dtype=bool)
+    missing_rows[valid_rows] = False
+    missing_rows = np.where(missing_rows)[0]
     # When matrix is sym., rows and cols are synonym, no need to compute 2x
     if sym_upper:
         missing_cols = missing_rows
     else:
-        missing_cols = np.ones(sn)
-        missing_cols[valid_cols] = 0
-        missing_cols = np.where(missing_cols is True)[0]
+        missing_cols = np.ones(sn, dtype=bool)
+        missing_cols[valid_cols] = False
+        missing_cols = np.where(missing_cols)[0]
 
     # If upper sym., fill only upper diag up to max_dist.
     # E. g. with bins 1 and 3 missing
@@ -717,7 +717,7 @@ def make_missing_mask(
         # 0 0
         # 1 1
         row_shifts = np.tile(
-            np.array(range(max_dist)), (len(missing_rows), 1)
+            np.array(range(max_dist + 1)), (len(missing_rows), 1)
         ).T
         # Compute row positions upwards to diagonal by subtracting missing rows
         # to the shifts. Following the previous example, if missing rows are
@@ -728,7 +728,7 @@ def make_missing_mask(
         # looking at pixels up from the bins, cols remain the same:
         # 1 3
         # 1 3
-        cols_before = np.repeat(missing_rows, max_dist)
+        cols_before = np.repeat(missing_rows, max_dist+1)
         # Compute col position to the right until diagonal by adding the shift
         # Note: upper symmetric, so row_shifts = col_shift_
         # 1 3
@@ -736,7 +736,7 @@ def make_missing_mask(
         cols_after = (missing_cols + row_shifts).flatten("F")
         # This time, rows remain constant since we are computing positions to
         # the right
-        rows_after = np.repeat(missing_cols, max_dist)
+        rows_after = np.repeat(missing_cols, max_dist+1)
         # Combine positions to the right and upwards
         rows = np.concatenate([rows_before, rows_after])
         cols = np.concatenate([cols_before, cols_after])
@@ -956,8 +956,8 @@ def factorise_kernel(kernel, prop_info=0.999):
     keep_k = np.where(np.cumsum(sigma ** 2) > prop_info * total_info)[0][0] + 1
     if keep_k > np.floor(min(kernel.shape) / 2):
         sys.stderr.write(
-            "Warning: Kernel factorisation required many singular vectors,",
-            "this may result in slow operations.\n",
+            f"Warning: Kernel factorisation required {keep_k} singular,"
+            "vectors this may result in slow operations.\n",
         )
     # Truncate singular matrix to the keep only required vectors
     u = u[:, :keep_k]

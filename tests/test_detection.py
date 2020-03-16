@@ -312,7 +312,7 @@ def test_normxcorr2_kernels(kernel_config):
             60 - km // 2 : 60 + (km // 2 + 1),
             80 - kn // 2 : 80 + (kn // 2 + 1),
         ] = kernel
-        pattern_signal = sp.coo_matrix(np.triu(pattern_signal))
+        pattern_signal = sp.csr_matrix(np.triu(pattern_signal))
         # Compute correlation between fake matrix and kernel
         corr = cud.normxcorr2(
             pattern_signal,
@@ -325,8 +325,8 @@ def test_normxcorr2_kernels(kernel_config):
         corr = corr.tocoo()
         obs_row = corr.row[np.where(corr.data == np.max(corr.data))]
         obs_col = corr.col[np.where(corr.data == np.max(corr.data))]
-        assert obs_row == 60
-        assert obs_col == 80
+        assert np.all(obs_row == 60)
+        assert np.all(obs_col == 80)
 
 
 # TODO: Add tests for inter (asymmetric) matrices
