@@ -468,28 +468,28 @@ def _detect_sub_mat(data):
     }
 
 
-def cmd_detect(arguments):
+def cmd_detect(args):
     # Parse command line arguments for detect
-    dump = arguments["--dump"]
-    force_norm = arguments["--force-norm"]
-    full = arguments["--full"]
-    interchrom = arguments["--inter"]
-    iterations = arguments["--iterations"]
-    kernel_config_path = arguments["--kernel-config"]
-    mat_path = arguments["<contact_map>"]
-    max_dist = arguments["--max-dist"]
-    min_dist = arguments["--min-dist"]
-    min_separation = arguments["--min-separation"]
-    n_mads = float(arguments["--n-mads"])
-    output = arguments["<output>"]
-    pattern = arguments["--pattern"]
-    pearson = arguments["--pearson"]
-    perc_undetected = arguments["--perc-undetected"]
-    subsample = arguments["--subsample"]
-    threads = int(arguments["--threads"])
-    tsvd = 0.999 if arguments["--tsvd"] else None
-    win_fmt = arguments["--win-fmt"]
-    win_size = arguments["--win-size"]
+    dump = args["--dump"]
+    force_norm = args["--force-norm"]
+    full = args["--full"]
+    interchrom = args["--inter"]
+    iterations = args["--iterations"]
+    kernel_config_path = args["--kernel-config"]
+    mat_path = args["<contact_map>"]
+    max_dist = args["--max-dist"]
+    min_dist = args["--min-dist"]
+    min_separation = args["--min-separation"]
+    n_mads = float(args["--n-mads"])
+    output = args["<output>"]
+    pattern = args["--pattern"]
+    pearson = args["--pearson"]
+    perc_undetected = args["--perc-undetected"]
+    subsample = args["--subsample"]
+    threads = int(args["--threads"])
+    tsvd = 0.999 if args["--tsvd"] else None
+    win_fmt = args["--win-fmt"]
+    win_size = args["--win-size"]
     if subsample == "no":
         subsample = None
     plotting_enabled = False if args["--no-plotting"] else True
