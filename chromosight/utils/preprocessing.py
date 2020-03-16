@@ -378,7 +378,11 @@ def detrend(
     # Detrending by the distance law
     clean_mat = matrix.tocoo()
     # clean_mat.data /= y_savgol[abs(clean_mat.row - clean_mat.col)]
-    clean_mat.data /= y[abs(clean_mat.row - clean_mat.col)]
+    try:
+        clean_mat.data /= y[abs(clean_mat.row - clean_mat.col)]
+    # If no nonzero value in matrix, do nothing
+    except TypeError:
+        pass
     clean_mat = clean_mat.tocsr()
     clean_mat[clean_mat >= max_val] = max_val
     return clean_mat
