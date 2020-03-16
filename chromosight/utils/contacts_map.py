@@ -584,11 +584,6 @@ class ContactMap:
                     self.matrix.data
                     )
                 self.matrix.data[np.isnan(self.matrix.data)] = 0
-        else:
-            print(
-                "Skipping subsampling: Value is higher than the number"
-                "of contacts in the matrix."
-            )
 
     @DumpMatrix("01_process_inter")
     def preprocess_inter_matrix(self):
