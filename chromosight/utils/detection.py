@@ -738,7 +738,6 @@ def _xcorr2_dense(signal, kernel, threshold=1e-6):
                 out_wo_margin += (
                     subkernel_sp @ signal[:, kj : sn - kn + 1 + kj]
                 )
-        out_wo_margin = out_wo_margin.toarray()
 
     # Add margins of zeros where kernel overlaps edges
     out = np.zeros([sm, sn])
@@ -817,6 +816,8 @@ def normxcorr2(
         if min(kernel.shape) >= max(signal.shape):
             raise ValueError("cannot have kernel bigger than signal")
         preproc.check_missing_mask(signal, missing_mask)
+        if missing_mask.nnz == 0:
+            missing_mask = None
 
     if sp.issparse(kernel):
         raise ValueError("cannot handle kernel in sparse format")
@@ -923,6 +924,8 @@ def _normxcorr2_sparse(
                 sym_upper=sym_upper,
                 max_dist=max_dist,
             )
+        else:
+            framed_missing_mask = None
     else:
         framed_sig = signal.copy()
         if missing_mask is None:
@@ -997,20 +1000,18 @@ def _normxcorr2_sparse(
 
         denom = (denom - out.power(2)) * (kernel2_mean - kernel_mean ** 2)
         denom[ker1_coo.row, ker1_coo.col] = (
-            denom[ker1_coo.row, ker1_coo.col].A1 / kernel2_mean
-            - kernel_mean ** 2
-        ) * (kernel2_mean_wm - kernel_mean_wm ** 2)
+            denom[ker1_coo.row, ker1_coo.col].A1 / (kernel2_mean -
+                kernel_mean ** 2) * (kernel2_mean_wm - kernel_mean_wm ** 2)
+        )
         denom = denom.sqrt()
 
-        # quick and dirty hack to robustify:
-        # numerical-zeros are turned into real-zeros (to be improved)
-        denom.data[abs(denom.data) < 1e-10] = 0.0
 
         # ensure that enough data points are inside of window
         denom[
             ker1_coo.row[ker1_coo.data < int((1 - missing_tol) * kernel_size)],
             ker1_coo.col[ker1_coo.data < int((1 - missing_tol) * kernel_size)],
         ] = 0.0
+
 
         # store numerator directly in 'out' to avoid multiple copies of data
         out *= kernel_mean
@@ -1025,8 +1026,11 @@ def _normxcorr2_sparse(
             out[ker1_coo.row, ker1_coo.col].A1 * kernel_size / ker1_coo.data
         )
 
+        # Remember where very low values are located in denom to avoid nans
+        denom_0 = abs(denom.data) < 1e-10
         # take inverse, because 2 sparse mats can't be divided
-        denom.data = 1 / denom.data
+        denom.data[~denom_0] = 1 / denom.data[~denom_0]
+        denom.data[denom_0] = 0.0
         out = out.multiply(denom)
 
     # if (max_dist is not None) and sym_upper:
@@ -1053,6 +1057,7 @@ def _normxcorr2_dense(
     full=None,
     missing_mask=None,
     tsvd=None,
+    missing_tol=0.75,
 ):
     """Computes the normalized cross-correlation of a dense or sparse signal
     and a dense kernel. The resulting matrix contains Pearson correlation
@@ -1082,6 +1087,9 @@ def _normxcorr2_dense(
         proportion of information. Factorisation speeds up convolution at
         the cost of a loss of information. If the number of singular vectors
         required to retain the desired information isDisabled by default.
+    missing_tol : float
+        Proportion of missing values allowed in windows to keep the correlation
+        coefficients.
 
     Returns
     -------
@@ -1130,36 +1138,35 @@ def _normxcorr2_dense(
             xcorr2(framed_sig, kernel / kernel_size)
             - framed_sig_mean * kernel_mean
         )
-        out /= kernel_std * np.sqrt(
+        denom = kernel_std * np.sqrt(
             xcorr2(framed_sig ** 2, kernel1 / kernel_size)
             - framed_sig_mean ** 2
         )
+        #denom[np.abs(denom) < 1e-10] = 0.0
+        #out[denom != 0.0] /= denom[denom != 0.0]
+        out /= denom
+
     else:
         kernel_size = mk * nk - xcorr2(framed_missing_mask, kernel1).toarray()
         kernel_mean = (
-            np.sum(kernel) / kernel_size
-            - xcorr2(framed_missing_mask, kernel / kernel_size).toarray()
-        )
+            np.sum(kernel)
+            - xcorr2(framed_missing_mask, kernel).toarray()
+        ) / kernel_size
         # store signal0_mean in 'out' to avoid multiple replication of data
         out = xcorr2(framed_sig, kernel1) / kernel_size
         denom = xcorr2(framed_sig ** 2, kernel1) / kernel_size
         # Use multiplicative coeff to correct denom by number of missing values
-        denom = np.sqrt(
-            (denom - out ** 2)
-            * (
-                (
-                    np.sum(kernel ** 2)
-                    - xcorr2(framed_missing_mask, kernel ** 2).toarray()
-                )
-                / kernel_size
-                - kernel_mean ** 2
-            )
-        )
+        denom = np.sqrt((denom-out**2) * ((np.sum(kernel**2) - xcorr2(framed_missing_mask, kernel**2).toarray())/kernel_size-kernel_mean**2))
+        # ensure that enough data points are inside of window
+        denom[kernel_size < int((1 - missing_tol) * mk*nk)] = 0.0
 
         # store numerator directly in 'out' to avoid multiple copies of data
-        out = xcorr2(framed_sig, kernel) / kernel_size - out * kernel_mean
+        out = xcorr2(framed_sig, kernel / kernel_size) - out * kernel_mean
+        # Remember where very low values are located in denom to avoid nans
+        denom_0 = abs(denom) < 1e-10
 
-        out /= denom
+        out[~denom_0] /= denom[~denom_0]
+        out[denom_0] = 0.0
 
     if sym_upper:
         out = np.triu(out)
