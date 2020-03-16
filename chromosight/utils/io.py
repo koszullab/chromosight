@@ -8,6 +8,8 @@ import numpy as np
 import pathlib
 import sys
 import csv
+import shutil
+from urllib.request import urlopen
 import itertools as it
 import json
 from jsonschema import validate, ValidationError
@@ -494,3 +496,9 @@ def load_bed2d(path):
     )
 
     return bed2d
+
+
+def download_file(url, file, length=16*1024):
+    req = urlopen(url)
+    with open(file, 'wb') as fp:
+        shutil.copyfileobj(req, fp, length)
