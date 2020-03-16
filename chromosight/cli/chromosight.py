@@ -6,15 +6,17 @@ Explore and detect patterns (loops, borders, centromeres, etc.) in Hi-C contact
 maps with pattern matching.
 
 Usage:
-    chromosight detect  [--kernel-config=FILE] [--pattern=loops] [--pearson=auto] [--win-size=auto]
-                        [--iterations=auto] [--win-fmt={json,npy}] [--force-norm] [--full]
-                        [--subsample=no] [--inter] [--smooth-trend] [--n-mads=5] [--tsvd]
-                        [--min-dist=0] [--max-dist=auto] [--no-plotting]
-                        [--min-separation=auto] [--threads=1] [--dump=DIR]
+    chromosight detect  [--kernel-config=FILE] [--pattern=loops] [--pearson=auto]
+                        [--win-size=auto] [--iterations=auto] [--win-fmt={json,npy}]
+                        [--force-norm] [--full] [--subsample=no] [--inter] [--tsvd]
+                        [--smooth-trend] [--n-mads=5] [--min-dist=0] [--max-dist=auto]
+                        [--no-plotting] [--min-separation=auto] [--threads=1] [--dump=DIR]
                         [--perc-undetected=auto] <contact_map> [<output>]
-    chromosight generate-config <prefix> [--preset loops] [--click contact_map] [--win-size=auto] [--n-mads=INT]
-    chromosight quantify [--inter] [--pattern=loops] [--subsample=no] [--win-fmt=json] [--kernel-config=FILE]
-                         [--n-mads=5] [--win-size=auto] <bed2d> <contact_map> <output>
+    chromosight generate-config <prefix> [--preset loops] [--click contact_map]
+                        [--force-norm] [--win-size=auto] [--n-mads=5] [--threads=1]
+    chromosight quantify [--inter] [--pattern=loops] [--subsample=no] [--win-fmt=json]
+                        [--kernel-config=FILE] [--force-norm] [--threads=1]
+                        [--n-mads=5] [--win-size=auto] <bed2d> <contact_map> <output>
     chromosight test
 
     detect:
@@ -36,7 +38,7 @@ Arguments for detect:
     -h, --help                  Display this help message.
     --version                   Display the program's current version.
     contact_map                 The Hi-C contact map to detect patterns on, in
-                                bedgraph2d or cool format. 
+                                bedgraph2d or cool format.
     output                      name of the output directory
     -d, --dump=DIR              Directory where to save matrix dumps during
                                 processing and detection. Each dump is saved as
@@ -60,8 +62,8 @@ Arguments for detect:
                                 value loaded from the kernel configuration
                                 file. [default: 1]
     -k, --kernel-config=FILE    Optionally give a path to a custom JSON kernel
-                                config path. Use this to override pattern if 
-                                you do not want to use one of the preset 
+                                config path. Use this to override pattern if
+                                you do not want to use one of the preset
                                 patterns.
     -m, --min-dist=auto         Minimum distance from the diagonal (in base pairs).
                                 If this value is smaller than the kernel size, the
@@ -83,7 +85,7 @@ Arguments for detect:
                                 probability in the contact map. A lesser value
                                 leads to potentially more detections, but more
                                 false positives. [default: auto]
-    -s, --subsample=INT         If greater than 1, subsample contacts from the 
+    -s, --subsample=INT         If greater than 1, subsample contacts from the
                                 matrix to INT contacts. If between 0 and 1, subsample
                                 a proportion of contacts instead. This is useful
                                 when comparing matrices with different
@@ -121,12 +123,12 @@ Arguments for generate-config:
                                 If a given pattern has N kernel matrices, N txt
                                 files are created they will be named a/b.[1-N].txt.
     -e, --preset=loops          Generate a preset config for the given pattern.
-                                Preset configs available are "loops" and 
+                                Preset configs available are "loops" and
                                 "borders". [default: loops]
     -c, --click contact_map     Show input contact map and uses double clicks from
                                 user to build the kernel. Warning: memory-heavy,
                                 reserve for small genomes or subsetted matrices.
-                                
+
 Arguments for quantify:
     bed2d                       Tab-separated text files with columns chrom1, start1
                                 end1, chrom2, start2, end2. Each line correspond to
@@ -145,6 +147,7 @@ from contextlib import contextmanager
 import sys
 import json
 import docopt
+import tempfile
 import multiprocessing as mp
 from chromosight.version import __version__
 from chromosight.utils.contacts_map import HicGenome
@@ -158,23 +161,20 @@ import matplotlib.pyplot as plt
 
 URL_EXAMPLE_DATASET = (
     "https://raw.githubusercontent.com/koszullab/"
-    "chromosight/master/data_test/example.bg2"
+    "chromosight/master/data_test/example.cool"
 )
 
 TEST_LOG = f"""Fetching test dataset at {URL_EXAMPLE_DATASET}...
 Running detection on test dataset...
-pearson set to 0.25 based on config file.
-max_dist set to 500000 based on config file.
-min_dist set to 5000 based on config file.
+pearson set to 0.3 based on config file.
+max_dist set to 2000000 based on config file.
+min_dist set to 20000 based on config file.
 min_separation set to 5000 based on config file.
 max_perc_undetected set to 10.0 based on config file.
-Found 690 / 720 detectable bins
-Whole genome matrix normalized
+Matrix already balanced, reusing weights
 Preprocessing sub-matrices...
-Sub matrices extracted
 Detecting patterns...
-Minimum pattern separation is : 5
-56 patterns detected
+21 patterns detected
 """
 
 
@@ -205,22 +205,24 @@ def _override_kernel_config(param_name, param_value, param_type, config):
     return config
 
 
-def cmd_quantify(arguments):
-    bed2d_path = arguments["<bed2d>"]
-    mat_path = arguments["<contact_map>"]
-    output = pathlib.Path(arguments["<output>"])
-    n_mads = float(arguments["--n-mads"])
-    pattern = arguments["--pattern"]
-    inter = arguments["--inter"]
-    kernel_config_path = arguments["--kernel-config"]
-    win_fmt = arguments["--win-fmt"]
+def cmd_quantify(args):
+    bed2d_path = args["<bed2d>"]
+    mat_path = args["<contact_map>"]
+    output = pathlib.Path(args["<output>"])
+    n_mads = float(args["--n-mads"])
+    pattern = args["--pattern"]
+    inter = args["--inter"]
+    kernel_config_path = args["--kernel-config"]
+    threads = int(args["--threads"])
+    force_norm = args["--force-norm"]
+    win_fmt = args["--win-fmt"]
     if win_fmt not in ["npy", "json"]:
         sys.stderr.write("Error: --win-fmt must be either json or npy.\n")
         sys.exit(1)
-    win_size = arguments["--win-size"]
+    win_size = args["--win-size"]
     if win_size != "auto":
         win_size = int(win_size)
-    subsample = arguments["--subsample"]
+    subsample = args["--subsample"]
     # Create directory if it does not exist
     if not output.exists():
         os.makedirs(output, exist_ok=True)
@@ -254,7 +256,7 @@ def cmd_quantify(arguments):
     # Notify contact map instance of changes in scanning distance
     hic_genome.kernel_config = cfg
     # Normalize (balance) matrix using ICE
-    hic_genome.normalize(n_mads)
+    hic_genome.normalize(force_norm=force_norm, n_mads=n_mads, threads=threads)
     # Define how many diagonals should be used in intra-matrices
     hic_genome.compute_max_dist()
     # Split whole genome matrix into intra- and inter- sub matrices. Each sub
@@ -376,13 +378,15 @@ def cmd_quantify(arguments):
         #    json.dump(windows, win_handle, indent=4)
 
 
-def cmd_generate_config(arguments):
-    # Parse command line arguments for generate_config
-    prefix = arguments["<prefix>"]
-    pattern = arguments["--preset"]
-    click_find = arguments["--click"]
-    n_mads = float(arguments["--n-mads"])
-    win_size = arguments["--win-size"]
+def cmd_generate_config(args):
+    # Parse command line args for generate_config
+    prefix = args["<prefix>"]
+    pattern = args["--preset"]
+    click_find = args["--click"]
+    n_mads = float(args["--n-mads"])
+    force_norm = args["--force-norm"]
+    win_size = args["--win-size"]
+    threads = int(args["--threads"])
 
     cfg = cio.load_kernel_config(pattern, False)
 
@@ -404,7 +408,9 @@ def cmd_generate_config(arguments):
     if click_find:
         hic_genome = HicGenome(click_find, inter=True, kernel_config=cfg)
         # Normalize (balance) the whole genome matrix
-        hic_genome.normalize(n_mads=n_mads)
+        hic_genome.normalize(
+            force_norm=force_norm, n_mads=n_mads, threads=threads
+        )
         # enforce full scanning distance in kernel config
 
         hic_genome.max_dist = hic_genome.clr.shape[0] * hic_genome.clr.binsize
@@ -486,8 +492,8 @@ def cmd_detect(arguments):
     win_size = arguments["--win-size"]
     if subsample == "no":
         subsample = None
-    plotting_enabled = False if arguments["--no-plotting"] else True
-    smooth_trend = arguments["--smooth-trend"]
+    plotting_enabled = False if args["--no-plotting"] else True
+    smooth_trend = args["--smooth-trend"]
     if smooth_trend is None:
         smooth_trend = False
     # If output is not specified, use current directory
@@ -720,20 +726,18 @@ def cmd_detect(arguments):
         pileup_plot(windows_pileup, name=pileup_fname, output=output)
 
 
-def cmd_test(arguments):
+def cmd_test(args):
 
     sys.stderr.write(f"Fetching test dataset at {URL_EXAMPLE_DATASET}...\n")
-    test_data = pd.read_csv(URL_EXAMPLE_DATASET, sep="\t")
-
-    # Turn dataframe into file like object for the detector to parse
-    test_stream = io.StringIO()
-    test_data.to_csv(test_stream)
-    test_stream.seek(0)
+    tmp = tempfile.NamedTemporaryFile(delete=False)
+    cio.download_file(URL_EXAMPLE_DATASET, tmp.name)
 
     sys.stderr.write(f"Running detection on test dataset...\n")
 
-    arguments["<contact_map>"] = test_stream
-    cmd_detect(arguments)
+    args["<contact_map>"] = tmp.name
+    args["--no-plotting"] = True
+    cmd_detect(args)
+    os.unlink(tmp.name)
 
 
 @contextmanager
@@ -755,25 +759,27 @@ def capture_ouput(stderr_to=None):
 
 
 def main():
-    arguments = docopt.docopt(__doc__, version=__version__)
-    detect = arguments["detect"]
-    generate_config = arguments["generate-config"]
-    quantify = arguments["quantify"]
-    test = arguments["test"]
+    args = docopt.docopt(__doc__, version=__version__)
+    detect = args["detect"]
+    generate_config = args["generate-config"]
+    quantify = args["quantify"]
+    test = args["test"]
     if test:
         with capture_ouput() as stderr:
-            cmd_test(arguments)
+            cmd_test(args)
 
-        actual_log = stderr.read()
-        sys.stderr.write(actual_log)
+        obs_log = stderr.read()
+        sys.stderr.write(obs_log)
 
         # remove progress bars and \r chars
-        actual_log_lines = {
-            u.strip("\r") for u in set(actual_log.split("\n")) if "[" not in u
+        obs_log_lines = {
+            u.strip("\x1b[K")
+            for u in set(obs_log.split("\n"))
+            if "\r" not in u
         }
-        expected_log_lines = set(TEST_LOG.split("\n"))
+        exp_log_lines = set(TEST_LOG.split("\n"))
 
-        if expected_log_lines not in actual_log_lines:
+        if len(exp_log_lines ^ obs_log_lines):
             sys.stderr.write(
                 "\nWarning, the test log differed from the "
                 "expected one. This means the program changed its output from"
@@ -783,11 +789,11 @@ def main():
             )
 
     elif detect:
-        cmd_detect(arguments)
+        cmd_detect(args)
     elif generate_config:
-        cmd_generate_config(arguments)
+        cmd_generate_config(args)
     elif quantify:
-        cmd_quantify(arguments)
+        cmd_quantify(args)
     return 0
 
 
