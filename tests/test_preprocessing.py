@@ -64,7 +64,7 @@ class TestPreprocessing(unittest.TestCase):
         exp_mask_sym_upper = np.triu(exp_mask_sym)
         # Symmetric upper triangle masked up to a certain distance
         exp_mask_sym_upper_maxdist = preproc.diag_trim(
-            exp_mask_sym_upper, max_dist
+            exp_mask_sym_upper, max_dist + 1
         )
         # Test if correct bins are masked
         obs_mask_sym = preproc.make_missing_mask(

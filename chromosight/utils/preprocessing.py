@@ -4,8 +4,9 @@
 """Preprocessing utils
 Operations to perform on Hi-C matrices before analyses
 """
-import numpy as np
 import sys
+import numpy as np
+import numpy.linalg as la
 import scipy.stats as ss
 import scipy.sparse as sp
 import scipy.ndimage as ndi
@@ -44,8 +45,8 @@ def erase_missing(signal, valid_rows, valid_cols, sym_upper=True):
         # Make a boolean mask from good bins
         good_mask = np.isin(range(signal.shape[0]), valid_rows)
         # Set all pixels in a nondetectable bin to 0
-        # For faster masking of bins, mask bins using dot product with an identity
-        # matrix where bad bins have been masked on the diagonal
+        # For faster masking of bins, mask bins using dot product with an
+        # identify matrix where bad bins have been masked on the diagonal
         # E.g. if removing the second bin (row and column):
         # 1 0 0     9 6 5     1 0 0     9 0 5
         # 0 0 0  X  6 8 7  X  0 0 0  =  0 0 0
@@ -70,7 +71,7 @@ def erase_missing(signal, valid_rows, valid_cols, sym_upper=True):
 
 def normalize(B, good_bins=None, iterations=10):
     """
-    Iterative normalisation of a Hi-C matrix (ICE procedure, 
+    Iterative normalisation of a Hi-C matrix (ICE procedure,
     Imakaev et al, doi: 10.1038/nmeth.2148)
 
     Parameters
@@ -100,7 +101,8 @@ def normalize(B, good_bins=None, iterations=10):
         bin_sums = sum_mat_bins(r)
         # Divide sums by their mean to avoid instability
         bin_sums /= np.median(bin_sums)
-        # ICE normalisation (Divide each valid pixel by the product of its row and column)
+        # ICE normalisation (Divide each valid pixel by the product
+        # of its row and column)
         r.data /= np.float64(bin_sums[nz_rows] * bin_sums[nz_cols])
     bin_sums = sum_mat_bins(r)
     # Scale to 1
@@ -159,9 +161,10 @@ def diag_trim(mat, n):
 
     if mat.format != "csr":
         raise ValueError("input type must be scipy.sparse.csr_matrix")
-    # Trim diagonals by removing all elements further than n in the upper triangle
-    trimmed = sp.tril(mat, n, format='csr')
-    trimmed = sp.triu(trimmed, format='csr')
+    # Trim diagonals by removing all elements further than n in the
+    # upper triangle
+    trimmed = sp.tril(mat, n, format="csr")
+    trimmed = sp.triu(trimmed, format="csr")
 
     return trimmed
 
@@ -178,9 +181,11 @@ def distance_law(
     matrix: scipy.sparse.csr_matrix
         the input matrix to compute distance law from.
     detectable_bins : numpy.array of ints
-        An array of detectable bins indices to consider when computing distance law.
+        An array of detectable bins indices to consider when computing
+        distance law.
     max_dist : int
-        Maximum distance from diagonal, in number of bins in which to compute distance law
+        Maximum distance from diagonal, in number of bins in which to compute
+        distance law
     smooth : bool
         Whether to use isotonic regression to smooth the distance law.
     fun : callable
@@ -215,15 +220,16 @@ def distance_law(
         # Find detectable which fall in diagonal
         detect_mask = np.zeros(mat_n, dtype=bool)
         detect_mask[detectable_bins] = 1
-        # Find bins which are detectable in the diagonal (intersect of hori and verti)
+        # Find bins which are detectable in the diagonal (intersect of
+        # hori and verti)
         detect_mask_h = detect_mask[: (mat_n - diag)]
         detect_mask_v = detect_mask[mat_n - (mat_n - diag) :]
         detect_mask_diag = detect_mask_h & detect_mask_v
         detect_diag = matrix.diagonal(diag)[detect_mask_diag]
         dist[diag] = fun(detect_diag[detect_diag > 0])
-    # Smooth the curve using isotonic regression: Find closest approximation with
-    # the condition that point n+1 cannot be higher than point n. (i.e. contacts
-    # can only decrease when increasing distance)
+    # Smooth the curve using isotonic regression: Find closest approximation
+    # with the condition that point n+1 cannot be higher than point n.
+    # (i.e. contacts can only decrease when increasing distance)
     if smooth and mat_n > 2:
         ir = IsotonicRegression(increasing=False)
         dist[~np.isfinite(dist)] = 0
@@ -234,7 +240,7 @@ def distance_law(
 
 def despeckle(matrix, th2=3):
     """
-    Remove speckles (i.e. noisy outlier pixels) from a Hi-C 
+    Remove speckles (i.e. noisy outlier pixels) from a Hi-C
     contact map in sparse format. Speckles are set back to the
     median value of their respective diagonals.
 
@@ -290,8 +296,8 @@ def get_detectable_bins(mat, n_mads=3, inter=False):
         Number of median absolute deviation below the median required to
         consider bins non-detectable.
     inter : bool
-        Whether the matrix is interchromosomal. Default is to consider the matrix
-        is intrachromosomal (i.e. upper symmetric).
+        Whether the matrix is interchromosomal. Default is to consider the
+        matrix is intrachromosomal (i.e. upper symmetric).
 
     Returns
     -------
@@ -305,7 +311,7 @@ def get_detectable_bins(mat, n_mads=3, inter=False):
     if not inter:
         if matrix.shape[0] != matrix.shape[1]:
             raise ValueError("intrachromosomal matrices must be symmetric.")
-        # Replace nonzero pixels by ones to work on proportion of nonzero pixels
+        # Replace nonzero pixels by ones to work on prop. of nonzero pixels
         matrix.data = np.ones(matrix.data.shape)
         # Compute number of nonzero values in each bin
         sum_bins = sum_mat_bins(matrix)
@@ -414,9 +420,8 @@ def ztransform(matrix):
 
 def signal_to_noise_threshold(matrix, detectable_bins):
     """
-    Compute signal to noise ratio (SNR) at each diagonal of the matrix to determine
-    the maximum scanning distance from the diagonal. The SNR is smoothed using
-    the savgol filter.
+    Compute signal to noise ratio (SNR) at each diagonal of the matrix to
+    determine the maximum scanning distance from the diagonal.
 
     Parameters
     ----------
@@ -427,7 +432,8 @@ def signal_to_noise_threshold(matrix, detectable_bins):
     Returns
     -------
     int :
-        The maximum distance from the diagonal at which the matrix should be scanned
+        The maximum distance from the diagonal at which the matrix should be
+        scanned
     """
     # Using median and mad to reduce sensitivity to outlier
     dist_means = distance_law(
@@ -518,9 +524,9 @@ def frame_missing_mask(mask, kernel_shape, sym_upper=False, max_dist=None):
     """
     Adds a frame around input mask, given a kernel. The goal of this
     frame is define margins around the matrix where the kernel will not perform
-    convolution (denoted by 1). If the matrix is upper symmetric, a margin of half
-    the kernel's width is added below the diagonal and a maximum distance from
-    the diagonal above which margins need not be drawn can be considered.
+    convolution (denoted by 1). If the matrix is upper symmetric, a margin of
+    half the kernel's width is added below the diagonal and a maximum distance
+    from the diagonal above which margins need not be drawn can be considered.
     Otherwise Margins are simply added on all 4 sides of the matrix.
 
     signal    kernel   _________
@@ -548,8 +554,8 @@ def frame_missing_mask(mask, kernel_shape, sym_upper=False, max_dist=None):
     Returns
     -------
     framed_mask : scipy.sparse.csr_matrix of bool
-        The input mask with a padding of True around the edges. If sym_upper is True,
-        a padding is also added below the diagonal.
+        The input mask with a padding of True around the edges. If sym_upper
+        is True, a padding is also added below the diagonal.
     """
     if mask.dtype != bool:
         raise ValueError("Mask must contain boolean values")
@@ -583,7 +589,7 @@ def frame_missing_mask(mask, kernel_shape, sym_upper=False, max_dist=None):
 
     if sym_upper and (max_dist is not None):
         # Margin 2 (right) is in upper triangle-> fill missing up to scan dist
-        margin_2[-(max_m + 1):, :] = 1
+        margin_2[-(max_m + 1) :, :] = 1
         # Fill only the start of left margin for the top-left corner
         margin_1[: mk - 1, :] = 1
     else:
@@ -599,7 +605,11 @@ def frame_missing_mask(mask, kernel_shape, sym_upper=False, max_dist=None):
         dia_margin = np.ones(big_k // 2 - 1)
         dia_offsets = np.arange(-1, -big_k // 2 + 1, -1)
         framed_mask += sp.diags(
-            dia_margin, dia_offsets, shape=framed_mask.shape, format="lil", dtype=bool
+            dia_margin,
+            dia_offsets,
+            shape=framed_mask.shape,
+            format="lil",
+            dtype=bool,
         )
         framed_mask = framed_mask.tocsr()
     return framed_mask
@@ -607,8 +617,8 @@ def frame_missing_mask(mask, kernel_shape, sym_upper=False, max_dist=None):
 
 def check_missing_mask(signal, mask):
     """
-    Ensure all elements defined as missing by the mask are set to zero in the signal.
-    If this is not the case, raises an error.
+    Ensure all elements defined as missing by the mask are set to zero in the
+    signal. If this is not the case, raises an error.
 
     Parameters
     ----------
@@ -619,7 +629,8 @@ def check_missing_mask(signal, mask):
     """
 
     if sp.issparse(mask):
-        # Check if there are nonzero values in the signal reported as missing by the mask
+        # Check if there are nonzero values in the signal reported as missing
+        # by the mask
         missing_with_signal = np.nonzero(
             abs(signal[mask.nonzero()[0], mask.nonzero()[1]]) > 0
         )[0]
@@ -643,22 +654,25 @@ def make_missing_mask(
 ):
     """
     Given lists of valid rows and columns, generate a sparse matrix mask with
-    missing pixels denoted as 1 and valid pixels as 0. If a max_dist is provided, upper
-    symmetric matrices will only be flagged up to max_dist pixels from the diagonal.
+    missing pixels denoted as 1 and valid pixels as 0. If a max_dist is
+    provided, upper symmetric matrices will only be flagged up to max_dist
+    pixels from the diagonal.
 
     Parameters
     ----------
     shape : tuple of ints
         Shape of the mask to generate.
     valid_rows : numpy.array of ints
-        Array with the indices of valid rows that should be set to 0 in the mask.
+        Array with the indices of valid rows that should be set to 0 in the
+        mask.
     valid_cols : numpy.array of ints
-        Array with the indices of valid rows that should be set to 0 in the mask.
+        Array with the indices of valid rows that should be set to 0 in the
+        mask.
     max_dist : int or None
         The maximum diagonal distance at which masking should take place.
     sym_upper : bool
         Whether the matrix is symmetric upper. If so, max_dist is ignored
-    
+
     Returns
     -------
     scipy.sparse.csr_matrix of bool
@@ -672,60 +686,64 @@ def make_missing_mask(
         raise ValueError("Rectangular matrices cannot be upper symmetric")
 
     # Get a boolean array of missing (1) and valid (0) rows
-    missing_rows = np.ones(sm)
-    missing_rows[valid_rows] = 0
-    missing_rows = np.where(missing_rows == True)[0]
-    # When matrix is symmetric, rows and cols are synonym, no need to compute 2x
+    missing_rows = np.ones(sm, dtype=bool)
+    missing_rows[valid_rows] = False
+    missing_rows = np.where(missing_rows)[0]
+    # When matrix is sym., rows and cols are synonym, no need to compute 2x
     if sym_upper:
         missing_cols = missing_rows
     else:
-        missing_cols = np.ones(sn)
-        missing_cols[valid_cols] = 0
-        missing_cols = np.where(missing_cols == True)[0]
+        missing_cols = np.ones(sn, dtype=bool)
+        missing_cols[valid_cols] = False
+        missing_cols = np.where(missing_cols)[0]
 
-    # If upper symmetric, fill only upper diagonal up to max_dist. E. g. with bins 1 and 3 missing
+    # If upper sym., fill only upper diag up to max_dist.
+    # E. g. with bins 1 and 3 missing
     # and a max_dist of 1:
     # 0 1 0 0 0
     # 0 1 1 0 0
     # 0 0 0 1 0
     # 0 0 0 1 1
     # 0 0 0 0 0
-    # For each missing bin, mask is apply 1 pixel upwards and 1 to the right to fill only the upper
-    # triangle up to max_dist
+    # For each missing bin, mask is apply 1 pixel upwards and 1 to the right
+    # to fill only the upper triangle up to max_dist
     if sym_upper:
-        # If no max dist has been specified, we'll fill the whole upper triangle
+        # If no max dist has been specified, fill the whole upper triangle
         if max_dist is None:
             max_dist = min(shape)
-        # Generate matrix of distance shifts by row. Shape is len(missing_rows) x (max_dist + 1)
+        # Generate matrix of distance shifts by row.
+        # Shape is len(missing_rows) x (max_dist + 1)
         # e.g.: 2 missing rows and max dist of 1
         # 0 0
         # 1 1
         row_shifts = np.tile(
-            np.array(range(max_dist)), (len(missing_rows), 1)
+            np.array(range(max_dist + 1)), (len(missing_rows), 1)
         ).T
-        # Compute row positions upwards to diagonal by subtracting missing rows to the shifts
-        # Following the previous example, if missing rows are bins 1 and 3:
+        # Compute row positions upwards to diagonal by subtracting missing rows
+        # to the shifts. Following the previous example, if missing rows are
+        # bins 1 and 3:
         #  1 3
         #  0 2
         rows_before = (missing_rows - row_shifts).flatten("F")
-        # Since we are looking at pixels up from the bins, cols remain the same:
+        # looking at pixels up from the bins, cols remain the same:
         # 1 3
         # 1 3
-        cols_before = np.repeat(missing_rows, max_dist)
-        # Compute column position to the right until diagonal by adding the shift
+        cols_before = np.repeat(missing_rows, max_dist+1)
+        # Compute col position to the right until diagonal by adding the shift
         # Note: upper symmetric, so row_shifts = col_shift_
         # 1 3
         # 2 4
         cols_after = (missing_cols + row_shifts).flatten("F")
-        # This time, rows remain constant since we are computing positions to the right
-        rows_after = np.repeat(missing_cols, max_dist)
+        # This time, rows remain constant since we are computing positions to
+        # the right
+        rows_after = np.repeat(missing_cols, max_dist+1)
         # Combine positions to the right and upwards
         rows = np.concatenate([rows_before, rows_after])
         cols = np.concatenate([cols_before, cols_after])
         data = np.ones(rows.shape, dtype=bool)
         # Remove entries where rows or cols are negative or larger than shape
         valid = (cols < sm) & (cols >= 0) & (rows < sm) & (rows >= 0)
-        # Build mask matrix with miss. bins up to max scan distance in upper triangle
+        # Build mask mat with miss bins up to max scan dist in upper triangle
         mask = sp.coo_matrix(
             (data[valid], (rows[valid], cols[valid])), shape=shape, dtype=bool
         ).tocsr()
@@ -743,7 +761,7 @@ def zero_pad_sparse(mat, margin_h, margin_v, fmt="coo"):
 
     Parameters
     ----------
-    mat : scipy.sparse.coo_matrix
+    mat : scipy.sparse.csr_matrix
         The matrix to be padded.
     margin_h : int
         The width of the horizontal margin to add on the left and right of the
@@ -753,15 +771,15 @@ def zero_pad_sparse(mat, margin_h, margin_v, fmt="coo"):
         matrix.
     fmt : string
         The desired scipy sparse format of the output matrix
-    
+
     Returns
     -------
-    scipy.sparse.coo_matrix :
+    scipy.sparse.csr_matrix :
         The padded matrix of dimensions (m + 2 * margin_h, n + 2 * margin_v).
-    
+
     Examples
     --------
-    >>> m = sp.coo_matrix(np.array([[1, 2], [10, 20]]))
+    >>> m = sp.csr_matrix(np.array([[1, 2], [10, 20]]))
     >>> zero_pad_sparse(m, 2, 1).toarray()
     array([[ 0,  0,  0,  0,  0,  0],
            [ 0,  0,  1,  2,  0,  0],
@@ -769,37 +787,30 @@ def zero_pad_sparse(mat, margin_h, margin_v, fmt="coo"):
            [ 0,  0,  0,  0,  0,  0]])
     """
 
-    matfun = {
-        "coo": sp.coo_matrix,
-        "csr": sp.csr_matrix,
-        "lil": sp.lil_matrix,
-        "csc": sp.csc_matrix,
-    }
     sm, sn = mat.shape
-    padded_m = sm + 2 * margin_v
-    padded_n = sn + 2 * margin_h
+    padded_mat = mat.copy()
+    # Up and down margins initialized with zeros and filled as needed
+    margin_h_0 = sp.csr_matrix((sm, margin_h), dtype=mat.dtype)
+    margin_v_0 = sp.csr_matrix((margin_v, sn + 2 * margin_h), dtype=mat.dtype)
+    padded_mat = sp.hstack([margin_h_0, padded_mat, margin_h_0], format="csr")
+    padded_mat = sp.vstack([margin_v_0, padded_mat, margin_v_0], format="csr")
 
-    rows = mat.row + margin_v
-    cols = mat.col + margin_h
-    padded = matfun[fmt](
-        (mat.data, (rows, cols)), shape=(padded_m, padded_n), dtype=mat.dtype
-    )
-
-    return padded
+    return padded_mat
 
 
 def crop_kernel(kernel, target_size):
     """
-    Crop a kernel matrix to target size horizontally and vertically. If the target size
-    is even, 
+    Crop a kernel matrix to target size horizontally and vertically.
+    If the target size is even, the target size is adjusted to the
+    next integer up.
 
     Parameters
     ----------
     kernel : numpy.array of floats
         Image to crop.
     target_size : tuple of ints
-        Tuple defining the target shape of the kernel, takes the form (rows, cols)
-        where rows and cols are odd numbers.
+        Tuple defining the target shape of the kernel, takes the
+        form (rows, cols) where rows and cols are odd numbers.
 
     Returns
     -------
@@ -851,15 +862,17 @@ def resize_kernel(
     Resize a kernel matrix based on the resolution at which it was defined and
     the signal resolution. E.g. if a kernel matrix was generated for 10kb and
     the input signal is 20kb, kernel size will be divided by two. If the kernel
-    is enlarged, pixels are interpolated with a spline of degree 1. Alternatively,
-    a resize factor can be provided. In the example above, the factor would be 0.5.
+    is enlarged, pixels are interpolated with a spline of degree 1.
+    Alternatively, a resize factor can be provided. In the example above, the
+    factor would be 0.5.
 
     Parameters
     ----------
     kernel : numpy.array
         Kernel matrix.
     kernel_res : int
-        Resolution for which the kernel was designed. Mutually exclusive with factor.
+        Resolution for which the kernel was designed. Mutually exclusive with
+        factor.
     signal_res : int
         Resolution of the signal matrix in basepair per matrix bin. Mutually
         exclusive with factor.
@@ -896,8 +909,8 @@ def resize_kernel(
                 "You must provide either a resize factor or the signal and "
                 "kernel resolutions."
             )
-        # Define by how many times kernel must be enlarged for its pixels to match
-        # the signal's pixels
+        # Define by how many times kernel must be enlarged for its pixels to
+        # match the signal's pixels
         resize_factor = kernel_res / signal_res
     if km * resize_factor > max_size:
         resize_factor = max_size / km
@@ -915,3 +928,43 @@ def resize_kernel(
         resized_kernel = ndi.zoom(kernel, adj_resize_factor, order=1)
 
     return resized_kernel
+
+
+def factorise_kernel(kernel, prop_info=0.999):
+    """
+    Performs truncated SVD on an input kernel, returning the singular vectors
+    necessary to retain a given proportion of information contained in the
+    kernel.
+
+    Parameters
+    ----------
+    kernel : numpy.array of floats
+        The input 2D kernel to factorise.
+    prop_info : float
+        Proportion of information to retain.
+
+    Returns
+    -------
+    tuple of numpy.arrays
+        A tuple containing the truncated left and right singular matrices,
+        where each singular vector has been multiplied by the square root of
+        their respective singular values.
+    """
+    u, sigma, v = la.svd(kernel)
+    total_info = np.sum(sigma ** 2)
+    # Compute min. number of singular vectors to retain enough info
+    keep_k = np.where(np.cumsum(sigma ** 2) > prop_info * total_info)[0][0] + 1
+    if keep_k > np.floor(min(kernel.shape) / 2):
+        sys.stderr.write(
+            f"Warning: Kernel factorisation required {keep_k} singular,"
+            "vectors this may result in slow operations.\n",
+        )
+    # Truncate singular matrix to the keep only required vectors
+    u = u[:, :keep_k]
+    v = v[:keep_k, :]
+    # Multiply each singular vector by the sqrt of its singular value
+    for i in range(keep_k):
+        u[:, i] *= np.sqrt(sigma[i])
+        v[i, :] *= np.sqrt(sigma[i])
+
+    return (u, v)
