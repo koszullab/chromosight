@@ -22,8 +22,8 @@ CLASSIFIERS = [
 name = "chromosight"
 
 MAJOR = 0
-MINOR = 8
-MAINTENANCE = 2
+MINOR = 9
+MAINTENANCE = 0
 VERSION = "{}.{}.{}".format(MAJOR, MINOR, MAINTENANCE)
 
 LICENSE = "GPLv3"
