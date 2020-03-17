@@ -267,6 +267,26 @@ def test_xcorr2(signal):
     )
     assert np.allclose(corr_mat_dense, corr_mat_scipy)
 
+@params(*gauss1_mats)
+def test_xcorr2_constant(signal):
+    """Check if xcorr2 case for constant kernels yields correct results"""
+    k1 = np.ones((11, 11))
+    ks = k1.shape[0] * k1.shape[1]
+    # convolution of flat kernels in xcorr2 is done by factorising into 2
+    # singular vectors and multiplying again to  recover identical results
+    # check that this multiplication happens properly in dense and sparse
+    # versions
+    assert np.allclose(
+        cud.xcorr2(signal, k1 / ks).toarray(),
+        (cud.xcorr2(signal, k1) / ks).toarray(),
+        atol=1e-4
+    )
+    assert np.allclose(
+        cud.xcorr2(signal.toarray(), k1 / ks),
+        cud.xcorr2(signal.toarray(), k1) / ks,
+        atol=1e-4,
+    )
+
 
 @params(*gauss1_mats)
 def test_normxcorr2(signal):

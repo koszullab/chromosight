@@ -649,8 +649,7 @@ def _xcorr2_sparse(signal, kernel, threshold=1e-6):
     out.data[np.abs(out.data) < threshold] = 0
     out.eliminate_zeros()
 
-    # Resize matrix: increment rows and cols by half kernel and set shape
-    # to input matrix, effectively adding margins.
+    # Resize matrix to original dimensions
     out = preproc.zero_pad_sparse(
         out, margin_h=(kn - 1) // 2, margin_v=(km - 1) // 2, fmt="csr"
     )
@@ -702,8 +701,6 @@ def _xcorr2_dense(signal, kernel, threshold=1e-6):
     else:
         km, kn = kernel.shape
         # Kernel (half) height and width
-        kh = (km - 1) // 2
-        kw = (kn - 1) // 2
         constant_kernel = np.nan
         if np.allclose(
             kernel, np.tile(kernel[0, 0], kernel.shape), rtol=1e-08
@@ -725,7 +722,6 @@ def _xcorr2_dense(signal, kernel, threshold=1e-6):
                 format="dia",
             )
             out_wo_margin = (l_subkernel_sp @ signal) @ r_subkernel_sp
-            out_wo_margin *= constant_kernel
         # convolution code for general case
         else:
             for kj in range(kn):
@@ -739,6 +735,8 @@ def _xcorr2_dense(signal, kernel, threshold=1e-6):
                     subkernel_sp @ signal[:, kj : sn - kn + 1 + kj]
                 )
 
+    kh = (km - 1) // 2
+    kw = (kn - 1) // 2
     # Add margins of zeros where kernel overlaps edges
     out = np.zeros([sm, sn])
     out[kh:-kh, kw:-kw] = out_wo_margin
@@ -824,7 +822,6 @@ def normxcorr2(
 
     if not (kernel.std() > 0):
         raise ValueError("Cannot have flat kernel.")
-
     if sp.issparse(signal):
         corr = _normxcorr2_sparse(
             signal,
@@ -1108,7 +1105,7 @@ def _normxcorr2_dense(
     if missing_mask is not None:
         return xcorr2(signal, kernel)
 
-    kernel_size = kernel.shape[0] * kernel.shape[1]
+    kernel_size = mk * nk
     kernel1 = np.ones(kernel.shape)
     if full:
         framed_sig = np.zeros([ms + 2 * (mk - 1), ns + 2 * (nk - 1)])
@@ -1142,9 +1139,9 @@ def _normxcorr2_dense(
             xcorr2(framed_sig ** 2, kernel1 / kernel_size)
             - framed_sig_mean ** 2
         )
-        #denom[np.abs(denom) < 1e-10] = 0.0
-        #out[denom != 0.0] /= denom[denom != 0.0]
-        out /= denom
+        denom_0 = abs(denom) < 1e-10
+        out[~denom_0] /= denom[~denom_0]
+        out[denom_0] = 0.0
 
     else:
         kernel_size = mk * nk - xcorr2(framed_missing_mask, kernel1).toarray()
