@@ -327,7 +327,7 @@ class HicGenome:
 
     def gather_sub_matrices(self):
         """Gathers all processed sub_matrices into a whole genome matrix """
-        gathered = sp.csr_matrix(self.matrix.shape)
+        gathered = sp.csr_matrix(self.clr.shape)
         # Fill empty whole genome matrix with processed submatrices
         for i1, r1 in self.sub_mats.iterrows():
             s1, e1 = self.clr.extent(r1.chr1)
