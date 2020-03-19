@@ -158,7 +158,7 @@ def pileup_patterns(pattern_windows):
         2D numpy array containing the pileup (arithmetic mean) of
         input windows.
     """
-    return np.apply_along_axis(np.nanmean, 0, pattern_windows)
+    return np.apply_along_axis(np.nanmedian, 0, pattern_windows)
 
 
 def pattern_detector(
@@ -259,13 +259,16 @@ def pattern_detector(
         chrom_pattern_coords[:, 1] += kw
 
     if not contact_map.inter:
-        # Symmetrize first kh / 2 diagonals in the lower triangle to have nicer
-        # pileups and do not count them as missing (otherwise all patterns on
-        # diagonal would have 50% missing
-        big_k = max(kh, kw)
+        # set the first kh / 2 diagonals in the lower triangle to NaN
+        # so that pileups do not count them
+        big_k = max(km, kn)
         mat = mat.tocsr()
-        for i in range(1, big_k):
-            mat.setdiag(mat.diagonal(i), -i)
+        mat += sp.diags(
+            np.full(big_k, np.nan),
+            -np.arange(1, big_k+1),
+            shape=mat.shape,
+            format="csr"
+        )
 
     filtered_chrom_patterns, chrom_pattern_windows = validate_patterns(
         chrom_pattern_coords,
