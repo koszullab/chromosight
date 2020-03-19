@@ -16,6 +16,7 @@ def validate_patterns(
     detectable_bins,
     kernel_matrix,
     max_undetected_perc,
+    drop=True
 ):
     """
     Given a list of pattern coordinates and a contact map, remove patterns in
@@ -40,6 +41,11 @@ def validate_patterns(
     max_undetected_perc : float
         Proportion of undetectable pixels allowed in a pattern window to
         consider it valid.
+    drop : bool
+        Whether to discard pattern coordinates and windows from patterns which
+        fall outside the matrix or do not pass validation. If those are kept,
+        they will be given a score of np.nan and their windows will be filled
+        with np.nan.
 
     Returns
     -------
@@ -65,14 +71,14 @@ def validate_patterns(
         {
             "bin1": coords[:, 0],
             "bin2": coords[:, 1],
-            "score": np.zeros(coords.shape[0]),
+            "score": np.full(coords.shape[0], np.nan),
         }
     )
     # validated_coords = np.append(coords, np.zeros((coords.shape[0], 1)), 1)
     # Initialize structure to store pattern windows
-
-    pattern_windows = np.zeros(
-        (coords.shape[0], win_h, win_w)
+    pattern_windows = np.full(
+        (coords.shape[0], win_h, win_w),
+        np.nan
     )  # list containing all pannel of detected patterns
     for i, l in enumerate(coords):
         p1 = int(l[0])
@@ -125,12 +131,16 @@ def validate_patterns(
             blacklist.append(i)
 
     # Drop patterns that did not pass filters
-    blacklist = np.array(blacklist)
-    blacklist_mask = np.zeros(coords.shape[0], dtype=bool)
-    if len(blacklist):
-        blacklist_mask[blacklist] = True
-    filtered_coords = validated_coords.loc[~blacklist_mask, :]
-    filtered_windows = pattern_windows[~blacklist_mask, :, :]
+    if drop:
+        blacklist = np.array(blacklist)
+        blacklist_mask = np.zeros(coords.shape[0], dtype=bool)
+        if len(blacklist):
+            blacklist_mask[blacklist] = True
+        filtered_coords = validated_coords.loc[~blacklist_mask, :]
+        filtered_windows = pattern_windows[~blacklist_mask, :, :]
+    else:
+        filtered_coords = validated_coords
+        filtered_windows = pattern_windows
 
     # from matplotlib import pyplot as plt
 
@@ -162,11 +172,12 @@ def pileup_patterns(pattern_windows):
 
 
 def pattern_detector(
-    contact_map, kernel_config, kernel_matrix, dump=None, full=False, tsvd=None
+    contact_map, kernel_config, kernel_matrix, coords=None, dump=None, full=False, tsvd=None
 ):
     """
     Detect patterns in a contact map by kernel matching, and extract windows
-    around the detected patterns.
+    around the detected patterns. If coordinates are provided, detection is skipped and
+    windows are extracted around those coordinates.
 
     Parameters
     ----------
@@ -178,6 +189,11 @@ def pattern_detector(
         chromosight.utils.io.load_kernel_config
     kernel_matrix : numpy.array
         The kernel matrix to use for convolution as a 2D numpy array
+    coords : numpy.array of ints or None
+        A table with coordinates of patterns, with one pattern per row
+        and 2 columns being the row and column number of the pattern in
+        the input contact map. If this is provided, detection is skipped
+        and quantification is performed on those coordinates.
     dump : str or None
         Folder in which dumps should be generated after each step of the
         detection process. If None, no dump is generated
@@ -190,8 +206,8 @@ def pattern_detector(
 
     Returns
     -------
-    filtered_chrom_patterns : numpy.array
-        A 2D array of detected patterns with 3 columns: bin1, bin2, score.
+    filtered_chrom_patterns : pandas.DataFrame
+        A table of detected patterns with 3 columns: bin1, bin2, score.
     chrom_pattern_windows : numpy array
         A 3D array containing the pile of windows around detected patterns.
     """
@@ -201,6 +217,9 @@ def pattern_detector(
     save_dump = lambda base, mat: sp.save_npz(
         pathlib.Path(dump) / f"{contact_map.name}_{base}", mat
     )
+
+    # Define type of analysis.
+    run_mode = 'detect' if coords is None else 'quantify'
 
     # Do not attempt pattern detection unless matrix is larger than the kernel
     if min(contact_map.matrix.shape) <= max(kernel_matrix.shape):
@@ -239,12 +258,18 @@ def pattern_detector(
     mat_conv = mat_conv.tocoo()
     mat_conv.eliminate_zeros()
 
-    # Find foci of highly correlated pixels
-    chrom_pattern_coords, foci_mat = picker(mat_conv, kernel_config["pearson"])
-    if chrom_pattern_coords is None:
-        return None, None
-    if dump:
-        save_dump("05_foci", foci_mat)
+    # Only attempt detection if no input coordinates were given
+    if run_mode == 'detect':
+        # Find foci of highly correlated pixels and pick local maxima
+        coords, foci_mat = picker(
+                mat_conv,
+                kernel_config["pearson"]
+        )
+        # If nothing was detected, no point in resuming
+        if coords is None:
+            return None, None
+        if dump:
+            save_dump("05_foci", foci_mat)
     mat = contact_map.matrix.copy()
     det = [d.copy() for d in contact_map.detectable_bins]
     # Zero pad contact and convolution maps and shift missing bins and detected
@@ -255,8 +280,8 @@ def pattern_detector(
         mat_conv = preproc.zero_pad_sparse(mat_conv, kh, kw, fmt="csr")
         det[0] += kh
         det[1] += kw
-        chrom_pattern_coords[:, 0] += kh
-        chrom_pattern_coords[:, 1] += kw
+        coords[:, 0] += kh
+        coords[:, 1] += kw
 
     if not contact_map.inter:
         # set the first kh / 2 diagonals in the lower triangle to NaN
@@ -270,20 +295,24 @@ def pattern_detector(
             format="csr"
         )
 
-    filtered_chrom_patterns, chrom_pattern_windows = validate_patterns(
-        chrom_pattern_coords,
+    # Extract windows around coordinates and assign a correlation
+    # to each pattern. In detection mode, we drop invalid patterns
+    # in quantification mode, all input patterns are returned.
+    filtered_coords, filtered_windows = validate_patterns(
+        coords,
         mat,
         mat_conv.tocsr(),
         contact_map.detectable_bins,
         kernel_matrix,
         kernel_config["max_perc_undetected"],
+        drop=True if run_mode == 'detect' else False
     )
 
     # Shift coordinates of detected patterns back if padding was added
     if full:
-        filtered_chrom_patterns.bin1 -= kh
-        filtered_chrom_patterns.bin2 -= kw
-    return filtered_chrom_patterns, chrom_pattern_windows
+        filtered_coords.bin1 -= kh
+        filtered_coords.bin2 -= kw
+    return filtered_coords, filtered_windows
 
 
 def remove_neighbours(patterns, win_size=8):

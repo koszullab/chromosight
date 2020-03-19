@@ -6,33 +6,37 @@ Explore and detect patterns (loops, borders, centromeres, etc.) in Hi-C contact
 maps with pattern matching.
 
 Usage:
-    chromosight detect  [--kernel-config=FILE] [--pattern=loops] [--pearson=auto]
-                        [--win-size=auto] [--iterations=auto] [--win-fmt={json,npy}]
-                        [--force-norm] [--full] [--subsample=no] [--inter] [--tsvd]
-                        [--smooth-trend] [--n-mads=5] [--min-dist=0] [--max-dist=auto]
-                        [--no-plotting] [--min-separation=auto] [--threads=1] [--dump=DIR]
-                        [--perc-undetected=auto] <contact_map> [<output>]
-    chromosight generate-config <prefix> [--preset loops] [--click contact_map]
-                        [--force-norm] [--win-size=auto] [--n-mads=5] [--threads=1]
-    chromosight quantify [--inter] [--pattern=loops] [--subsample=no] [--win-fmt=json]
-                        [--kernel-config=FILE] [--force-norm] [--threads=1]
-                        [--n-mads=5] [--win-size=auto] <bed2d> <contact_map> <output>
+    chromosight detect  [--kernel-config=FILE] [--pattern=loops]
+                        [--pearson=auto] [--win-size=auto] [--iterations=auto]
+                        [--win-fmt={json,npy}] [--force-norm] [--full]
+                        [--subsample=no] [--inter] [--tsvd] [--smooth-trend]
+                        [--n-mads=5] [--min-dist=0] [--max-dist=auto]
+                        [--no-plotting] [--min-separation=auto] [--dump=DIR]
+                        [--threads=1] [--perc-undetected=auto] <contact_map>
+                        [<output>]
+    chromosight generate-config [--preset loops] [--click contact_map]
+                        [--force-norm] [--win-size=auto] [--n-mads=5]
+                        [--threads=1] <prefix>
+    chromosight quantify [--inter] [--pattern=loops] [--subsample=no]
+                         [--win-fmt=json] [--kernel-config=FILE] [--force-norm]
+                         [--threads=1] [--full] [--n-mads=5] [--win-size=auto]
+                         [--tsvd] <bed2d> <contact_map> <output>
     chromosight test
 
     detect:
-        performs pattern detection on a Hi-C contact map using kernel convolution
+        performs pattern detection on a Hi-C contact map via template matching
     generate-config:
-        Generate pre-filled config files to use for `chromosight detect`.
-        A config consists of a JSON file describing analysis parameters for the
-        detection and path pointing to kernel matrices files. Those matrices
-        files are tsv files with numeric values ordered in a square dense matrix
-        to use for convolution.
+        Generate pre-filled config files to use for detect and quantify.
+        A config consists of a JSON file describing parameters for the
+        analysis and path pointing to kernel matrices files. Those matrices
+        files are tsv files with numeric values as kernel to use for
+        convolution.
     quantify:
         Given a list of pairs of positions and a contact map, computes the
         correlation coefficients between those positions and the kernel of the
         selected pattern.
     test:
-        Download example data and run the program on it.
+        Download example data and run loop detection on it.
 
 Arguments for detect:
     -h, --help                  Display this help message.
@@ -155,7 +159,6 @@ import chromosight.utils.io as cio
 import chromosight.utils.detection as cid
 from chromosight.utils.plotting import pileup_plot, click_finder
 from chromosight.utils.preprocessing import resize_kernel
-import scipy.stats as ss
 import scipy.ndimage as ndi
 import matplotlib.pyplot as plt
 
@@ -208,6 +211,7 @@ def _override_kernel_config(param_name, param_value, param_type, config):
 def cmd_quantify(args):
     bed2d_path = args["<bed2d>"]
     mat_path = args["<contact_map>"]
+    full = args["--full"]
     output = pathlib.Path(args["<output>"])
     n_mads = float(args["--n-mads"])
     pattern = args["--pattern"]
@@ -215,6 +219,7 @@ def cmd_quantify(args):
     kernel_config_path = args["--kernel-config"]
     threads = int(args["--threads"])
     force_norm = args["--force-norm"]
+    tsvd = 0.999 if args["--tsvd"] else None
     win_fmt = args["--win-fmt"]
     if win_fmt not in ["npy", "json"]:
         sys.stderr.write("Error: --win-fmt must be either json or npy.\n")
@@ -250,8 +255,10 @@ def cmd_quantify(args):
     hic_genome = HicGenome(
         mat_path, inter=inter, kernel_config=cfg, sample=subsample
     )
-    # enforce full scanning distance in kernel config
-    cfg["max_dist"] = hic_genome.clr.shape[0] * hic_genome.clr.binsize
+    # enforce max scanning distance to pattern at longest distance
+    furthest = np.max(bed2d.start2 - bed2d.start1)
+    max_diag = hic_genome.clr.shape[0] * hic_genome.clr.binsize
+    cfg["max_dist"] = min(furthest, max_diag)
     cfg["min_dist"] = 0
     # Notify contact map instance of changes in scanning distance
     hic_genome.kernel_config = cfg
@@ -263,26 +270,33 @@ def cmd_quantify(args):
     # matrix is processed on the fly (obs / exp, trimming diagonals > max dist)
     hic_genome.make_sub_matrices()
     # Initialize output structures
-    bed2d["score"] = 0.0
+    bed2d["score"] = np.nan
     positions = bed2d.copy()
     if win_size != "auto":
         km = kn = win_size
     else:
         km, kn = cfg["kernels"][0].shape
-    windows = np.zeros((positions.shape[0], km, kn))
+    windows = np.full((positions.shape[0], km, kn), np.nan)
     # For each position, we use the center of the BED interval
     positions["pos1"] = (positions.start1 + positions.end1) // 2
     positions["pos2"] = (positions.start2 + positions.end2) // 2
     # Use each kernel matrix available for the pattern
     for kernel_id, kernel_matrix in enumerate(cfg["kernels"]):
+        cio.progress(
+            kernel_id, len(cfg['kernels']), f"Kernel: {kernel_id}\n"
+        )
         # Only resize kernel matrix if explicitely requested
         if win_size != "auto":
             kernel_matrix = resize_kernel(kernel_matrix, factor=win_size / km)
-        kh = (km - 1) // 2
-        kw = (kn - 1) // 2
         # Iterate over intra- and inter-chromosomal sub-matrices
-        for sub_mat in hic_genome.sub_mats.iterrows():
+        n_sub_mats = hic_genome.sub_mats.shape[0]
+        for sub_mat_id, sub_mat in enumerate(hic_genome.sub_mats.iterrows()):
             mat = sub_mat[1]
+            cio.progress(
+                sub_mat_id,
+                n_sub_mats,
+                f"{mat.chr1}-{mat.chr2}"
+            )
             mat.contact_map.create_mat()
             # Filter patterns falling onto this sub-matrix
             sub_pat = positions.loc[
@@ -310,35 +324,34 @@ def cmd_quantify(args):
                 mat.chr1, mat.chr2, sub_pat
             )
             m = mat.contact_map.matrix.tocsr()
-            # Iterate over patterns from the 2D BED file
-            for i, x, y in zip(sub_pat_idx, sub_pat.bin1, sub_pat.bin2):
-                # Check if the window goes out of bound
-                if np.all(np.isfinite([x, y])) and (
-                    x - kh >= 0
-                    and x + kh + 1 < m.shape[0]
-                    and y - kw >= 0
-                    and y + kw + 1 < m.shape[1]
-                ):
-                    x = int(x)
-                    y = int(y)
-                    # For each pattern, compute correlation score with all kernels
-                    # but only keep the best
-                    win = m[x - kh : x + kh + 1, y - kw : y + kw + 1].toarray()
-                    try:
-                        score = ss.pearsonr(
-                            win.flatten(), kernel_matrix.flatten()
-                        )[0]
-                    # In case of NaNs introduced by division by 0 during detrend
-                    except ValueError:
-                        score = 0
-                    if score > bed2d["score"][i] or kernel_id == 0:
-                        bed2d["score"][i] = score
-                # Pattern falls outside or at the edge of the matrix
-                else:
-                    win = np.zeros((km, kn))
-                    bed2d["score"][i] = np.nan
+
+            # Feed the submatrix to quantification pipeline
+            patterns, mat_windows = cid.pattern_detector(
+                mat.contact_map,
+                cfg,
+                kernel_matrix,
+                coords=np.array(sub_pat.loc[:, ['bin1', 'bin2']]),
+                full=full,
+                tsvd=tsvd
+            )
+
+            # For each coordinate, keep the highest coefficient
+            # among all kernels.
+            try:
                 if kernel_id == 0:
-                    windows[i, :, :] = win
+                    bed2d['score'][sub_pat_idx] = patterns.score
+                    windows[sub_pat_idx, :, :] = mat_windows
+                else:
+                    # Only update scores and their corresponding windows
+                    # if better than results from previous kernels
+                    better = patterns.score > bed2d['score'][sub_pat_idx].values
+                    better_idx = sub_pat_idx[better]
+                    bed2d['score'][better_idx] = patterns.score[better]
+                    windows[better_idx, :, :] = mat_windows[better]
+            # Do nothing if no pattern was detected or matrix
+            # is smaller than the kernel (-> patterns is None)
+            except AttributeError:
+                pass
             # Free space from current submatrix
             mat.contact_map.destroy_mat()
             del m
@@ -373,9 +386,6 @@ def cmd_quantify(args):
         cio.save_windows(
             windows, f"{pattern}_quant", output_dir=output, format=win_fmt
         )
-        # with open(output / f"{pattern}_quant.json", "w") as win_handle:
-        #    windows = {idx: win for idx, win in enumerate(windows)}
-        #    json.dump(windows, win_handle, indent=4)
 
 
 def cmd_generate_config(args):
@@ -454,7 +464,7 @@ def _detect_sub_mat(data):
         sub.contact_map,
         config,
         kernel,
-        dump,
+        dump=dump,
         full=config["full"],
         tsvd=config["tsvd"],
     )
