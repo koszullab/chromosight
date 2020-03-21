@@ -390,11 +390,12 @@ def write_patterns(coords, pattern_name, output_dir, dec=5):
     output_dir : str
         Output path where the file will be saved.
     dec : int
-        Number of decimals to keep in correlation scores.
+        Number of decimals to keep in correlation scores and p-values.
     """
     file_name = pattern_name + ".txt"
     file_path = join(output_dir, file_name)
-    coords.score = np.round(coords.score, dec)
+    for col in ["score", "pvalue", "qvalue"]:
+        coords[col] = np.round(coords[col], dec)
     coords.to_csv(file_path, sep="\t", index=None)
 
 
@@ -498,7 +499,7 @@ def load_bed2d(path):
     return bed2d
 
 
-def download_file(url, file, length=16*1024):
+def download_file(url, file, length=16 * 1024):
     req = urlopen(url)
-    with open(file, 'wb') as fp:
+    with open(file, "wb") as fp:
         shutil.copyfileobj(req, fp, length)
