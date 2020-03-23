@@ -159,6 +159,7 @@ import chromosight.utils.io as cio
 import chromosight.utils.detection as cid
 from chromosight.utils.plotting import pileup_plot, click_finder
 from chromosight.utils.preprocessing import resize_kernel
+from chromosight.utils.stats import fdr_correction
 import scipy.ndimage as ndi
 import matplotlib.pyplot as plt
 
@@ -282,9 +283,7 @@ def cmd_quantify(args):
     positions["pos2"] = (positions.start2 + positions.end2) // 2
     # Use each kernel matrix available for the pattern
     for kernel_id, kernel_matrix in enumerate(cfg["kernels"]):
-        cio.progress(
-            kernel_id, len(cfg['kernels']), f"Kernel: {kernel_id}\n"
-        )
+        cio.progress(kernel_id, len(cfg["kernels"]), f"Kernel: {kernel_id}\n")
         # Only resize kernel matrix if explicitely requested
         if win_size != "auto":
             kernel_matrix = resize_kernel(kernel_matrix, factor=win_size / km)
@@ -292,11 +291,7 @@ def cmd_quantify(args):
         n_sub_mats = hic_genome.sub_mats.shape[0]
         for sub_mat_id, sub_mat in enumerate(hic_genome.sub_mats.iterrows()):
             mat = sub_mat[1]
-            cio.progress(
-                sub_mat_id,
-                n_sub_mats,
-                f"{mat.chr1}-{mat.chr2}"
-            )
+            cio.progress(sub_mat_id, n_sub_mats, f"{mat.chr1}-{mat.chr2}")
             mat.contact_map.create_mat()
             # Filter patterns falling onto this sub-matrix
             sub_pat = positions.loc[
@@ -330,23 +325,25 @@ def cmd_quantify(args):
                 mat.contact_map,
                 cfg,
                 kernel_matrix,
-                coords=np.array(sub_pat.loc[:, ['bin1', 'bin2']]),
+                coords=np.array(sub_pat.loc[:, ["bin1", "bin2"]]),
                 full=full,
-                tsvd=tsvd
+                tsvd=tsvd,
             )
 
             # For each coordinate, keep the highest coefficient
             # among all kernels.
             try:
                 if kernel_id == 0:
-                    bed2d['score'][sub_pat_idx] = patterns.score
+                    bed2d["score"][sub_pat_idx] = patterns.score
                     windows[sub_pat_idx, :, :] = mat_windows
                 else:
                     # Only update scores and their corresponding windows
                     # if better than results from previous kernels
-                    better = patterns.score > bed2d['score'][sub_pat_idx].values
+                    better = (
+                        patterns.score > bed2d["score"][sub_pat_idx].values
+                    )
                     better_idx = sub_pat_idx[better]
-                    bed2d['score'][better_idx] = patterns.score[better]
+                    bed2d["score"][better_idx] = patterns.score[better]
                     windows[better_idx, :, :] = mat_windows[better]
             # Do nothing if no pattern was detected or matrix
             # is smaller than the kernel (-> patterns is None)
@@ -698,9 +695,13 @@ def cmd_detect(args):
         np.abs(all_pattern_coords.start2 - all_pattern_coords.start1)
         < cfg["min_dist"]
     )
-    # Reorder columns at the same time
+    all_pattern_coords = all_pattern_coords.loc[~min_dist_drop_mask, :]
+    all_pattern_windows = all_pattern_windows[~min_dist_drop_mask, :, :]
+    # Correct p-values for multiple testing using FDR
+    all_pattern_coords["qvalue"] = fdr_correction(all_pattern_coords["pvalue"])
+    # Reorder columns
     all_pattern_coords = all_pattern_coords.loc[
-        ~min_dist_drop_mask,
+        :,
         [
             "chrom1",
             "start1",
@@ -713,9 +714,10 @@ def cmd_detect(args):
             "kernel_id",
             "iteration",
             "score",
+            "pvalue",
+            "qvalue",
         ],
     ]
-    all_pattern_windows = all_pattern_windows[~min_dist_drop_mask, :, :]
 
     ### 3: WRITE OUTPUT
     sys.stderr.write(f"{all_pattern_coords.shape[0]} patterns detected\n")

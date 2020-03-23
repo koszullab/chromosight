@@ -267,6 +267,7 @@ def test_xcorr2(signal):
     )
     assert np.allclose(corr_mat_dense, corr_mat_scipy)
 
+
 @params(*gauss1_mats)
 def test_xcorr2_constant(signal):
     """Check if xcorr2 case for constant kernels yields correct results"""
@@ -279,7 +280,7 @@ def test_xcorr2_constant(signal):
     assert np.allclose(
         cud.xcorr2(signal, k1 / ks).toarray(),
         (cud.xcorr2(signal, k1) / ks).toarray(),
-        atol=1e-4
+        atol=1e-4,
     )
     assert np.allclose(
         cud.xcorr2(signal.toarray(), k1 / ks),
@@ -291,11 +292,8 @@ def test_xcorr2_constant(signal):
 @params(*gauss1_mats)
 def test_normxcorr2(signal):
     """Check if Pearson and cross-product correlations yield appropriate values"""
-    corr = cud.normxcorr2(
-        signal,
-        gauss_kernel,
-        max_dist=None,
-        sym_upper=False,
+    corr, pval = cud.normxcorr2(
+        signal, gauss_kernel, max_dist=None, sym_upper=False,
     )
     if len(corr.data):
         assert np.min(corr.data) >= 0
@@ -305,19 +303,18 @@ def test_normxcorr2(signal):
 @params(*gauss1_mats)
 def test_normxcorr2_dense_sparse(signal):
     """Check if normxcorr2 yields identical values for dense and sparse versions"""
-    corr_d = cud.normxcorr2(
+    corr_d, pval_d = cud.normxcorr2(
         signal.todense(),
         gauss_kernel,
         max_dist=None,
         sym_upper=False,
+        pval=True,
     )
-    corr_s = cud.normxcorr2(
-        signal,
-        gauss_kernel,
-        max_dist=None,
-        sym_upper=False,
+    corr_s, pval_s = cud.normxcorr2(
+        signal, gauss_kernel, max_dist=None, sym_upper=False, pval=True
     )
     assert np.allclose(corr_s.todense(), corr_d, rtol=10e-4)
+    assert np.allclose(pval_s.todense(), pval_d, rtol=10e-4)
 
 
 @params(ck.loops, ck.borders, ck.hairpins)
@@ -334,11 +331,8 @@ def test_normxcorr2_kernels(kernel_config):
         ] = kernel
         pattern_signal = sp.csr_matrix(np.triu(pattern_signal))
         # Compute correlation between fake matrix and kernel
-        corr = cud.normxcorr2(
-            pattern_signal,
-            kernel,
-            max_dist=None,
-            sym_upper=False,
+        corr, _ = cud.normxcorr2(
+            pattern_signal, kernel, max_dist=None, sym_upper=False,
         )
 
         # Check if the max correlation is where we inserted the pattern
