@@ -31,7 +31,6 @@ def fdr_correction(pvals):
         steps = float(len(pvals)) / np.arange(len(pvals), 0, -1)
         # Compute critical values and find last p-value below above it
         # Set all other to the same value and back to 1 if higher
-         n / i * p[o] 
         qvals = np.minimum(1, np.minimum.accumulate(steps * pvals[by_descend]))
         # Unsort q-values to get original order
         qvals = qvals[by_orig]

@@ -879,7 +879,7 @@ def normxcorr2(
     if not (kernel.std() > 0):
         raise ValueError("Cannot have flat kernel.")
     if sp.issparse(signal):
-        corr, qvals = _normxcorr2_sparse(
+        corr, pvals = _normxcorr2_sparse(
             signal,
             kernel,
             max_dist=max_dist,
@@ -891,7 +891,7 @@ def normxcorr2(
             pval=pval,
         )
     else:
-        corr, qvals = _normxcorr2_dense(
+        corr, pvals = _normxcorr2_dense(
             signal,
             kernel,
             max_dist=max_dist,
@@ -902,7 +902,7 @@ def normxcorr2(
             tsvd=tsvd,
             pval=pval,
         )
-    return corr, qvals
+    return corr, pvals
 
 
 def _normxcorr2_sparse(
@@ -1263,22 +1263,17 @@ def _normxcorr2_dense(
         out = np.triu(out)
     out[~np.isfinite(out)] = 0.0
     out[out < 0] = 0.0
-    ##if pval:
-    ##pvals = out.copy()
-    ##if full:
-    ### Get number of values for each coeff
-    ##n_obs = pvals.row, pvals.col].A1
-    ### Replace implicit n_obs by total kernel size
-    ##n_obs[n_obs == 0] = kernel_size
-    ##pvals.data = cus.corr_to_pval(out.data, n_obs)
-    ##else:
-    ##pvals.data = cus.corr_to_pval(out.data, kernel_size)
-    ##pvals = pvals.tocsr()
-    ##if full:
-    ##pvals = pvals[mk - 1 : -mk + 1, nk - 1 : -nk + 1]
-    ##else:
-    ##pvals = None
-    ##out = out.tocsr()
-    ##if full:
-    ##out = out[mk - 1 : -mk + 1, nk - 1 : -nk + 1]
-    return out
+    if pval:
+        if full:
+            # Get number of values for each coeff
+            n_obs = kernel_size.flatten()
+        else:
+            n_obs = kernel_size
+        pvals = cus.corr_to_pval(out.flatten(), n_obs).reshape(out.shape)
+        if full:
+            pvals = pvals[mk - 1 : -mk + 1, nk - 1 : -nk + 1]
+    else:
+        pvals = None
+    if full:
+        out = out[mk - 1 : -mk + 1, nk - 1 : -nk + 1]
+    return out, pvals
