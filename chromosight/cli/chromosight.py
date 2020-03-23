@@ -159,6 +159,7 @@ import chromosight.utils.io as cio
 import chromosight.utils.detection as cid
 from chromosight.utils.plotting import pileup_plot, click_finder
 from chromosight.utils.preprocessing import resize_kernel
+from chromosight.utils.stats import fdr_correction
 import scipy.ndimage as ndi
 import matplotlib.pyplot as plt
 
@@ -694,9 +695,13 @@ def cmd_detect(args):
         np.abs(all_pattern_coords.start2 - all_pattern_coords.start1)
         < cfg["min_dist"]
     )
-    # Reorder columns at the same time
+    all_pattern_coords = all_pattern_coords.loc[~min_dist_drop_mask, :]
+    all_pattern_windows = all_pattern_windows[~min_dist_drop_mask, :, :]
+    # Correct p-values for multiple testing using FDR
+    all_pattern_coords["qvalue"] = fdr_correction(all_pattern_coords["pvalue"])
+    # Reorder columns
     all_pattern_coords = all_pattern_coords.loc[
-        ~min_dist_drop_mask,
+        :,
         [
             "chrom1",
             "start1",
@@ -713,7 +718,6 @@ def cmd_detect(args):
             "qvalue",
         ],
     ]
-    all_pattern_windows = all_pattern_windows[~min_dist_drop_mask, :, :]
 
     ### 3: WRITE OUTPUT
     sys.stderr.write(f"{all_pattern_coords.shape[0]} patterns detected\n")

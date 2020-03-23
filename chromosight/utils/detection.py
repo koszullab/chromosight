@@ -312,6 +312,11 @@ def pattern_detector(
         drop=True if run_mode == "detect" else False,
     )
 
+    # Shift coordinates of detected patterns back if padding was added
+    if full:
+        filtered_coords.bin1 -= kh
+        filtered_coords.bin2 -= kw
+
     try:
         filtered_coords["pvalue"] = mat_log10_pvals[
             filtered_coords.bin1, filtered_coords.bin2
@@ -321,12 +326,6 @@ def pattern_detector(
         filtered_coords["pvalue"] = None
     # Remove log10 transform and correct p-values for multiple testing
     filtered_coords["pvalue"] = 10 ** filtered_coords["pvalue"]
-    filtered_coords["qvalue"] = cus.fdr_correction(filtered_coords["pvalue"])
-
-    # Shift coordinates of detected patterns back if padding was added
-    if full:
-        filtered_coords.bin1 -= kh
-        filtered_coords.bin2 -= kw
     return filtered_coords, filtered_windows
 
 
@@ -1106,16 +1105,26 @@ def _normxcorr2_sparse(
     if pval:
         pvals = out.copy()
         if full:
-            n_obs = kernel_size - ker1_coo.tocsr()[pvals.row, pvals.col].A1
-            pvals.data = cus.corr_to_pval(out.data, n_obs)
+            try:
+                # Get number of values for each coeff
+                n_obs = ker1_coo.tocsr()[pvals.row, pvals.col].A1
+                # Replace implicit n_obs by total kernel size
+                n_obs[n_obs == 0] = kernel_size
+                pvals.data = cus.corr_to_pval(out.data, n_obs)
+            # No nonzero coeff in the matrix, skip calculation of p-values
+            except AttributeError:
+                pass
         else:
             pvals.data = cus.corr_to_pval(out.data, kernel_size)
         pvals = pvals.tocsr()
+        if full:
+            pvals = pvals[mk - 1 : -mk + 1, nk - 1 : -nk + 1]
     else:
         pvals = None
     out = out.tocsr()
     if full:
-        out = out.tocsr()[mk - 1 : -mk + 1, nk - 1 : -nk + 1]
+        out = out[mk - 1 : -mk + 1, nk - 1 : -nk + 1]
+
     return out, pvals
 
 
@@ -1254,4 +1263,22 @@ def _normxcorr2_dense(
         out = np.triu(out)
     out[~np.isfinite(out)] = 0.0
     out[out < 0] = 0.0
+    ##if pval:
+    ##pvals = out.copy()
+    ##if full:
+    ### Get number of values for each coeff
+    ##n_obs = pvals.row, pvals.col].A1
+    ### Replace implicit n_obs by total kernel size
+    ##n_obs[n_obs == 0] = kernel_size
+    ##pvals.data = cus.corr_to_pval(out.data, n_obs)
+    ##else:
+    ##pvals.data = cus.corr_to_pval(out.data, kernel_size)
+    ##pvals = pvals.tocsr()
+    ##if full:
+    ##pvals = pvals[mk - 1 : -mk + 1, nk - 1 : -nk + 1]
+    ##else:
+    ##pvals = None
+    ##out = out.tocsr()
+    ##if full:
+    ##out = out[mk - 1 : -mk + 1, nk - 1 : -nk + 1]
     return out

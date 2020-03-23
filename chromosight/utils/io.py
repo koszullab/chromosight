@@ -375,7 +375,7 @@ def load_kernel_config(kernel, custom=False):
     return kernel_config
 
 
-def write_patterns(coords, pattern_name, output_dir, dec=5):
+def write_patterns(coords, pattern_name, output_dir, dec=10):
     """
     Writes coordinates to a text file.
 
@@ -394,9 +394,7 @@ def write_patterns(coords, pattern_name, output_dir, dec=5):
     """
     file_name = pattern_name + ".txt"
     file_path = join(output_dir, file_name)
-    for col in ["score", "pvalue", "qvalue"]:
-        coords[col] = np.round(coords[col], dec)
-    coords.to_csv(file_path, sep="\t", index=None)
+    coords.to_csv(file_path, sep="\t", index=None, float_format=f"%.{dec}f")
 
 
 def save_windows(windows, pattern_name, output_dir=".", format="json"):
