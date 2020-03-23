@@ -272,6 +272,7 @@ def cmd_quantify(args):
     hic_genome.make_sub_matrices()
     # Initialize output structures
     bed2d["score"] = np.nan
+    bed2d["pvalue"] = np.nan
     positions = bed2d.copy()
     if win_size != "auto":
         km = kn = win_size
@@ -335,6 +336,7 @@ def cmd_quantify(args):
             try:
                 if kernel_id == 0:
                     bed2d["score"][sub_pat_idx] = patterns.score
+                    bed2d["pvalue"][sub_pat_idx] = patterns.pvalue
                     windows[sub_pat_idx, :, :] = mat_windows
                 else:
                     # Only update scores and their corresponding windows
@@ -363,6 +365,7 @@ def cmd_quantify(args):
                 columns={"chrom2": "chrom", "start2": "pos"}
             )
         )
+        bed2d["qvalue"] = fdr_correction(bed2d["pvalue"])
         bed2d = bed2d.loc[
             :,
             [
@@ -375,11 +378,14 @@ def cmd_quantify(args):
                 "bin1",
                 "bin2",
                 "score",
+                "pvalue",
+                "qvalue",
             ],
         ]
-        bed2d.to_csv(
-            output / f"{pattern}_quant.txt", sep="\t", header=True, index=False
-        )
+        cio.write_patterns(bed2d, f"{pattern}_quant", output)
+        # bed2d.to_csv(
+        #    output / f"{pattern}_quant.txt", sep="\t", header=True, index=False
+        # )
         cio.save_windows(
             windows, f"{pattern}_quant", output_dir=output, format=win_fmt
         )
