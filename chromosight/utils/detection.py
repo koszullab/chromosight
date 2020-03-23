@@ -1103,19 +1103,19 @@ def _normxcorr2_sparse(
     out.data[~np.isfinite(out.data)] = 0.0
     out.data[out.data < 0] = 0.0
     out.eliminate_zeros()
-    out = out.tocsr()
-    if full:
-        out = out.tocsr()[mk - 1 : -mk + 1, nk - 1 : -nk + 1]
     if pval:
-        pvals = out.tocoo()
+        pvals = out.copy()
         if full:
-            n_obs = kernel_size - ker1_coo.tocsr()[pvals.row, pvals.col]
+            n_obs = kernel_size - ker1_coo.tocsr()[pvals.row, pvals.col].A1
             pvals.data = cus.corr_to_pval(out.data, n_obs)
         else:
             pvals.data = cus.corr_to_pval(out.data, kernel_size)
         pvals = pvals.tocsr()
     else:
         pvals = None
+    out = out.tocsr()
+    if full:
+        out = out.tocsr()[mk - 1 : -mk + 1, nk - 1 : -nk + 1]
     return out, pvals
 
 

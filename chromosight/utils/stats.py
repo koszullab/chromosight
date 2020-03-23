@@ -50,14 +50,15 @@ def corr_to_pval(corr, n, n_missing=None):
         The array of log10-transformed tw-sided p-values,
         same size as corr.
     """
-    n = np.repeat(n, corr.shape)
-
-    means = np.arctanh(corr)
+    if isinstance(n, int):
+        n = np.repeat(n, corr.shape)
+    # Apply Fisher z-transformation on coefficients
+    z1 = 1.1513 * np.log10((1 + corr) / (1 - corr))
     se = 1 / np.sqrt(n - 3)
-    z = (corr - means) / se
+    z_score = z1 / se
     # Get values of the cumulative standard distribution for each zscore
     # Zscores are all set to negative so as to obtain the tail, resulting
     # p-values are multiplied by two to obtain the two-sided values
     # (distribution is symmetric)
-    pvals = 2 * ss.norm().cdf(-np.abs(z))
+    pvals = 2 * ss.norm().cdf(-np.abs(z_score))
     return np.log10(pvals)
