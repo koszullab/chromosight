@@ -298,6 +298,11 @@ def pattern_detector(
             shape=mat.shape,
             format="csr",
         )
+        # When detecting 1D pattern, enforce coordinates on diagonal
+        # coordinates can be shifted by 1 since we keep the two first
+        # diagonals to allow formation of foci via 4-way adjacency
+        if kernel_config["max_dist"] == 0:
+            coords[:, 0] = coords[:, 1]
 
     # Extract windows around coordinates and assign a correlation
     # to each pattern. In detection mode, we drop invalid patterns

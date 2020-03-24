@@ -708,14 +708,6 @@ def cmd_detect(args):
     all_coords = all_coords.loc[~min_dist_drop_mask, :]
     all_windows = all_windows[~min_dist_drop_mask, :, :]
 
-    # For 1D patterns (e.g. borders), make sure positions are on the diagonal
-    if cfg["max_dist"] == 0:
-        all_coords.loc[
-            all_coords.chrom1 == all_coords.chrom2, ["start1", "end1", "bin1"]
-        ] = all_coords.loc[
-            all_coords.chrom1 == all_coords.chrom2, ["start2", "end2", "bin2"]
-        ].to_numpy()
-
     # Correct p-values for multiple testing using FDR
     all_coords["qvalue"] = fdr_correction(all_coords["pvalue"])
     # Reorder columns
