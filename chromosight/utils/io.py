@@ -476,7 +476,7 @@ def load_bed2d(path):
     """
     header_finder = csv.Sniffer()
     with open(path) as f:
-        header = header_finder.has_header(f.read(1024))
+        header = header_finder.has_header(f.read(65536))
     if header:
         bed2d = pd.read_csv(path, sep="\t", header=0, usecols=range(6))
     else:
