@@ -583,8 +583,8 @@ def cmd_detect(args):
     # matrix is processed on the fly (obs / exp, trimming diagonals > max dist)
     hic_genome.make_sub_matrices()
 
-    all_pattern_coords = []
-    all_pattern_windows = []
+    all_coords = []
+    all_windows = []
 
     ### 2: DETECTION ON EACH SUBMATRIX
     pool = mp.Pool(threads)
@@ -646,13 +646,13 @@ def cmd_detect(args):
                     ],
                     axis=0,
                 )
-                all_pattern_coords.append(
+                all_coords.append(
                     pd.concat(kernel_coords, axis=0).reset_index(drop=True)
                 )
                 # Add info about kernel and iteration which detected these patterns
-                all_pattern_coords[-1]["kernel_id"] = kernel_id
-                all_pattern_coords[-1]["iteration"] = i
-                all_pattern_windows.append(kernel_windows)
+                all_coords[-1]["kernel_id"] = kernel_id
+                all_coords[-1]["iteration"] = i
+                all_windows.append(kernel_windows)
 
             # If no pattern was found with this kernel
             # skip directly to the next one, skipping iterations
@@ -664,16 +664,14 @@ def cmd_detect(args):
             run_id += 1
     cio.progress(run_id, total_runs, f"Kernel: {kernel_id}, Iteration: {i}\n")
     # If no pattern detected on any chromosome, with any kernel, exit gracefully
-    if len(all_pattern_coords) == 0:
+    if len(all_coords) == 0:
         sys.stderr.write("No pattern detected ! Exiting.\n")
         sys.exit(0)
 
     # Combine patterns of all kernel matrices into a single array
-    all_pattern_coords = pd.concat(all_pattern_coords, axis=0).reset_index(
-        drop=True
-    )
+    all_coords = pd.concat(all_coords, axis=0).reset_index(drop=True)
     # Combine all windows from different kernels into a single pile of windows
-    all_pattern_windows = np.concatenate(all_pattern_windows, axis=0)
+    all_windows = np.concatenate(all_windows, axis=0)
 
     # Compute minimum separation in bins and make sure it has a reasonable value
     separation_bins = int(cfg["min_separation"] // hic_genome.clr.binsize)
@@ -682,40 +680,46 @@ def cmd_detect(args):
     print(f"Minimum pattern separation is : {separation_bins}")
     # Remove patterns with overlapping windows (smeared patterns)
     distinct_patterns = cid.remove_neighbours(
-        all_pattern_coords, win_size=separation_bins
+        all_coords, win_size=separation_bins
     )
 
     # Drop patterns that are too close to each other
-    all_pattern_coords = all_pattern_coords.loc[distinct_patterns, :]
-    all_pattern_windows = all_pattern_windows[distinct_patterns, :, :]
+    all_coords = all_coords.loc[distinct_patterns, :]
+    all_windows = all_windows[distinct_patterns, :, :]
 
     # Get from bins into basepair coordinates
-    coords_1 = hic_genome.bins_to_coords(all_pattern_coords.bin1).reset_index(
+    coords_1 = hic_genome.bins_to_coords(all_coords.bin1).reset_index(
         drop=True
     )
     coords_1.columns = [str(col) + "1" for col in coords_1.columns]
-    coords_2 = hic_genome.bins_to_coords(all_pattern_coords.bin2).reset_index(
+    coords_2 = hic_genome.bins_to_coords(all_coords.bin2).reset_index(
         drop=True
     )
     coords_2.columns = [str(col) + "2" for col in coords_2.columns]
 
-    all_pattern_coords = pd.concat(
-        [all_pattern_coords.reset_index(drop=True), coords_1, coords_2], axis=1
+    all_coords = pd.concat(
+        [all_coords.reset_index(drop=True), coords_1, coords_2], axis=1
     )
 
     # Filter patterns closer than minimum distance from the diagonal if any
-    min_dist_drop_mask = (
-        all_pattern_coords.chrom1 == all_pattern_coords.chrom2
-    ) & (
-        np.abs(all_pattern_coords.start2 - all_pattern_coords.start1)
-        < cfg["min_dist"]
+    min_dist_drop_mask = (all_coords.chrom1 == all_coords.chrom2) & (
+        np.abs(all_coords.start2 - all_coords.start1) < cfg["min_dist"]
     )
-    all_pattern_coords = all_pattern_coords.loc[~min_dist_drop_mask, :]
-    all_pattern_windows = all_pattern_windows[~min_dist_drop_mask, :, :]
+    all_coords = all_coords.loc[~min_dist_drop_mask, :]
+    all_windows = all_windows[~min_dist_drop_mask, :, :]
+
+    # For 1D patterns (e.g. borders), make sure positions are on the diagonal
+    if cfg["max_dist"] == 0:
+        all_coords.loc[
+            all_coords.chrom1 == all_coords.chrom2, ["start1", "end1", "bin1"]
+        ] = all_coords.loc[
+            all_coords.chrom1 == all_coords.chrom2, ["start2", "end2", "bin2"]
+        ].to_numpy()
+
     # Correct p-values for multiple testing using FDR
-    all_pattern_coords["qvalue"] = fdr_correction(all_pattern_coords["pvalue"])
+    all_coords["qvalue"] = fdr_correction(all_coords["pvalue"])
     # Reorder columns
-    all_pattern_coords = all_pattern_coords.loc[
+    all_coords = all_coords.loc[
         :,
         [
             "chrom1",
@@ -735,21 +739,19 @@ def cmd_detect(args):
     ]
 
     ### 3: WRITE OUTPUT
-    sys.stderr.write(f"{all_pattern_coords.shape[0]} patterns detected\n")
+    sys.stderr.write(f"{all_coords.shape[0]} patterns detected\n")
     # Save patterns and their coordinates in a tsv file
-    cio.write_patterns(all_pattern_coords, cfg["name"] + "_out", output)
+    cio.write_patterns(all_coords, cfg["name"] + "_out", output)
     # Save windows as an array in an npy file
-    cio.save_windows(
-        all_pattern_windows, cfg["name"] + "_out", output, format=win_fmt
-    )
+    cio.save_windows(all_windows, cfg["name"] + "_out", output, format=win_fmt)
 
     # Generate pileup visualisations if requested
     if plotting_enabled:
         # Compute and plot pileup
         pileup_fname = ("pileup_of_{n}_{pattern}").format(
-            pattern=cfg["name"], n=all_pattern_windows.shape[0]
+            pattern=cfg["name"], n=all_windows.shape[0]
         )
-        windows_pileup = cid.pileup_patterns(all_pattern_windows)
+        windows_pileup = cid.pileup_patterns(all_windows)
         pileup_plot(windows_pileup, name=pileup_fname, output=output)
 
 
