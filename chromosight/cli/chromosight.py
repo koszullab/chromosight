@@ -20,7 +20,7 @@ Usage:
     chromosight quantify [--inter] [--pattern=loops] [--subsample=no]
                          [--win-fmt=json] [--kernel-config=FILE] [--force-norm]
                          [--threads=1] [--full] [--n-mads=5] [--win-size=auto]
-                         [--tsvd] <bed2d> <contact_map> <output>
+                         [--no-plotting] [--tsvd] <bed2d> <contact_map> <output>
     chromosight test
 
     detect:
@@ -218,6 +218,7 @@ def cmd_quantify(args):
     pattern = args["--pattern"]
     inter = args["--inter"]
     kernel_config_path = args["--kernel-config"]
+    plotting_enabled = False if args["--no-plotting"] else True
     threads = int(args["--threads"])
     force_norm = args["--force-norm"]
     tsvd = 0.999 if args["--tsvd"] else None
@@ -389,6 +390,14 @@ def cmd_quantify(args):
         cio.save_windows(
             windows, f"{pattern}_quant", output_dir=output, format=win_fmt
         )
+        # Generate pileup visualisations if requested
+        if plotting_enabled:
+            # Compute and plot pileup
+            pileup_fname = ("pileup_of_{n}_{pattern}").format(
+                pattern=cfg["name"], n=windows.shape[0]
+            )
+            windows_pileup = cid.pileup_patterns(windows)
+            pileup_plot(windows_pileup, name=pileup_fname, output=output)
 
 
 def cmd_generate_config(args):
