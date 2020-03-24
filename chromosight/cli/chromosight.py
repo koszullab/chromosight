@@ -262,6 +262,8 @@ def cmd_quantify(args):
     max_diag = hic_genome.clr.shape[0] * hic_genome.clr.binsize
     cfg["max_dist"] = min(furthest, max_diag)
     cfg["min_dist"] = 0
+    cfg["max_perc_undetected"] = 100
+
     # Notify contact map instance of changes in scanning distance
     hic_genome.kernel_config = cfg
     # Normalize (balance) matrix using ICE
@@ -344,7 +346,7 @@ def cmd_quantify(args):
                     # if better than results from previous kernels
                     better = (
                         patterns.score > bed2d["score"][sub_pat_idx].values
-                    )
+                    ) | (np.insnan(bed2d["score"][sub_pat_idx].values))
                     better_idx = sub_pat_idx[better]
                     bed2d["score"][better_idx] = patterns.score[better]
                     windows[better_idx, :, :] = mat_windows[better]

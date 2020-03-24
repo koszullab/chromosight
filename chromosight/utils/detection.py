@@ -79,7 +79,7 @@ def validate_patterns(
     # Initialize structure to store pattern windows
     pattern_windows = np.full(
         (coords.shape[0], win_h, win_w), np.nan
-    )  # list containing all pannel of detected patterns
+    )  # list containing all panel of detected patterns
     for i, l in enumerate(coords):
         p1 = int(l[0])
         p2 = int(l[1])
