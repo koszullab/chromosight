@@ -856,7 +856,6 @@ def resize_kernel(
     signal_res=None,
     factor=None,
     min_size=7,
-    max_size=101,
 ):
     """
     Resize a kernel matrix based on the resolution at which it was defined and
@@ -882,8 +881,6 @@ def resize_kernel(
         shrink it.
     min_size : int
         Lower bound, in number of rows/column allowed when resizing the kernel.
-    max_size : int
-        Upper bound, in number of rows/column allowed when resizing the kernel.
 
     Returns
     -------
@@ -912,8 +909,6 @@ def resize_kernel(
         # Define by how many times kernel must be enlarged for its pixels to
         # match the signal's pixels
         resize_factor = kernel_res / signal_res
-    if km * resize_factor > max_size:
-        resize_factor = max_size / km
     elif km * resize_factor < min_size:
         resize_factor = min_size / km
 
