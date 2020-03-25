@@ -66,36 +66,40 @@ Alternatively, one can set the `--win-fmt=npy` option to dump windows into a npy
 
 ```
 Pattern exploration and detection
-
 Explore and detect patterns (loops, borders, centromeres, etc.) in Hi-C contact
 maps with pattern matching.
-
 Usage:
-    chromosight detect  [--kernel-config=FILE] [--pattern=loops] [--pearson=auto]
-                        [--iterations=auto] [--resize-kernel] [--win-fmt={json,npy}]
-                        [--subsample=no] [--inter] [--smooth-trend] [--n-mads=5]
-                        [--min-dist=0] [--max-dist=auto] [--no-plotting]
-                        [--min-separation=auto] [--threads=1] [--dump=DIR]
-                        [--perc-undetected=auto] <contact_map> [<output>]
-    chromosight generate-config <prefix> [--preset loops] [--click contact_map] [--win-size=auto] [--n-mads=INT]
-    chromosight quantify [--inter] [--pattern=loops] [--subsample=no] [--win-fmt=json]
-                         [--n-mads=5] [--win-size=auto] <bed2d> <contact_map> <output>
+    chromosight detect  [--kernel-config=FILE] [--pattern=loops]
+                        [--pearson=auto] [--win-size=auto] [--iterations=auto]
+                        [--win-fmt={json,npy}] [--force-norm] [--full]
+                        [--subsample=no] [--inter] [--tsvd] [--smooth-trend]
+                        [--n-mads=5] [--min-dist=0] [--max-dist=auto]
+                        [--no-plotting] [--min-separation=auto] [--dump=DIR]
+                        [--threads=1] [--perc-undetected=auto] <contact_map>
+                        [<output>]
+    chromosight generate-config [--preset loops] [--click contact_map]
+                        [--force-norm] [--win-size=auto] [--n-mads=5]
+                        [--threads=1] <prefix>
+    chromosight quantify [--inter] [--pattern=loops] [--subsample=no]
+                         [--win-fmt=json] [--kernel-config=FILE] [--force-norm]
+                         [--threads=1] [--full] [--n-mads=5] [--win-size=auto]
+                         [--no-plotting] [--tsvd] <bed2d> <contact_map> <output>
     chromosight test
-
-    detect: 
-        performs pattern detection on a Hi-C contact map using kernel convolution
+  
+    detect:
+        performs pattern detection on a Hi-C contact map via template matching
     generate-config:
-        Generate pre-filled config files to use for `chromosight detect`. 
-        A config consists of a JSON file describing analysis parameters for the
-        detection and path pointing to kernel matrices files. Those matrices
-        files are tsv files with numeric values ordered in a square dense matrix
-        to use for convolution.
+        Generate pre-filled config files to use for detect and quantify.
+        A config consists of a JSON file describing parameters for the
+        analysis and path pointing to kernel matrices files. Those matrices
+        files are tsv files with numeric values as kernel to use for
+        convolution.
     quantify:
         Given a list of pairs of positions and a contact map, computes the
         correlation coefficients between those positions and the kernel of the
         selected pattern.
-    test:                       
-        Download example data and run the program on it.
+    test:
+        Download example data and run loop detection on it.
 
 ```
 
