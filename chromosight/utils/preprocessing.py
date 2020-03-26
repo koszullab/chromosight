@@ -909,7 +909,7 @@ def resize_kernel(
         # Define by how many times kernel must be enlarged for its pixels to
         # match the signal's pixels
         resize_factor = kernel_res / signal_res
-    elif km * resize_factor < min_size:
+    if km * resize_factor < min_size:
         resize_factor = min_size / km
 
     resized_kernel = ndi.zoom(kernel, resize_factor, order=1)

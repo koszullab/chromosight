@@ -147,7 +147,7 @@ def test_resize_kernel():
     """
     m = 15
     # Restrict minimum and maximum dimensions of resized kernels
-    min_allowed_dim, max_allowed_dim = 5, 101
+    min_allowed_dim = 5
     # Use a simple point to check if result is centered
     point_kernel = np.zeros((m, m))
     point_kernel[m // 2, m // 2] = 10
@@ -163,22 +163,18 @@ def test_resize_kernel():
                 kernel_res=kernel_res,
                 signal_res=signal_res,
                 min_size=min_allowed_dim,
-                max_size=max_allowed_dim,
             )
             obs_kernel_factor = preproc.resize_kernel(
                 point_kernel,
                 factor=kernel_res / signal_res,
                 min_size=min_allowed_dim,
-                max_size=max_allowed_dim,
             )
 
             obs_dim = obs_kernel.shape[0]
             obs_dim_factor = obs_kernel_factor.shape[0]
             assert obs_dim == obs_kernel.shape[1]
             assert obs_dim == obs_dim_factor
-            assert obs_dim == max(
-                min(max_allowed_dim, exp_dim), min_allowed_dim
-            )
+            assert obs_dim == max(exp_dim, min_allowed_dim)
             assert np.max(obs_kernel) == obs_kernel[obs_dim // 2, obs_dim // 2]
 
 
