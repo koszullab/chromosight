@@ -277,10 +277,12 @@ def cmd_quantify(args):
     bed2d["score"] = np.nan
     bed2d["pvalue"] = np.nan
     positions = bed2d.copy()
+    # Only resize kernel matrix if explicitely requested
+    km, kn = cfg["kernels"][0].shape
     if win_size != "auto":
+        for i, k in enumerate(cfg['kernels']):
+            cfg['kernels'][i] = resize_kernel(k, factor=win_size / km)
         km = kn = win_size
-    else:
-        km, kn = cfg["kernels"][0].shape
     windows = np.full((positions.shape[0], km, kn), np.nan)
     # For each position, we use the center of the BED interval
     positions["pos1"] = (positions.start1 + positions.end1) // 2
@@ -288,9 +290,6 @@ def cmd_quantify(args):
     # Use each kernel matrix available for the pattern
     for kernel_id, kernel_matrix in enumerate(cfg["kernels"]):
         cio.progress(kernel_id, len(cfg["kernels"]), f"Kernel: {kernel_id}\n")
-        # Only resize kernel matrix if explicitely requested
-        if win_size != "auto":
-            kernel_matrix = resize_kernel(kernel_matrix, factor=win_size / km)
         # Iterate over intra- and inter-chromosomal sub-matrices
         n_sub_mats = hic_genome.sub_mats.shape[0]
         for sub_mat_id, sub_mat in enumerate(hic_genome.sub_mats.iterrows()):
