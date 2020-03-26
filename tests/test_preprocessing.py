@@ -152,7 +152,7 @@ def test_resize_kernel():
     point_kernel = np.zeros((m, m))
     point_kernel[m // 2, m // 2] = 10
     # Try with different combinations of source and target resolutions
-    res_list = [3, 900, 5000, 10000]
+    res_list = [3, 4, 6, 10]
     for kernel_res in res_list:
         for signal_res in res_list:
             exp_dim = int(m * kernel_res / signal_res)
