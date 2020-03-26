@@ -280,6 +280,8 @@ def cmd_quantify(args):
     # Only resize kernel matrix if explicitely requested
     km, kn = cfg["kernels"][0].shape
     if win_size != "auto":
+        if not win_size % 2:
+            raise ValueError("--win-size must be odd")
         for i, k in enumerate(cfg['kernels']):
             cfg['kernels'][i] = resize_kernel(k, factor=win_size / km)
         km = kn = win_size
@@ -420,6 +422,8 @@ def cmd_generate_config(args):
     # If a specific window size if requested, resize all kernels
     if win_size != "auto":
         win_size = int(win_size)
+        if not win_size % 2:
+            raise ValueError("--win-size must be odd")
         resize = lambda m: resize_kernel(m, factor=win_size / m.shape[0])
         cfg["kernels"] = [resize(k) for k in cfg["kernels"]]
     # Otherwise, just inherit window size from the kernel config
@@ -559,7 +563,10 @@ def cmd_detect(args):
 
     # Resize kernels if requested
     if win_size != "auto":
-        resize = lambda m: resize_kernel(m, factor=int(win_size) / m.shape[0])
+        win_size = int(win_size)
+        if not win_size % 2:
+            raise ValueError("--win-size must be odd")
+        resize = lambda m: resize_kernel(m, factor=win_size / m.shape[0])
         cfg["kernels"] = [resize(k) for k in cfg["kernels"]]
 
     if interchrom:
