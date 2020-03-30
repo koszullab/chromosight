@@ -38,7 +38,7 @@ def fdr_correction(pvals):
     return qvals
 
 
-def corr_to_pval(corr, n, n_missing=None):
+def corr_to_pval(corr, n, rho0=0):
     """
     Given a list of Pearson correlation coefficient,
     convert them to two-sided log10 p-values. The p-values
@@ -53,11 +53,14 @@ def corr_to_pval(corr, n, n_missing=None):
         The number of observations used to compute correlation
         coefficients. Can be given as an array of the same size as corr
         to give the number of sample in each coefficient.
+    rho0 : float
+        The correlation value under h0. We test if corr is
+        significantly different from rho0.
 
     Returns
     -------
     numpy.array
-        The array of log10-transformed tw-sided p-values,
+        The array of log10-transformed two-sided p-values,
         same size as corr.
     """
     if isinstance(n, int):
@@ -66,9 +69,9 @@ def corr_to_pval(corr, n, n_missing=None):
         if n.shape != corr.shape:
             raise ValueError("corr and n must have identical shapes.")
     # Apply Fisher z-transformation on coefficients
-    z1 = 1.1513 * np.log10((1 + corr) / (1 - corr))
+    fisher_tr = lambda x: 1.1513 * np.log10((1 + x) / (1 - x))
     se = 1 / np.sqrt(n - 3)
-    z_score = z1 / se
+    z_score = (fisher_tr(corr) - fisher_tr(rho0)) / se
     # Get values of the cumulative standard distribution for each zscore
     # Zscores are all set to negative so as to obtain the tail, resulting
     # p-values are multiplied by two to obtain the two-sided values
