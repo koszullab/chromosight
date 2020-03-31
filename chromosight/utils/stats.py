@@ -69,13 +69,11 @@ def corr_to_pval(corr, n, rho0=0):
         if n.shape != corr.shape:
             raise ValueError("corr and n must have identical shapes.")
     # Apply Fisher z-transformation on coefficients
-    fisher_tr = lambda x: 1.1513 * np.log10((1 + x) / (1 - x))
-    se = 1 / np.sqrt(n - 3)
-    z_score = (fisher_tr(corr) - fisher_tr(rho0)) / se
+    z_score = np.arctanh(corr) - np.arctanh(rho0)
     # Get values of the cumulative standard distribution for each zscore
     # Zscores are all set to negative so as to obtain the tail, resulting
     # p-values are multiplied by two to obtain the two-sided values
     # (distribution is symmetric)
-    pvals = 2 * ss.norm().cdf(-np.abs(z_score))
+    pvals = 2 * ss.norm().cdf(-np.abs(z_score * np.sqrt(n - 3)))
 
     return np.log10(pvals)
