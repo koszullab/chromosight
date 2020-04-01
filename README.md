@@ -3,7 +3,8 @@
 
 [![PyPI version](https://badge.fury.io/py/chromosight.svg)](https://badge.fury.io/py/chromosight) [![Anaconda cloud](https://anaconda.org/bioconda/chromosight/badges/version.svg)](https://anaconda.org/bioconda/chromosight) [![Build Status](https://travis-ci.com/koszullab/chromosight.svg?branch=master)](https://travis-ci.com/koszullab/chromosight) [![codecov](https://codecov.io/gh/koszullab/chromosight/branch/master/graph/badge.svg)](https://codecov.io/gh/koszullab/chromosight) [![Read the docs](https://readthedocs.org/projects/chromosight/badge)](https://chromosight.readthedocs.io) [![License: GPLv3](https://img.shields.io/badge/License-GPL%203-0298c3.svg)](https://opensource.org/licenses/GPL-3.0) [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/ambv/black) 
 
-Python package to detect chromatin loops (and other patterns) in Hi-C contact maps.
+Python package to detect chromatin loops (and other patterns) in Hi-C contact maps. 
+Preprint can be found on https://www.biorxiv.org/content/10.1101/2020.03.08.981910v2
 
 ## Installation
 
