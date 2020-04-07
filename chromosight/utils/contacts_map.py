@@ -561,13 +561,15 @@ class ContactMap:
         self.matrix = self.clr.matrix(sparse=True, balance=False)[s1:e1, s2:e2]
         subsample = float(sub)
         if subsample < 0:
-            raise ValueError("Error: Subsample must be strictly positive.")
+            raise ValueError("Subsample must be strictly positive.")
         # If subsample is a proportion, convert it to contact count
-        elif subsample < 1:
+        elif subsample <= 1:
             subsample *= self.matrix.sum()
+        else:
+            raise ValueError("Subsample cannot be above 1")
         # If the contact count is lower than total, apply subsampling
+        subsample = int(subsample)
         if subsample < self.matrix.sum():
-            subsample = int(subsample)
             # print(f"Subsampling {subsample} contacts from {self.name}")
             # Apply subsampling on the raw contact matrix
             self.matrix = preproc.subsample_contacts(
