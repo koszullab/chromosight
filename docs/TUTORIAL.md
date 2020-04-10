@@ -104,3 +104,7 @@ chromosight generate-config --click sample1.cool --win-size 15 demo_manual
 ```
 
 This command will generate a config based on the loops template (the default) and will display the contact map `sample1.cool`. Every time the user double-clicks on a pixel, a window of 15x15 pixels centered on that position is recorded. The operation can be repeated as many times as the user wishes, and when the window is closed, all windows are averaged, a slight gaussian blur is added to reduce the impact of random noise, and the resulting pileup is used as the kernel when writing the config files.
+
+## A note on borders and kernels
+
+One constraint in chromosight is that kernels must have an odd number of rows/columns. This is because chromosight always reports the center pixel of each window when computing correlations. For patterns which do not have a central pixel, such are borders which are between two pixels, a choice has to be made when making the kernel. In the case of borders, the kernel is shifted so that the central pixel is always the pixel on the right of the border.

@@ -268,6 +268,7 @@ def pattern_detector(
     # Only attempt detection if no input coordinates were given
     if run_mode == "detect":
         # Find foci of highly correlated pixels and pick local maxima
+        #coords, foci_mat = picker(np.abs(mat_log10_pvals), 5)
         coords, foci_mat = picker(mat_conv, kernel_config["pearson"],)
         # If nothing was detected, no point in resuming
         if coords is None:
@@ -477,7 +478,6 @@ def label_foci(matrix):
            [0 0 0 0]])
     """
     # step 1 : ensure that coo format is double ranked (row, col).
-    # TODO: we could find a trick to avoid this conversion step
     matrix_sp = sp.coo_matrix(sp.csr_matrix(matrix))
 
     nb_row, nb_col = matrix_sp.shape
@@ -974,7 +974,6 @@ def _normxcorr2_sparse(
     # be centered on the edges.
     if full:
         # Create a vertical margin and use it to pad the signal
-        # TODO: delegate signal framing to frame
         tmp = sp.csr_matrix((mk - 1, ns))
         framed_sig = sp.vstack([tmp, signal, tmp], format=signal.format)
         # Same for the horizontal margin

@@ -417,7 +417,6 @@ def save_windows(windows, pattern_name, output_dir=".", format="json"):
         numpy's binary format, or json for a general purpose text
         format.
     """
-    # TODO: Adapt for windows of different sizes
     if format == "npy":
         file_name = pattern_name + ".npy"
         file_path = join(output_dir, file_name)
