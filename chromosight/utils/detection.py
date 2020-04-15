@@ -875,8 +875,6 @@ def normxcorr2(
         if min(kernel.shape) >= max(signal.shape):
             raise ValueError("cannot have kernel bigger than signal")
         preproc.check_missing_mask(signal, missing_mask)
-        if missing_mask.nnz == 0:
-            missing_mask = None
 
     if sp.issparse(kernel):
         raise ValueError("cannot handle kernel in sparse format")
@@ -1108,7 +1106,7 @@ def _normxcorr2_sparse(
     out.eliminate_zeros()
     if pval:
         pvals = out.copy()
-        if full:
+        if full and missing_mask is None:
             try:
                 # Get number of values for each coeff
                 n_obs = ker1_coo.tocsr()[pvals.row, pvals.col].A1
