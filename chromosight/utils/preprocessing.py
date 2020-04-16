@@ -60,8 +60,8 @@ def erase_missing(signal, valid_rows, valid_cols, sym_upper=True):
         missing_cols = np.ones(signal.shape[1])
         missing_rows[valid_rows] = 0
         missing_cols[valid_cols] = 0
-        missing_rows = np.where(missing_rows)[0]
-        missing_cols = np.where(missing_cols)[0]
+        missing_rows = np.flatnonzero(missing_rows)
+        missing_cols = np.flatnonzero(missing_cols)
         erased = signal.copy()
         erased[missing_rows, :] = 0
         erased[:, missing_cols] = 0
@@ -322,7 +322,7 @@ def get_detectable_bins(mat, n_mads=3, inter=False):
         detect_threshold = max(1, sum_med - sum_mad * n_mads)
 
         # Removal of poor interacting rows and columns
-        good_bins = np.where(sum_bins > detect_threshold)[0]
+        good_bins = np.flatnonzero(sum_bins > detect_threshold)
         good_bins = (good_bins, good_bins)
     else:
         # Adapted for asymetric matrices (need to compute rows and columns)
@@ -331,8 +331,8 @@ def get_detectable_bins(mat, n_mads=3, inter=False):
         med_rows, med_cols = np.median(sum_rows), np.median(sum_cols)
         detect_threshold_rows = max(1, med_rows - mad_rows * n_mads)
         detect_threshold_cols = max(1, med_cols - mad_cols * n_mads)
-        good_rows = np.where(sum_rows > detect_threshold_rows)[0]
-        good_cols = np.where(sum_cols > detect_threshold_cols)[0]
+        good_rows = np.flatnonzero(sum_rows > detect_threshold_rows)
+        good_cols = np.flatnonzero(sum_cols > detect_threshold_cols)
         good_bins = (good_rows, good_cols)
     return good_bins
 
@@ -447,7 +447,7 @@ def signal_to_noise_threshold(matrix, detectable_bins):
     threshold_noise = 1.0
     snr[np.isnan(snr)] = 0.0
     try:
-        max_dist = min(np.where(snr < threshold_noise)[0])
+        max_dist = min(np.flatnonzero(snr < threshold_noise))
     except ValueError:
         max_dist = matrix.shape[0]
     return max_dist
@@ -692,7 +692,7 @@ def make_missing_mask(
     # In case there is no valid row
     except IndexError:
         pass
-    missing_rows = np.where(missing_rows)[0]
+    missing_rows = np.flatnonzero(missing_rows)
     # When matrix is sym., rows and cols are synonym, no need to compute 2x
     if sym_upper:
         missing_cols = missing_rows
@@ -703,7 +703,7 @@ def make_missing_mask(
         # In case there is no valid col
         except IndexError:
             pass
-        missing_cols = np.where(missing_cols)[0]
+        missing_cols = np.flatnonzero(missing_cols)
 
     # If upper sym., fill only upper diag up to max_dist.
     # E. g. with bins 1 and 3 missing
@@ -956,7 +956,7 @@ def factorise_kernel(kernel, prop_info=0.999):
     u, sigma, v = la.svd(kernel)
     total_info = np.sum(sigma ** 2)
     # Compute min. number of singular vectors to retain enough info
-    keep_k = np.where(np.cumsum(sigma ** 2) > prop_info * total_info)[0][0] + 1
+    keep_k = np.flatnonzero(np.cumsum(sigma ** 2) > prop_info * total_info)[0] + 1
     if keep_k > np.floor(min(kernel.shape) / 2):
         sys.stderr.write(
             f"Warning: Kernel factorisation required {keep_k} singular,"

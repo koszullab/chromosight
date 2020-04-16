@@ -360,10 +360,10 @@ def remove_neighbours(patterns, win_size=8):
     blacklist = set()
     for i, p in sorted_patterns.iterrows():
         if i not in blacklist:
-            close_patterns = np.where(
+            close_patterns = np.flatnonzero(
                 (np.abs(sorted_patterns.bin1 - p.bin1) < win_size)
                 & (np.abs(sorted_patterns.bin2 - p.bin2) < win_size)
-            )[0]
+            )
             close_patterns_idx = sorted_patterns.index.values[close_patterns]
             close_patterns_idx = close_patterns_idx[close_patterns_idx != i]
             for idx in close_patterns_idx:
@@ -421,7 +421,7 @@ def picker(mat_conv, pearson):
         # This is why we use focus_rank
         for focus_rank, focus_id in enumerate(np.unique(labelled_mat.data)):
             # Remember 1D indices of datapoint in focus
-            focus_idx = np.where(labelled_mat.data == focus_id)[0]
+            focus_idx = np.flatnonzero(labelled_mat.data == focus_id)
             focus_rows, focus_cols = (
                 labelled_mat.row[focus_idx],
                 labelled_mat.col[focus_idx],
@@ -503,7 +503,7 @@ def label_foci(matrix):
     diff_col_rc = col_rc[1:] - col_rc[:-1]
     # Right connected pixels are on the same row and neighboring cols
     right_connected_p = (diff_row_rc == 0) & (diff_col_rc == 1)
-    right_connected_k = np.where(right_connected_p)[0]
+    right_connected_k = np.flatnonzero(right_connected_p)
 
     right_node1 = right_connected_k
     right_node2 = right_connected_k + 1
@@ -517,7 +517,7 @@ def label_foci(matrix):
     diff_col_cr = col_cr[1:] - col_cr[:-1]
 
     lower_connected_p = (diff_row_cr == 1) & (diff_col_cr == 0)
-    lower_connected_k = np.where(lower_connected_p)[0]
+    lower_connected_k = np.flatnonzero(lower_connected_p)
 
     cr2rc = np.arange(len(coo_cr))[coo_cr]
     lower_node1 = cr2rc[lower_connected_k]

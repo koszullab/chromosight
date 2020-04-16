@@ -198,7 +198,7 @@ class HicGenome:
             # Reload bins attribute to include the weight  column
             self.bins = self.clr.bins()[:]
         # Bins with NaN weight are missing, matrix already balanced
-        self.detectable_bins = np.where(np.isfinite(self.bins.weight))[0]
+        self.detectable_bins = np.flatnonzero(np.isfinite(self.bins.weight))
         print(
             f"Found {len(self.detectable_bins)} / {self.clr.shape[0]}"
             "detectable bins"
