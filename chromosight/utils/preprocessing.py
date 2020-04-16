@@ -687,14 +687,22 @@ def make_missing_mask(
 
     # Get a boolean array of missing (1) and valid (0) rows
     missing_rows = np.ones(sm, dtype=bool)
-    missing_rows[valid_rows] = False
+    try:
+        missing_rows[valid_rows] = False
+    # In case there is no valid row
+    except IndexError:
+        pass
     missing_rows = np.where(missing_rows)[0]
     # When matrix is sym., rows and cols are synonym, no need to compute 2x
     if sym_upper:
         missing_cols = missing_rows
     else:
         missing_cols = np.ones(sn, dtype=bool)
-        missing_cols[valid_cols] = False
+        try:
+            missing_cols[valid_cols] = False
+        # In case there is no valid col
+        except IndexError:
+            pass
         missing_cols = np.where(missing_cols)[0]
 
     # If upper sym., fill only upper diag up to max_dist.
