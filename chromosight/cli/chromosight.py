@@ -302,7 +302,6 @@ def cmd_quantify(args):
             sub_pat = positions.loc[
                 (positions.chrom1 == mat.chr1) & (positions.chrom2 == mat.chr2)
             ]
-            sub_pat_idx = sub_pat.index.values
             # Convert genomic coordinates to bins for horizontal and vertical axes
             for ax in [1, 2]:
                 sub_pat_ax = sub_pat.loc[:, [f"chrom{ax}", f"pos{ax}"]].rename(
@@ -316,9 +315,11 @@ def cmd_quantify(args):
             if np.any(fall_out):
                 n_out = len(sub_pat_bins[fall_out])
                 sys.stderr.write(
-                    f"{n_out} entr{'ies' if n_out > 1 else 'y'} outside "
+                    f"\n{n_out} entr{'ies' if n_out > 1 else 'y'} outside "
                     "genomic coordinates of the Hi-C matrix will be ignored.\n"
                 )
+                sub_pat = sub_pat.loc[~fall_out, :]
+            sub_pat_idx = sub_pat.index.values
             # Convert bins from whole genome matrix to sub matrix
             sub_pat = hic_genome.get_sub_mat_pattern(
                 mat.chr1, mat.chr2, sub_pat
