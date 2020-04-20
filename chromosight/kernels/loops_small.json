@@ -1,0 +1,13 @@
+{
+  "name": "loops_small",
+  "kernels": [
+    "artificial_template_loops_small.txt"
+  ],
+  "min_dist": 10000,
+  "max_dist": 2000000,
+  "max_iterations": 1,
+  "max_perc_undetected": 10.0,
+  "min_separation": 5000,
+  "pearson": 0.4,
+  "resolution": 2000
+}
