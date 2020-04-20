@@ -576,16 +576,16 @@ class ContactMap:
                 self.matrix, int(subsample)
             )
             # Balance the subsampled submatrix using precomputed weights
-            if balance:
-                weights = self.clr.bins()['weight']  # view
-                bias_rows = weights[s1:e1].values
-                bias_cols = weights[s2:e2].values
-                self.matrix.data = (
-                    bias_rows[self.matrix.row] *
-                    bias_cols[self.matrix.col] *
-                    self.matrix.data
-                    )
-                self.matrix.data[np.isnan(self.matrix.data)] = 0
+        if balance:
+            weights = self.clr.bins()['weight']  # view
+            bias_rows = weights[s1:e1].values
+            bias_cols = weights[s2:e2].values
+            self.matrix.data = (
+                bias_rows[self.matrix.row] *
+                bias_cols[self.matrix.col] *
+                self.matrix.data
+                )
+            self.matrix.data[np.isnan(self.matrix.data)] = 0
 
     @DumpMatrix("01_process_inter")
     def preprocess_inter_matrix(self):
