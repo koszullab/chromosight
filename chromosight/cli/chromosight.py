@@ -753,6 +753,12 @@ def cmd_detect(args):
             pattern=cfg["name"], n=all_windows.shape[0]
         )
         windows_pileup = cid.pileup_patterns(all_windows)
+        # Symmetrize pileup for diagonal patterns
+        if not cfg['max_dist']:
+            # Replace nan below diag by 0
+            windows_pileup = np.nan_to_num(windows_pileup)
+            # Add transpose
+            windows_pileup += np.transpose(windows_pileup) - np.diag(np.diag(windows_pileup))
         pileup_plot(windows_pileup, name=pileup_fname, output=output)
 
 
