@@ -10,7 +10,7 @@ Which will download a test dataset and run chromosight on it. This is useful to 
 ## Detection
 
 
-`chromosight detect` takes input in the form of Hi-C matrices, either in cool or bedgraph2 format. This command allows to detect patterns on Hi-C maps, such as chromatin loops or domain (e.g. TADS) borders, and report their coordinates.
+`chromosight detect` takes input in the form of Hi-C matrices in cool format. This command allows to detect patterns on Hi-C maps, such as chromatin loops or domain (e.g. TADS) borders, and report their coordinates.
 
 The following command line can be used to run loop detection (the default pattern):
 
