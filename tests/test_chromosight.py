@@ -13,7 +13,7 @@ DUMPDIR = tempfile.TemporaryDirectory()
 # Select a bunch of arguments that are relevant to test and generate
 # all possible combinations. Put them in a datastructure that can be digested
 # by docopt
-detect_args = ["-I", "-f", "-n", f"-d {DUMPDIR.name}"]
+detect_args = ["-I", "-n", f"-d {DUMPDIR.name}"]
 detect_combos = []
 for i in range(0, len(detect_args) + 1):
     args_combos = list(it.combinations(detect_args, i))
@@ -51,3 +51,8 @@ def test_cmd_quantify(pattern):
         ["quantify", "--pattern", pattern, BED2D, COOL, OUTDIR.name],
     )
     ccc.cmd_quantify(args)
+
+def test_cmd_test():
+    """Test the ...test command to make sure it doesn't crash."""
+    args = docopt(ccc.__doc__, ["test"])
+    ccc.cmd_test(args)

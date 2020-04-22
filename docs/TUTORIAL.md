@@ -66,7 +66,7 @@ bedtools window -a cohesin_peaks.bed -b cohesin_peaks.bed -w $MAXDIST \
     > cohesin_combinations_20kb_1Mb.bed2d
 ```
 
-To quantify a pattern only the diagonal (e.g. borders, hairpins), one can use the following command instead.
+To quantify a pattern present only on the diagonal (e.g. borders, hairpins), the following command can be used instead.
 
 ```bash
 paste cohesin_peaks.bed cohesin_peaks.bed > cohesin_combinations_0.bed2d
