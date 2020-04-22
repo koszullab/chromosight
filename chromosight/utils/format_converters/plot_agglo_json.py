@@ -7,13 +7,9 @@ To plot results of quantification of pattern
 Ex: python plot_agglo_json.py loops_quant.json loops_quant.txt  arima
 """
 import numpy as np
-import scipy
-import time
-import itertools
 import matplotlib.pylab as plt
 import json
 import pandas as pd
-import matplotlib.gridspec as gridspec
 import sys 
 
 json_file = sys.argv[1]     # json file 

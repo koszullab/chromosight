@@ -18,9 +18,8 @@ bank2="Mitotic"
 
 
 # Removal on Nan:
-df4 = [df1['score'] , df2['score']]
 df4 = pd.DataFrame({'score1':  df1['score'], 
-                    'score2': df2['score']}, columns=['score1', 'score2'])
+                    'score2': df2['score']})
 
 df4 = df4[(np.isfinite(df4['score1']) & np.isfinite(df4['score2']))]
 

@@ -1024,7 +1024,6 @@ def _normxcorr2_sparse(
         preproc.check_missing_mask(framed_sig, framed_missing_mask)
         kernel_sum = np.sum(kernel)
         kernel_mean = kernel_sum / kernel_size
-        kernel_std = float(kernel.std())
         kernel2_sum = np.sum(kernel ** 2)
         kernel2_mean = kernel2_sum / kernel_size
         # Compute convolution of uniform kernel with missing mask to get number
@@ -1189,9 +1188,6 @@ def _normxcorr2_dense(
     if isinstance(kernel, np.matrix):
         kernel = np.array(kernel)
 
-    if missing_mask is not None:
-        return xcorr2(signal, kernel)
-
     kernel_size = mk * nk
     kernel1 = np.ones(kernel.shape)
     if full:
@@ -1207,14 +1203,12 @@ def _normxcorr2_dense(
             )
     else:
         framed_sig = signal
-        framed_missing_mask = None
         if missing_mask is not None:
             framed_missing_mask = missing_mask.copy()
     # Pearson correlation
     kernel_mean = float(kernel.mean())
     kernel_std = float(kernel.std())
 
-    kernel1 = np.ones(kernel.shape)
     framed_sig_mean = xcorr2(framed_sig, kernel1 / kernel_size)
 
     if missing_mask is None:

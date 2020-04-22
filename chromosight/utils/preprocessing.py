@@ -88,7 +88,6 @@ def normalize(B, good_bins=None, iterations=10):
         The SCN normalised Hi-C matrix
     """
     if good_bins is None:
-        good_bins = np.arange(B.shape[0])
         r = B.copy()
     else:
         # Enforce removal of values in missing bins
@@ -897,9 +896,9 @@ def resize_kernel(
     """
     km, kn = kernel.shape
     if km != kn:
-        ValueError("kernel must be square.")
+        raise ValueError("kernel must be square.")
     if not (km % 2) or not (kn % 2):
-        ValueError("kernel size must be odd.")
+        raise ValueError("kernel size must be odd.")
 
     if factor is not None:
         if kernel_res is not None or signal_res is not None:

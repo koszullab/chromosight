@@ -134,7 +134,7 @@ class HicGenome:
                         "sample value is higher than total contacts,"
                         "skipping subsampling."
                     )
-                    self.sample = sample = None
+                    self.sample = None
                 elif sample > 1:
                     self.sample = sample / self.clr.info["sum"]
                 elif sample > 0:

@@ -32,14 +32,7 @@ purposes.
 
 """
 
-import os
-import sys
-import re
 import numpy as np
-import pandas as pd
-import time
-import itertools
-import pathlib
 import warnings
 import docopt
 
