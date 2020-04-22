@@ -596,7 +596,6 @@ def cmd_detect(args):
     all_windows = []
 
     ### 2: DETECTION ON EACH SUBMATRIX
-    pool = mp.Pool(threads)
     n_sub_mats = hic_genome.sub_mats.shape[0]
     # Loop over the different kernel matrices for input pattern
     run_id = 0
@@ -624,6 +623,7 @@ def cmd_detect(args):
             sub_mat_results = []
             # Run in multiprocessing subprocesses
             if threads > 1:
+                pool = mp.Pool(threads)
                 dispatcher = pool.imap_unordered(
                     _detect_sub_mat, sub_mat_data, 1
                 )
@@ -676,7 +676,9 @@ def cmd_detect(args):
     if len(all_coords) == 0:
         sys.stderr.write("No pattern detected ! Exiting.\n")
         sys.exit(0)
-
+    # Finish parallelized part
+    if threads > 1:
+        pool.close()
     # Combine patterns of all kernel matrices into a single array
     all_coords = pd.concat(all_coords, axis=0).reset_index(drop=True)
     # Combine all windows from different kernels into a single pile of windows

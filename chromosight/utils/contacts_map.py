@@ -194,6 +194,7 @@ class HicGenome:
                 store=True,
                 map=pool.imap_unordered,
             )
+            pool.close()
             print("Whole genome matrix balanced")
             # Reload bins attribute to include the weight  column
             self.bins = self.clr.bins()[:]
