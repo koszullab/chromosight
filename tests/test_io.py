@@ -30,58 +30,6 @@ class TestIO:
         # Remove previously created tmp file
         os.unlink(self.tmp_path)
 
-    def test_load_bedgraph2d(self):
-        """Test loading of matrices in bedgraph2 format"""
-
-        # Write a dummy bedgraph2 (basically a diagonal)
-        res, n_bins = 5000, 100
-        chrom_names = ["c1", "c2", "c3"]
-        bins_per_chrom = [n_bins // 3, n_bins // 3, n_bins // 3 + n_bins % 3]
-        # Initialize a dataframe containing the right number of bins
-        df = pd.DataFrame(
-            {
-                "chrom1": np.repeat(chrom_names, bins_per_chrom),
-                "contacts": np.random.randint(0, 100, n_bins),
-            }
-        )
-        # Group bins per chromosome
-        chr_groups = df.groupby("chrom1")
-        # Compute the number of bins in each chromosome and make a range (0 -> nbins)
-        start_per_chrom = chr_groups.apply(lambda g: range(g.shape[0]))
-
-        # Concatenate ranges to have start values from 0 to n bins
-        start_array = np.hstack(start_per_chrom)
-        # Multiply start values by resolution to get base pair values
-        df["start1"] = start_array * res
-        # Add binsize to get the end positions
-        df["end1"] = df.start1 + res
-        # Make the same bins for second pairs (just a diagonal matrix then)
-        df[["chrom2", "start2", "end2"]] = df[["chrom1", "start1", "end1"]]
-        # Reorder columns
-        df = df[
-            [
-                "chrom1",
-                "start1",
-                "end1",
-                "chrom2",
-                "start2",
-                "end2",
-                "contacts",
-            ]
-        ]
-        df.to_csv(self.tmp_path, sep="\t", header=None, index=False)
-
-        # Load bedraph and check whether it was parsed correctly
-        mat, chroms, bins, bin_size = cio.load_bedgraph2d(self.tmp_path)
-
-        # Median should work to estimate resolution id nbins >> nchroms
-        assert res, np.nanmedian(bins.start.shift(1) - bins.start)
-        assert res == bin_size
-        assert n_bins == bins.shape[0]
-        assert np.all(bins.columns == BIN_COLS)
-        assert np.all(chroms.columns == CHR_COLS)
-        assert mat.sum() == df.contacts.sum()
-
     def test_load_cool(self):
         """Test loading of matrices in cool format"""
 
