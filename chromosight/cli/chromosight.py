@@ -8,7 +8,7 @@ maps with pattern matching.
 Usage:
     chromosight detect  [--kernel-config=FILE] [--pattern=loops]
                         [--pearson=auto] [--win-size=auto] [--iterations=auto]
-                        [--win-fmt={json,npy}] [--force-norm] [--full]
+                        [--win-fmt={json,npy}] [--force-norm]
                         [--subsample=no] [--inter] [--tsvd] [--smooth-trend]
                         [--n-mads=5] [--min-dist=0] [--max-dist=auto]
                         [--no-plotting] [--min-separation=auto] [--dump=DIR]
@@ -19,7 +19,7 @@ Usage:
                         [--threads=1] <prefix>
     chromosight quantify [--inter] [--pattern=loops] [--subsample=no]
                          [--win-fmt=json] [--kernel-config=FILE] [--force-norm]
-                         [--threads=1] [--full] [--n-mads=5] [--win-size=auto]
+                         [--threads=1] [--n-mads=5] [--win-size=auto]
                          [--no-plotting] [--tsvd] <bed2d> <contact_map> <output>
     chromosight test
 
@@ -49,11 +49,6 @@ Arguments for detect:
                                 a compressed npz of a sparse matrix and can be
                                 loaded using scipy.sparse.load_npz. Disabled
                                 by default.
-    -f, --full                  Enable 'full' convolution mode: The whole matrix
-                                is scanned all the way to edges and missing bins
-                                are masked. This will allow to detect very close
-                                to the diagonal and close to repeated sequences
-                                at the cost of memory and compute time.
     -F, --force-norm            Re-compute matrix normalization (balancing) and
                                 overwrite weights present in the cool files instead
                                 of reusing them.
@@ -212,7 +207,6 @@ def _override_kernel_config(param_name, param_value, param_type, config):
 def cmd_quantify(args):
     bed2d_path = args["<bed2d>"]
     mat_path = args["<contact_map>"]
-    full = args["--full"]
     output = pathlib.Path(args["<output>"])
     n_mads = float(args["--n-mads"])
     pattern = args["--pattern"]
@@ -332,7 +326,7 @@ def cmd_quantify(args):
                 cfg,
                 kernel_matrix,
                 coords=np.array(sub_pat.loc[:, ["bin1", "bin2"]]),
-                full=full,
+                full=True,
                 tsvd=tsvd,
             )
 
@@ -483,7 +477,7 @@ def _detect_sub_mat(data):
         config,
         kernel,
         dump=dump,
-        full=config["full"],
+        full=True,
         tsvd=config["tsvd"],
     )
     sub.contact_map.destroy_mat()
@@ -500,7 +494,6 @@ def cmd_detect(args):
     # Parse command line arguments for detect
     dump = args["--dump"]
     force_norm = args["--force-norm"]
-    full = args["--full"]
     interchrom = args["--inter"]
     iterations = args["--iterations"]
     kernel_config_path = args["--kernel-config"]
@@ -600,7 +593,6 @@ def cmd_detect(args):
     # Loop over the different kernel matrices for input pattern
     run_id = 0
     # Use cfg to inform jobs whether they should run full convolution
-    cfg["full"] = full
     cfg["tsvd"] = tsvd
     total_runs = len(cfg["kernels"]) * cfg["max_iterations"]
     sys.stderr.write("Detecting patterns...\n")
