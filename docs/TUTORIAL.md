@@ -53,7 +53,24 @@ chromosight quantify --pattern=borders results/borders_out.txt sample2.cool resu
 
 These commands will each generate two files in the `results` directory, named `loops_quant.txt` and `loops_quant.json` for the first command, and `borders_quant.txt` and `borders_quant.json` for the second. Those files have the same format as the output from `chromosight detect`.
 
-`chromosight quantify` can also be useful to compute pattern scores at ChIP-seq peaks, genes, or other features of interest.
+`chromosight quantify` can also be useful to compute pattern scores at ChIP-seq peaks, genes, or other features of interest. [BEDtools](https://github.com/arq5x/bedtools2) can be used to generate a 2D bed file from an input bed file.
+
+Assuming we have a BED file of cohesin peaks, all 2-way combinations of peaks at distances between 20kb and 1Mb can be retrieved with the following command:
+
+```bash
+MINDIST=20000
+MAXDIST=1000000
+bedtools window -a cohesin_peaks.bed -b cohesin_peaks.bed -w $MAXDIST \
+    | awk -vmdist=$MINDIST '$1 == $4 && ($5 - $2) >= mdist {print}' \
+    | sort -k1,1 -k2,2n -k4,4 -k5,5n \
+    > cohesin_combinations_20kb_1Mb.bed2d
+```
+
+To quantify a pattern only the diagonal (e.g. borders, hairpins), one can use the following command instead.
+
+```bash
+paste cohesin_peaks.bed cohesin_peaks.bed > cohesin_combinations_0.bed2d
+```
 
 ## Generating custom patterns
 
