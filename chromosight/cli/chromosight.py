@@ -616,7 +616,7 @@ def cmd_detect(args):
             # Run in multiprocessing subprocesses
             if threads > 1:
                 pool = mp.Pool(threads)
-                dispatcher = pool.imap_unordered(
+                dispatcher = pool.imap(
                     _detect_sub_mat, sub_mat_data, 1
                 )
             else:
