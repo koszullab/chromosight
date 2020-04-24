@@ -341,7 +341,7 @@ def detrend(
     detectable_bins=None,
     max_dist=None,
     smooth=False,
-    fun=np.nanmedian,
+    fun=np.nanmean,
     max_val=10,
 ):
     """

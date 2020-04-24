@@ -168,7 +168,7 @@ def pileup_patterns(pattern_windows):
         2D numpy array containing the pileup (arithmetic mean) of
         input windows.
     """
-    return np.apply_along_axis(np.nanmedian, 0, pattern_windows)
+    return np.apply_along_axis(np.nanmean, 0, pattern_windows)
 
 
 def pattern_detector(
