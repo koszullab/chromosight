@@ -193,6 +193,10 @@ class HicGenome:
                 cis_only=not self.inter,
                 store=True,
                 map=pool.imap_unordered,
+                ignore_diags=2,
+                max_iters=200,
+                min_nnz=10,
+                chunksize=10000000,
             )
             pool.close()
             print("Whole genome matrix balanced")
