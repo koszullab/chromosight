@@ -169,11 +169,11 @@ pearson set to 0.3 based on config file.
 max_dist set to 2000000 based on config file.
 min_dist set to 20000 based on config file.
 min_separation set to 5000 based on config file.
-max_perc_undetected set to 10.0 based on config file.
+max_perc_undetected set to 30.0 based on config file.
 Matrix already balanced, reusing weights
 Preprocessing sub-matrices...
 Detecting patterns...
-21 patterns detected
+50 patterns detected
 """
 
 
