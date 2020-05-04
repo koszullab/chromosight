@@ -1101,7 +1101,11 @@ def _normxcorr2_sparse(
         out = sp.triu(out)
     out = out.tocoo()
     out.data[~np.isfinite(out.data)] = 0.0
+    # Remove near zero coeffs to spare memory
     out.data[np.abs(out.data) < 0] = 0.0
+    # Prevent rounding errors to generate values above 1 or below -1
+    out.data[out.data < -1] = -1.0
+    out.data[out.data > 1] = 1.0
     out.eliminate_zeros()
     if pval:
         pvals = out.copy()
@@ -1258,7 +1262,10 @@ def _normxcorr2_dense(
     if sym_upper:
         out = np.triu(out)
     out[~np.isfinite(out)] = 0.0
-    out[out < 0] = 0.0
+    out[np.abs(out) < 0] = 0.0
+    # Prevent rounding errors to generate values above 1 or below -1
+    out[out < -1] = -1.0
+    out[out > 1] = 1.0
     if pval:
         if full:
             # Get number of values for each coeff

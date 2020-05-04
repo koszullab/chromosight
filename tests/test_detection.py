@@ -296,7 +296,10 @@ def test_normxcorr2(signal):
         signal, gauss_kernel, max_dist=None, sym_upper=False,
     )
     if len(corr.data):
-        assert np.min(corr.data) >= 0
+        try:
+            assert np.min(corr.data) >= -1
+        except AssertionError:
+            breakpoint()
         assert np.max(corr.data) <= 1
 
 
@@ -313,8 +316,8 @@ def test_normxcorr2_dense_sparse(signal):
     corr_s, pval_s = cud.normxcorr2(
         signal, gauss_kernel, max_dist=None, sym_upper=False, pval=True
     )
-    assert np.allclose(corr_s.todense(), corr_d, rtol=10e-4)
-    assert np.allclose(pval_s.todense(), pval_d, rtol=10e-4)
+    assert np.allclose(corr_s.toarray(), corr_d, rtol=10e-4)
+    assert np.allclose(pval_s.toarray(), pval_d, rtol=10e-4)
 
 
 @params(ck.loops, ck.borders, ck.hairpins)
