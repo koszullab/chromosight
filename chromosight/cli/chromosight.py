@@ -19,8 +19,9 @@ Usage:
                         [--threads=1] <prefix>
     chromosight quantify [--inter] [--pattern=loops] [--subsample=no]
                          [--win-fmt=json] [--kernel-config=FILE] [--force-norm]
-                         [--threads=1] [--n-mads=5] [--win-size=auto]
-                         [--no-plotting] [--tsvd] <bed2d> <contact_map> <output>
+                         [--threads=1] [--n-mads=5] [--win-size=auto] 
+                         [--perc-undetected=auto] [--no-plotting]
+                         [--tsvd] <bed2d> <contact_map> <output>
     chromosight test
 
     detect:
@@ -212,6 +213,7 @@ def cmd_quantify(args):
     pattern = args["--pattern"]
     inter = args["--inter"]
     kernel_config_path = args["--kernel-config"]
+    perc_undetected = args["--perc-undetected"]
     plotting_enabled = False if args["--no-plotting"] else True
     threads = int(args["--threads"])
     force_norm = args["--force-norm"]
@@ -256,7 +258,8 @@ def cmd_quantify(args):
     max_diag = hic_genome.clr.shape[0] * hic_genome.clr.binsize
     cfg["max_dist"] = min(furthest, max_diag)
     cfg["min_dist"] = 0
-    cfg["max_perc_undetected"] = 100
+    cfg = _override_kernel_config('max_perc_undetected', perc_undetected, float, cfg)
+    #cfg["max_perc_undetected"] = 100
 
     # Notify contact map instance of changes in scanning distance
     hic_genome.kernel_config = cfg
