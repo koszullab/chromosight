@@ -92,35 +92,19 @@ def validate_patterns(
             and left >= 0
             and right < matrix.shape[1]
         ):
-            # Get bin ids to use in window
-            win_rows, win_cols = (range(high, low), range(left, right))
             # Subset window from chrom matrix
             pattern_window = matrix[high:low, left:right].toarray()
 
             n_rows, n_cols = pattern_window.shape
             tot_pixels = n_rows * n_cols
-            # Compute number of missing rows and cols
-            n_bad_rows = n_rows - len(
-                set(win_rows).intersection(detectable_rows)
+            # Number of uncovered or missing pixels
+            tot_zero_pixels = len(
+                pattern_window[(~np.isfinite(pattern_window)) | (pattern_window == 0)]
             )
-            n_bad_cols = n_cols - len(
-                set(win_cols).intersection(detectable_cols)
-            )
-
-            # Number of undetected pixels is "bad rows area" + "bad cols
-            # area" - "bad rows x bad cols intersection"
-            tot_undetected_pixels = (
-                n_bad_rows * n_cols
-                + n_bad_cols * n_rows
-                - n_bad_rows * n_bad_cols
-            )
-            # Number of uncovered pixels
-            tot_zero_pixels = len(pattern_window[pattern_window == 0])
-            tot_missing_pixels = max(tot_undetected_pixels, tot_zero_pixels)
             # The pattern should not contain more missing pixels that the max
             # value defined in kernel config. This includes both pixels from
             # undetectable bins and zero valued pixels in detectable bins.
-            if tot_missing_pixels / tot_pixels < max_undetected_perc / 100.0:
+            if tot_zero_pixels / tot_pixels < max_undetected_perc / 100.0:
                 validated_coords.score[i] = conv_mat[l[0], l[1]]
                 pattern_windows[i, :, :] = pattern_window
             else:
