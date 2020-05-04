@@ -1101,7 +1101,7 @@ def _normxcorr2_sparse(
         out = sp.triu(out)
     out = out.tocoo()
     out.data[~np.isfinite(out.data)] = 0.0
-    out.data[out.data < 0] = 0.0
+    out.data[np.abs(out.data) < 0] = 0.0
     out.eliminate_zeros()
     if pval:
         pvals = out.copy()
