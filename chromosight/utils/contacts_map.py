@@ -129,6 +129,10 @@ class HicGenome:
         if sample is not None:
             sample = float(sample)
             try:
+                all_contacts = self.clr.info['sum']
+            except KeyError:
+                raise IOError("sum information missing from cool file. Please fix the file.")
+            try:
                 if sample > self.clr.info["sum"]:
                     print(
                         "sample value is higher than total contacts,"
