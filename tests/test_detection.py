@@ -103,7 +103,7 @@ class DummyMap:
 def test_validate_patterns(matrix, coords):
     """Test pattern validation"""
     contact_map = DummyMap(matrix)
-    conv_mat = cud.normxcorr2(
+    conv_mat, _ = cud.normxcorr2(
         matrix, gauss_kernel, max_dist=None, sym_upper=False
     )
     cud.validate_patterns(

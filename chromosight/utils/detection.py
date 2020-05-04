@@ -105,7 +105,7 @@ def validate_patterns(
             # value defined in kernel config. This includes both pixels from
             # undetectable bins and zero valued pixels in detectable bins.
             if tot_zero_pixels / tot_pixels < max_undetected_perc / 100.0:
-                validated_coords.score[i] = conv_mat[l[0], l[1]]
+                validated_coords.score[i] = conv_mat[p1, p2]
                 pattern_windows[i, :, :] = pattern_window
             else:
                 # Current pattern will be dropped due to undetectable bins
