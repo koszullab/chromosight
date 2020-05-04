@@ -77,7 +77,7 @@ Arguments for detect:
                                 the median of the logged bin sums distribution
                                 allowed to consider detectable bins. [default: 5]
     -P, --pattern=loops         Which pattern to detect. This will use preset
-                                configurations for the given pattern. Possible
+                                honfigurations for the given pattern. Possible
                                 values are: loops, borders, hairpins and
                                 centromeres. [default: loops]
     -p, --pearson=auto          Pearson correlation threshold when assessing pattern
@@ -395,6 +395,12 @@ def cmd_quantify(args):
                 pattern=cfg["name"], n=windows.shape[0]
             )
             windows_pileup = cid.pileup_patterns(windows)
+            # Symmetrize pileup for diagonal patterns
+            if not cfg['max_dist']:
+                # Replace nan below diag by 0
+                windows_pileup = np.nan_to_num(windows_pileup)
+                # Add transpose
+                windows_pileup += np.transpose(windows_pileup) - np.diag(np.diag(windows_pileup))
             pileup_plot(windows_pileup, name=pileup_fname, output=output)
 
 
