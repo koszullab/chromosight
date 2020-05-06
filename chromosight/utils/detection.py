@@ -1101,7 +1101,7 @@ def _normxcorr2_sparse(
     out.eliminate_zeros()
     if pval:
         pvals = out.copy()
-        if full and missing_mask is None:
+        if full and framed_missing_mask is not None:
             try:
                 # Get number of values for each coeff
                 n_obs = ker1_coo.tocsr()[pvals.row, pvals.col].A1
