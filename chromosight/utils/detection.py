@@ -64,8 +64,8 @@ def validate_patterns(
     half_h, half_w = win_h // 2 + 1, win_w // 2 + 1
     # Store coords to drop
     blacklist = []
-    detectable_rows = set(detectable_bins[0])
-    detectable_cols = set(detectable_bins[1])
+    missing_rows = preproc.valid_to_missing(detectable_bins[0], matrix.shape[0])
+    missing_cols = preproc.valid_to_missing(detectable_bins[1], matrix.shape[1])
 
     # Copy coords object and append column for scores
     validated_coords = pd.DataFrame(
@@ -94,8 +94,16 @@ def validate_patterns(
         ):
             # Subset window from chrom matrix
             pattern_window = matrix[high:low, left:right].toarray()
-
             n_rows, n_cols = pattern_window.shape
+            # Compute positions of missing bins relative to window
+            rel_miss_rows = missing_rows - high
+            rel_miss_rows = rel_miss_rows[(rel_miss_rows >= 0) & (rel_miss_rows < n_rows)]
+            rel_miss_cols = missing_cols - left
+            rel_miss_cols = rel_miss_cols[(rel_miss_cols >= 0) & (rel_miss_cols < n_cols)]
+            # Set missing bins to nan
+            pattern_window[rel_miss_rows, :] = np.nan
+            pattern_window[:, rel_miss_cols] = np.nan
+
             tot_pixels = n_rows * n_cols
             # Number of uncovered or missing pixels
             tot_zero_pixels = len(
@@ -296,7 +304,7 @@ def pattern_detector(
         coords,
         mat,
         mat_conv.tocsr(),
-        contact_map.detectable_bins,
+        det,
         kernel_matrix,
         kernel_config["max_perc_undetected"],
         drop=True if run_mode == "detect" else False,
