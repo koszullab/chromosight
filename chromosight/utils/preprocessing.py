@@ -56,12 +56,8 @@ def erase_missing(signal, valid_rows, valid_cols, sym_upper=True):
         erased = mask_mat.dot(signal).dot(mask_mat)
     else:
         # Get a boolean array of missing (1) and valid (0) rows
-        missing_rows = np.ones(signal.shape[0])
-        missing_cols = np.ones(signal.shape[1])
-        missing_rows[valid_rows] = 0
-        missing_cols[valid_cols] = 0
-        missing_rows = np.flatnonzero(missing_rows)
-        missing_cols = np.flatnonzero(missing_cols)
+        missing_rows = valid_to_missing(valid_rows, signal.shape[0])
+        missing_cols = valid_to_missing(valid_cols, signal.shape[1])
         erased = signal.copy()
         erased[missing_rows, :] = 0
         erased[:, missing_cols] = 0
@@ -685,25 +681,12 @@ def make_missing_mask(
         raise ValueError("Rectangular matrices cannot be upper symmetric")
 
     # Get a boolean array of missing (1) and valid (0) rows
-    missing_rows = np.ones(sm, dtype=bool)
-    try:
-        missing_rows[valid_rows] = False
-    # In case there is no valid row
-    except IndexError:
-        pass
-    missing_rows = np.flatnonzero(missing_rows)
+    missing_rows = valid_to_missing(valid_rows, sm)
     # When matrix is sym., rows and cols are synonym, no need to compute 2x
     if sym_upper:
         missing_cols = missing_rows
     else:
-        missing_cols = np.ones(sn, dtype=bool)
-        try:
-            missing_cols[valid_cols] = False
-        # In case there is no valid col
-        except IndexError:
-            pass
-        missing_cols = np.flatnonzero(missing_cols)
-
+        missing_cols = valid_to_missing(valid_cols, sn)
     # If upper sym., fill only upper diag up to max_dist.
     # E. g. with bins 1 and 3 missing
     # and a max_dist of 1:
@@ -970,3 +953,33 @@ def factorise_kernel(kernel, prop_info=0.999):
         v[i, :] *= np.sqrt(sigma[i])
 
     return (u, v)
+
+
+def valid_to_missing(valid, size):
+    """
+    Given an array of valid indices, return the corrsesponding array of missing
+    indices.
+
+    Parameters
+    ---------
+    valid : numpy.ndarray of ints
+        The valid indices.
+    size : int
+        The size of the matrix (maximum possible index + 1).
+
+    Return
+    ------
+    missing : numpy.ndarray of ints
+        The missing indices.
+
+    """
+    missing = np.ones(size, dtype=bool)
+    try:
+        missing[valid] = False
+    # In case there is no valid index
+    except IndexError:
+        pass
+    missing = np.flatnonzero(missing)
+    return missing
+
+
