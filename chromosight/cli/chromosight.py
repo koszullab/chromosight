@@ -12,16 +12,16 @@ Usage:
                         [--subsample=no] [--inter] [--tsvd] [--smooth-trend]
                         [--n-mads=5] [--min-dist=0] [--max-dist=auto]
                         [--no-plotting] [--min-separation=auto] [--dump=DIR]
-                        [--threads=1] [--perc-zero=auto] <contact_map>
-                        [<output>]
+                        [--threads=1] [--perc-zero=auto]
+                        [--perc-undetected=auto] <contact_map> [<output>]
     chromosight generate-config [--preset loops] [--click contact_map]
                         [--force-norm] [--win-size=auto] [--n-mads=5]
                         [--threads=1] <prefix>
     chromosight quantify [--inter] [--pattern=loops] [--subsample=no]
                          [--win-fmt=json] [--kernel-config=FILE] [--force-norm]
                          [--threads=1] [--n-mads=5] [--win-size=auto] 
-                         [--perc-zero=auto] [--no-plotting]
-                         [--tsvd] <bed2d> <contact_map> <output>
+                         [--perc-zero=auto] [--perc-undetected=auto]
+                         [--no-plotting] [--tsvd] <bed2d> <contact_map> <output>
     chromosight test
 
     detect:
@@ -45,77 +45,14 @@ Arguments for detect:
     contact_map                 The Hi-C contact map to detect patterns on, in
                                 bedgraph2d or cool format.
     output                      name of the output directory
-    -d, --dump=DIR              Directory where to save matrix dumps during
-                                processing and detection. Each dump is saved as
-                                a compressed npz of a sparse matrix and can be
-                                loaded using scipy.sparse.load_npz. Disabled
-                                by default.
-    -F, --force-norm            Re-compute matrix normalization (balancing) and
-                                overwrite weights present in the cool files instead
-                                of reusing them.
-    -I, --inter                 Enable to consider interchromosomal contacts.
-                                Warning: Experimental feature with very high
-                                memory consumption is very high, only use with
-                                small matrices.
-    -i, --iterations=auto       How many iterations to perform after the first
-                                template-based pass. Auto sets an appropriate
-                                value loaded from the kernel configuration
-                                file. [default: 1]
-    -k, --kernel-config=FILE    Optionally give a path to a custom JSON kernel
-                                config path. Use this to override pattern if
-                                you do not want to use one of the preset
-                                patterns.
-    -m, --min-dist=auto         Minimum distance from the diagonal (in base pairs).
-                                If this value is smaller than the kernel size, the
-                                kernel will be cropped to avoid overlapping the
-                                diagonal, up to a min.size of 7x7. [default: auto]
-    -M, --max-dist=auto         Maximum distance from the diagonal (in base pairs)
-                                at which pattern detection should operate. Auto
-                                sets a value based on the kernel configuration
-                                file and the signal to noise ratio. [default: auto]
-    -n, --no-plotting           Disable generation of pileup plots.
-    -N, --n-mads=5              Maximum number of median absolute deviations below
-                                the median of the logged bin sums distribution
-                                allowed to consider detectable bins. [default: 5]
-    -P, --pattern=loops         Which pattern to detect. This will use preset
-                                honfigurations for the given pattern. Possible
-                                values are: loops, borders, hairpins and
-                                centromeres. [default: loops]
-    -p, --pearson=auto          Pearson correlation threshold when assessing pattern
-                                probability in the contact map. A lesser value
-                                leads to potentially more detections, but more
-                                false positives. [default: auto]
-    -s, --subsample=INT         If greater than 1, subsample contacts from the
-                                matrix to INT contacts. If between 0 and 1, subsample
-                                a proportion of contacts instead. This is useful
-                                when comparing matrices with different
-                                coverages. [default: no]
-    -S, --min-separation=auto   Minimum distance required between patterns, in
-                                basepairs. If two patterns are closer than this
-                                distance in both axes, the one with the lowest
-                                score is discarded. [default: auto]
-    -t, --threads=1             Number of CPUs to use in parallel. [default: 1]
-    -T, --smooth-trend          Use isotonic regression to reduce noise at long
-                                ranges caused by detrending. Do not enable this
-                                for circular genomes.
-    -u, --perc-zero=auto        Maximum percentage of empty (0) pixels in windows
-                                allowed to keep detected patterns. [default: auto]
-    -w, --win-fmt={json,npy}    File format used to store individual windows
-                                around each pattern. Window order match
-                                patterns inside the associated text file.
-                                Possible formats are json and npy. [default: json]
-    -W, --win-size=auto         Window size (width), in pixels, to use for the
-                                kernel when computing correlations. The pattern
-                                kernel will be resized to match this size. If
-                                the pattern must be enlarged, linear
-                                interpolation is used to fill between pixels.
-                                If not specified, the default kernel size will
-                                be used instead. [default: auto]
-    -V, --tsvd                  Enable kernel factorisation via truncated svd.
-                                This should accelerate detection in most cases,
-                                at the cost of slight inaccuracies. The singular
-                                matrices are truncated so that 99.9% of the
-                                information contained in the kernel is retained.
+
+Arguments for quantify:
+    bed2d                       Tab-separated text files with columns chrom1, start1
+                                end1, chrom2, start2, end2. Each line correspond to
+                                a pair of positions (i.e. a position in the matrix).
+    contact_map                 Path to the contact map, in bedgraph2d or
+                                cool format.
+    output                      output directory where files should be generated.
 
 Arguments for generate-config:
     prefix                      Path prefix for config files. If prefix is a/b,
@@ -129,13 +66,83 @@ Arguments for generate-config:
                                 user to build the kernel. Warning: memory-heavy,
                                 reserve for small genomes or subsetted matrices.
 
-Arguments for quantify:
-    bed2d                       Tab-separated text files with columns chrom1, start1
-                                end1, chrom2, start2, end2. Each line correspond to
-                                a pair of positions (i.e. a position in the matrix).
-    contact_map                 Path to the contact map, in bedgraph2d or
-                                cool format.
-    output                      output directory where files should be generated.
+Basic options: 
+    -F, --force-norm            Re-compute matrix normalization (balancing) and
+                                overwrite weights present in the cool files instead
+                                of reusing them.
+    -I, --inter                 Enable to consider interchromosomal contacts.
+                                Warning: Experimental feature with very high
+                                memory consumption is very high, only use with
+                                small matrices.
+    -m, --min-dist=auto         Minimum distance from the diagonal (in base pairs).
+                                If this value is smaller than the kernel size, the
+                                kernel will be cropped to avoid overlapping the
+                                diagonal, up to a min.size of 7x7. [default: auto]
+    -M, --max-dist=auto         Maximum distance from the diagonal (in base pairs)
+                                at which pattern detection should operate. Auto
+                                sets a value based on the kernel configuration
+                                file and the signal to noise ratio. [default: auto]
+    -P, --pattern=loops         Which pattern to detect. This will use preset
+                                honfigurations for the given pattern. Possible
+                                values are: loops, borders, hairpins and
+                                centromeres. [default: loops]
+    -p, --pearson=auto          Pearson correlation threshold when assessing pattern
+                                probability in the contact map. A lesser value
+                                leads to potentially more detections, but more
+                                false positives. [default: auto]
+    -s, --subsample=INT         If greater than 1, subsample contacts from the
+                                matrix to INT contacts. If between 0 and 1, subsample
+                                a proportion of contacts instead. This is useful
+                                when comparing matrices with different
+                                coverages. [default: no]
+    -t, --threads=1             Number of CPUs to use in parallel. [default: 1]
+    -u, --perc-undetected=auto  Maximum percentage of non-detectable pixels in windows
+                                allowed to keep detected patterns. [default: auto]
+    -z, --perc-zero=auto        Maximum percentage of empty (0) pixels in windows
+                                allowed to keep detected patterns. [default: auto]
+
+Advanced options:
+    -d, --dump=DIR              Directory where to save matrix dumps during
+                                processing and detection. Each dump is saved as
+                                a compressed npz of a sparse matrix and can be
+                                loaded using scipy.sparse.load_npz. Disabled
+                                by default.
+    -i, --iterations=auto       How many iterations to perform after the first
+                                template-based pass. Auto sets an appropriate
+                                value loaded from the kernel configuration
+                                file. [default: 1]
+    -k, --kernel-config=FILE    Optionally give a path to a custom JSON kernel
+                                config path. Use this to override pattern if
+                                you do not want to use one of the preset
+                                patterns.
+    -n, --no-plotting           Disable generation of pileup plots.
+    -N, --n-mads=5              Maximum number of median absolute deviations below
+                                the median of the logged bin sums distribution
+                                allowed to consider detectable bins. [default: 5]
+    -S, --min-separation=auto   Minimum distance required between patterns, in
+                                basepairs. If two patterns are closer than this
+                                distance in both axes, the one with the lowest
+                                score is discarded. [default: auto]
+    -T, --smooth-trend          Use isotonic regression to reduce noise at long
+                                ranges caused by detrending. Do not enable this
+                                for circular genomes.
+    -V, --tsvd                  Enable kernel factorisation via truncated svd.
+                                This should accelerate detection in most cases,
+                                at the cost of slight inaccuracies. The singular
+                                matrices are truncated so that 99.9% of the
+                                information contained in the kernel is retained.
+    -w, --win-fmt={json,npy}    File format used to store individual windows
+                                around each pattern. Window order match
+                                patterns inside the associated text file.
+                                Possible formats are json and npy. [default: json]
+    -W, --win-size=auto         Window size (width), in pixels, to use for the
+                                kernel when computing correlations. The pattern
+                                kernel will be resized to match this size. If
+                                the pattern must be enlarged, linear
+                                interpolation is used to fill between pixels.
+                                If not specified, the default kernel size will
+                                be used instead. [default: auto]
+
 
 """
 import numpy as np
@@ -170,7 +177,7 @@ pearson set to 0.3 based on config file.
 max_dist set to 2000000 based on config file.
 min_dist set to 20000 based on config file.
 min_separation set to 5000 based on config file.
-max_zero_perc set to 30.0 based on config file.
+max_perc_zero set to 30.0 based on config file.
 Matrix already balanced, reusing weights
 Preprocessing sub-matrices...
 Detecting patterns...
@@ -214,6 +221,7 @@ def cmd_quantify(args):
     inter = args["--inter"]
     kernel_config_path = args["--kernel-config"]
     perc_zero = args["--perc-zero"]
+    perc_undetected = args["--perc-undetected"]
     plotting_enabled = False if args["--no-plotting"] else True
     threads = int(args["--threads"])
     force_norm = args["--force-norm"]
@@ -258,7 +266,8 @@ def cmd_quantify(args):
     max_diag = hic_genome.clr.shape[0] * hic_genome.clr.binsize
     cfg["max_dist"] = min(furthest, max_diag)
     cfg["min_dist"] = 0
-    cfg = _override_kernel_config('max_zero_perc', perc_zero, float, cfg)
+    cfg = _override_kernel_config('max_perc_zero', perc_zero, float, cfg)
+    cfg = _override_kernel_config('max_perc_undetected', perc_undetected, float, cfg)
     #cfg["max_zero_perc"] = 100
 
     # Notify contact map instance of changes in scanning distance
@@ -515,6 +524,7 @@ def cmd_detect(args):
     pattern = args["--pattern"]
     pearson = args["--pearson"]
     perc_zero = args["--perc-zero"]
+    perc_undetected = args["--perc-undetected"]
     subsample = args["--subsample"]
     threads = int(args["--threads"])
     tsvd = 0.999 if args["--tsvd"] else None
@@ -558,7 +568,8 @@ def cmd_detect(args):
         "max_dist": (max_dist, int),
         "min_dist": (min_dist, int),
         "min_separation": (min_separation, int),
-        "max_zero_perc": (perc_zero, float),
+        "max_perc_undetected": (perc_undetected, float),
+        "max_perc_zero": (perc_zero, float),
     }
     cfg = cio.load_kernel_config(config_path, custom)
     for param_name, (param_value, param_type) in params.items():

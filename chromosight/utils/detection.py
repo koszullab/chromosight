@@ -16,8 +16,8 @@ def validate_patterns(
     conv_mat,
     detectable_bins,
     kernel_matrix,
-    max_zero_perc,
     drop=True,
+    zero_tol=0.3,
     missing_tol=0.75,
 ):
     """
@@ -40,8 +40,11 @@ def validate_patterns(
         rows and columns, respectively.
     kernel_matrix : numpy.array of float
         The kernel that was used for pattern detection on the Hi-C matrix.
-    max_zero_perc: float
-        Proportion of undetectable pixels allowed in a pattern window to
+    zero_tol : float
+        Proportion of zero pixels allowed in a pattern window to
+        consider it valid.
+    missing_tol : float
+        Proportion of missing pixels allowed in a pattern window to
         consider it valid.
     drop : bool
         Whether to discard pattern coordinates and windows from patterns which
@@ -111,8 +114,8 @@ def validate_patterns(
 
             tot_pixels = n_rows * n_cols
             # Number of uncovered or missing pixels
-            tot_zero_pixels = np.sum(pattern_window[pattern_window == 0])
-            tot_missing_pixels = np.sum(pattern_window[~np.isfinite(pattern_window)])
+            tot_zero_pixels = np.sum(pattern_window == 0)
+            tot_missing_pixels = np.sum(~np.isfinite(pattern_window))
             # The pattern should not contain more missing pixels that the max
             # value defined in kernel config. This includes both pixels from
             # undetectable bins and zero valued pixels in detectable bins.
@@ -120,7 +123,7 @@ def validate_patterns(
             prop_zero = tot_zero_pixels / (tot_pixels - tot_missing_pixels)
             # Only compute scores for patterns with at least 25% detectable pixels
             # (by default) and less than user-defined proportion of zero pixels
-            if prop_undetected < missing_tol and prop_zero * 100 < max_zero_perc:
+            if (prop_undetected < missing_tol) and (prop_zero < zero_tol):
                 validated_coords.score[i] = conv_mat[p1, p2]
                 pattern_windows[i, :, :] = pattern_window
             else:
@@ -252,6 +255,7 @@ def pattern_detector(
         missing_mask=missing_mask,
         tsvd=tsvd,
         pval=True,
+        missing_tol=kernel_config["max_perc_undetected"] / 100,
     )
     if dump:
         save_dump("03_normxcorr2", mat_conv)
@@ -314,7 +318,8 @@ def pattern_detector(
         mat_conv.tocsr(),
         det,
         kernel_matrix,
-        kernel_config["max_zero_perc"],
+        zero_tol=kernel_config["max_perc_zero"] / 100,
+        missing_tol=kernel_config["max_perc_undetected"] / 100,
         drop=True if run_mode == "detect" else False,
     )
 
