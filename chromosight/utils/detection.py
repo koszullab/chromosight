@@ -283,6 +283,7 @@ def pattern_detector(
     det = [d.copy() for d in contact_map.detectable_bins]
     # Zero pad contact and convolution maps and shift missing bins and detected
     # pattern coords before validation if in full mode
+
     if full:
         mat = mat.tocoo()
         mat = preproc.zero_pad_sparse(mat, kh, kw, fmt="csr")

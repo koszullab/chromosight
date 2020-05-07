@@ -597,10 +597,10 @@ def frame_missing_mask(mask, kernel_shape, sym_upper=False, max_dist=None):
         framed_mask = framed_mask.tolil()
         # Add margin below diagonal
         big_k = max(nk, mk)
-        dia_margin = np.ones(big_k // 2 - 1)
-        dia_offsets = np.arange(-1, -big_k // 2 + 1, -1)
+        dia_margins = np.ones(big_k)
+        dia_offsets = np.arange(-1, -big_k-1, -1)
         framed_mask += sp.diags(
-            dia_margin,
+            dia_margins,
             dia_offsets,
             shape=framed_mask.shape,
             format="lil",
