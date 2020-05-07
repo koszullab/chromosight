@@ -8,9 +8,10 @@ import scipy.signal as sig
 import chromosight
 import chromosight.utils
 import chromosight.utils.detection as cud
+import chromosight.utils.preprocessing as cup
 import chromosight.utils.io as cio
 import chromosight.kernels as ck
-from scipy.stats import multivariate_normal
+from scipy.stats import multivariate_normal, pearsonr
 
 
 ### GENERATING SYNTHETIC DATA
@@ -112,7 +113,8 @@ def test_validate_patterns(matrix, coords):
         conv_mat,
         contact_map.detectable_bins,
         gauss_kernel,
-        10.0,
+        zero_tol=10.0,
+        missing_tol=50.0,
     )
 
 
@@ -345,6 +347,48 @@ def test_normxcorr2_kernels(kernel_config):
         obs_col = corr.col[np.where(corr.data == np.max(corr.data))]
         assert 60 in obs_row
         assert 80 in obs_col
+
+@params(ck.loops, ck.borders, ck.hairpins)
+def test_missing_corr(cfg):
+    """Test if chromosight's correlation scores are identical to
+    scipy.stats' pearsonr values.
+    """
+    # We'll correlate the kernel with a zoomed (centered) version
+    # of itself
+    kernel = np.array(cfg['kernels'][0])
+    mat = sp.csr_matrix(cup.resize_kernel(kernel, factor=10))
+    # Mask rows in the matrix to simulate missing bins
+    mask = sp.csr_matrix(mat.shape, dtype=bool)
+    center_m, center_n = np.array(mat.shape) // 2
+    kh, kw = np.array(kernel.shape) // 2 + 1
+    miss_rows = np.array([-2, 1, 2])
+    miss_rows += center_m
+    mat[miss_rows, :] = 0.0
+    mask[miss_rows, :] = True
+    # Use triu to simulate intrachromosomal matrix
+    mat = sp.triu(mat).tocsr()
+    # Convolute kernel on the fake map
+    corr_mat = cud.normxcorr2(
+        mat,
+        kernel,
+        missing_mask=mask,
+        sym_upper=True,
+        full=True
+    )[0]
+    # Retrieve the center pixel: the correlation between the 
+    # kernel and the center of the zoomed kernel.
+    obs = corr_mat[center_m, center_n]
+    # Compute Pearson correlation between the center of the 
+    # zoomed kernel and the kernel, after removing missing values
+    left, right = center_m - kh + 1, center_m + kh
+    high, low = center_n - kw + 1, center_n + kh
+    mask += sp.tril(sp.csr_matrix(np.ones(mask.shape, dtype=bool)))
+    flat_mask = mask.toarray()[high:low, left:right].flat == 1
+    exp = pearsonr(
+        mat[high:low, left:right].toarray().flat[~flat_mask],
+        kernel.flat[~flat_mask]
+    )[0]
+    assert np.isclose(obs, exp, rtol=0.1)
 
 
 # TODO: Add tests for inter (asymmetric) matrices
