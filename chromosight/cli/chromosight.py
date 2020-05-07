@@ -12,7 +12,7 @@ Usage:
                         [--subsample=no] [--inter] [--tsvd] [--smooth-trend]
                         [--n-mads=5] [--min-dist=0] [--max-dist=auto]
                         [--no-plotting] [--min-separation=auto] [--dump=DIR]
-                        [--threads=1] [--perc-undetected=auto] <contact_map>
+                        [--threads=1] [--perc-zero=auto] <contact_map>
                         [<output>]
     chromosight generate-config [--preset loops] [--click contact_map]
                         [--force-norm] [--win-size=auto] [--n-mads=5]
@@ -20,7 +20,7 @@ Usage:
     chromosight quantify [--inter] [--pattern=loops] [--subsample=no]
                          [--win-fmt=json] [--kernel-config=FILE] [--force-norm]
                          [--threads=1] [--n-mads=5] [--win-size=auto] 
-                         [--perc-undetected=auto] [--no-plotting]
+                         [--perc-zero=auto] [--no-plotting]
                          [--tsvd] <bed2d> <contact_map> <output>
     chromosight test
 
@@ -98,7 +98,7 @@ Arguments for detect:
     -T, --smooth-trend          Use isotonic regression to reduce noise at long
                                 ranges caused by detrending. Do not enable this
                                 for circular genomes.
-    -u, --perc-undetected=auto  Maximum percentage of empty pixels in windows
+    -u, --perc-zero=auto        Maximum percentage of empty (0) pixels in windows
                                 allowed to keep detected patterns. [default: auto]
     -w, --win-fmt={json,npy}    File format used to store individual windows
                                 around each pattern. Window order match
@@ -170,7 +170,7 @@ pearson set to 0.3 based on config file.
 max_dist set to 2000000 based on config file.
 min_dist set to 20000 based on config file.
 min_separation set to 5000 based on config file.
-max_perc_undetected set to 30.0 based on config file.
+max_zero_perc set to 30.0 based on config file.
 Matrix already balanced, reusing weights
 Preprocessing sub-matrices...
 Detecting patterns...
@@ -213,7 +213,7 @@ def cmd_quantify(args):
     pattern = args["--pattern"]
     inter = args["--inter"]
     kernel_config_path = args["--kernel-config"]
-    perc_undetected = args["--perc-undetected"]
+    perc_zero = args["--perc-zero"]
     plotting_enabled = False if args["--no-plotting"] else True
     threads = int(args["--threads"])
     force_norm = args["--force-norm"]
@@ -258,8 +258,8 @@ def cmd_quantify(args):
     max_diag = hic_genome.clr.shape[0] * hic_genome.clr.binsize
     cfg["max_dist"] = min(furthest, max_diag)
     cfg["min_dist"] = 0
-    cfg = _override_kernel_config('max_perc_undetected', perc_undetected, float, cfg)
-    #cfg["max_perc_undetected"] = 100
+    cfg = _override_kernel_config('max_zero_perc', perc_zero, float, cfg)
+    #cfg["max_zero_perc"] = 100
 
     # Notify contact map instance of changes in scanning distance
     hic_genome.kernel_config = cfg
@@ -514,7 +514,7 @@ def cmd_detect(args):
     output = args["<output>"]
     pattern = args["--pattern"]
     pearson = args["--pearson"]
-    perc_undetected = args["--perc-undetected"]
+    perc_zero = args["--perc-zero"]
     subsample = args["--subsample"]
     threads = int(args["--threads"])
     tsvd = 0.999 if args["--tsvd"] else None
@@ -558,7 +558,7 @@ def cmd_detect(args):
         "max_dist": (max_dist, int),
         "min_dist": (min_dist, int),
         "min_separation": (min_separation, int),
-        "max_perc_undetected": (perc_undetected, float),
+        "max_zero_perc": (perc_zero, float),
     }
     cfg = cio.load_kernel_config(config_path, custom)
     for param_name, (param_value, param_type) in params.items():

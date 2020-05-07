@@ -6,7 +6,7 @@
   "min_dist": 10000,
   "max_dist": 2000000,
   "max_iterations": 1,
-  "max_perc_undetected": 30.0,
+  "max_zero_perc": 30.0,
   "min_separation": 5000,
   "pearson": 0.4,
   "resolution": 2000

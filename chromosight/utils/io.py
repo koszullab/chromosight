@@ -98,7 +98,7 @@ def load_kernel_config(kernel, custom=False):
         "max_dist": int,
         "min_dist": int,
         "max_iterations": int,
-        "max_perc_undetected": float,
+        "max_zero_perc": float,
         "pearson": float
         "resolution": int
     }
@@ -114,7 +114,7 @@ def load_kernel_config(kernel, custom=False):
     * name : Name of the pattern
     * max_dist : maximum distance in basepairs to scan from the diagonal
     * max_iterations: maximum number of scanning iterations to perform
-    * max_perc_undetected: Maximum percentage of undetected bins to include a pattern
+    * max_zero_perc: Maximum percentage of empty pixels to include a pattern
     * pearson: Increasing this value reduces false positive patterns.
     * resolution: Basepair resolution for the kernel matrix.
 
