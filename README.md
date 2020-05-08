@@ -42,7 +42,7 @@ To get a first look at a chromosight run, you can run `chromosight test`, which 
 * `--min-dist`: Minimum distance from which to detect patterns.
 * `--max-dist`: Maximum distance from which to detect patterns. Increasing also increases runtime and memory use.
 * `--pearson`: Decrease to allow a greater number of pattern detected (with potentially more false positives).
-* `--perc-undetected`: Proportion of empty pixels allowed in a window for detection.
+* `--perc-zero`: Proportion of zero pixels allowed in a window for detection.
 
 ### Example
 
@@ -54,27 +54,31 @@ chromosight detect --threads 8 --min-dist 20000 --max-dist 200000 hic_data.cool 
 ## Options
 
 ```
+
 Pattern exploration and detection
+
 Explore and detect patterns (loops, borders, centromeres, etc.) in Hi-C contact
 maps with pattern matching.
+
 Usage:
     chromosight detect  [--kernel-config=FILE] [--pattern=loops]
                         [--pearson=auto] [--win-size=auto] [--iterations=auto]
-                        [--win-fmt={json,npy}] [--force-norm] [--full]
+                        [--win-fmt={json,npy}] [--force-norm]
                         [--subsample=no] [--inter] [--tsvd] [--smooth-trend]
                         [--n-mads=5] [--min-dist=0] [--max-dist=auto]
                         [--no-plotting] [--min-separation=auto] [--dump=DIR]
-                        [--threads=1] [--perc-undetected=auto] <contact_map>
-                        [<output>]
+                        [--threads=1] [--perc-zero=auto]
+                        [--perc-undetected=auto] <contact_map> [<output>]
     chromosight generate-config [--preset loops] [--click contact_map]
                         [--force-norm] [--win-size=auto] [--n-mads=5]
                         [--threads=1] <prefix>
     chromosight quantify [--inter] [--pattern=loops] [--subsample=no]
                          [--win-fmt=json] [--kernel-config=FILE] [--force-norm]
-                         [--threads=1] [--full] [--n-mads=5] [--win-size=auto]
+                         [--threads=1] [--n-mads=5] [--win-size=auto] 
+                         [--perc-undetected=auto] [--perc-zero=auto]
                          [--no-plotting] [--tsvd] <bed2d> <contact_map> <output>
     chromosight test
-  
+
     detect:
         performs pattern detection on a Hi-C contact map via template matching
     generate-config:
