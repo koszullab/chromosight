@@ -20,7 +20,7 @@ Usage:
     chromosight quantify [--inter] [--pattern=loops] [--subsample=no]
                          [--win-fmt=json] [--kernel-config=FILE] [--force-norm]
                          [--threads=1] [--n-mads=5] [--win-size=auto] 
-                         [--perc-zero=auto] [--perc-undetected=auto]
+                         [--perc-undetected=auto] [--perc-zero=auto]
                          [--no-plotting] [--tsvd] <bed2d> <contact_map> <output>
     chromosight test
 
@@ -90,9 +90,9 @@ Basic options:
                                 different coverages. [default: no]
     -t, --threads=1             Number of CPUs to use in parallel. [default: 1]
     -u, --perc-undetected=auto  Maximum percentage of non-detectable pixels (nan) in
-                                windows allowed to keep detected patterns. [default: auto]
+                                windows allowed to report patterns. [default: auto]
     -z, --perc-zero=auto        Maximum percentage of empty (0) pixels in windows
-                                allowed to keep detected patterns. [default: auto]
+                                allowed to report patterns. [default: auto]
 
 Advanced options:
     -d, --dump=DIR              Directory where to save matrix dumps during
@@ -256,7 +256,6 @@ def cmd_quantify(args):
     cfg["min_dist"] = 0
     cfg = _override_kernel_config('max_perc_zero', perc_zero, float, cfg)
     cfg = _override_kernel_config('max_perc_undetected', perc_undetected, float, cfg)
-    #cfg["max_zero_perc"] = 100
 
     # Notify contact map instance of changes in scanning distance
     hic_genome.kernel_config = cfg
@@ -381,6 +380,9 @@ def cmd_quantify(args):
                 "qvalue",
             ],
         ]
+        # Set p-values of invalid scores to nan
+        bed2d.loc[np.isnan(bed2d.score), 'pvalue'] = np.nan
+        bed2d.loc[np.isnan(bed2d.score), 'qvalue'] = np.nan
         cio.write_patterns(bed2d, f"{pattern}_quant", output)
         # bed2d.to_csv(
         #    output / f"{pattern}_quant.txt", sep="\t", header=True, index=False
