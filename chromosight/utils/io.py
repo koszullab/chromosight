@@ -10,7 +10,6 @@ import sys
 import csv
 import shutil
 from urllib.request import urlopen
-import itertools as it
 import json
 from jsonschema import validate, ValidationError
 from os.path import join

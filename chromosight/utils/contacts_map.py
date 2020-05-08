@@ -129,7 +129,7 @@ class HicGenome:
         if sample is not None:
             sample = float(sample)
             try:
-                all_contacts = self.clr.info['sum']
+                _ = self.clr.info['sum']
             except KeyError:
                 raise IOError("sum information missing from cool file. Please fix the file.")
             try:
