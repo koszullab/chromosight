@@ -1,5 +1,5 @@
 # Chromosight
-<img src="docs/glitched_chromosight_2.gif" alt="animated logo" width="200"/>
+<img src="docs/logo/glitched_chromosight_2.gif" alt="animated logo" width="200"/>
 
 [![PyPI version](https://badge.fury.io/py/chromosight.svg)](https://badge.fury.io/py/chromosight) [![Anaconda cloud](https://anaconda.org/bioconda/chromosight/badges/version.svg)](https://anaconda.org/bioconda/chromosight) [![Build Status](https://travis-ci.com/koszullab/chromosight.svg?branch=master)](https://travis-ci.com/koszullab/chromosight) [![codecov](https://codecov.io/gh/koszullab/chromosight/branch/master/graph/badge.svg)](https://codecov.io/gh/koszullab/chromosight) [![Read the docs](https://readthedocs.org/projects/chromosight/badge)](https://chromosight.readthedocs.io) [![License: GPLv3](https://img.shields.io/badge/License-GPL%203-0298c3.svg)](https://opensource.org/licenses/GPL-3.0) [![Language grade: Python](https://img.shields.io/lgtm/grade/python/g/koszullab/chromosight.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/koszullab/chromosight/context:python)
 
