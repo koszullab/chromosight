@@ -9,6 +9,6 @@
   "max_perc_zero": 10.0,
   "max_perc_undetected": 50.0,
   "min_separation": 5000,
-  "pearson": 0.5,
+  "pearson": 0.3,
   "resolution": 2000
 }
