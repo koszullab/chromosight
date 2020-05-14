@@ -281,7 +281,7 @@ def despeckle(matrix, th2=3):
 def get_detectable_bins(mat, n_mads=3, inter=False):
     """
     Returns lists of detectable indices after excluding low interacting bin
-    based on the distribution of pixel values in the matrix.
+    based on the proportion of zero pixel values in the matrix bins.
 
     Parameters
     ----------
@@ -302,10 +302,11 @@ def get_detectable_bins(mat, n_mads=3, inter=False):
     -------
     """
     matrix = mat.copy()
+    matrix.eliminate_zeros()
     mad = lambda x: ss.median_absolute_deviation(x, nan_policy="omit")
     if not inter:
         if matrix.shape[0] != matrix.shape[1]:
-            raise ValueError("intrachromosomal matrices must be symmetric.")
+            raise ValueError("Intrachromosomal matrices must be symmetric.")
         # Replace nonzero pixels by ones to work on prop. of nonzero pixels
         matrix.data = np.ones(matrix.data.shape)
         # Compute number of nonzero values in each bin
@@ -317,7 +318,7 @@ def get_detectable_bins(mat, n_mads=3, inter=False):
         detect_threshold = max(1, sum_med - sum_mad * n_mads)
 
         # Removal of poor interacting rows and columns
-        good_bins = np.flatnonzero(sum_bins > detect_threshold)
+        good_bins = np.flatnonzero(sum_bins >= detect_threshold)
         good_bins = (good_bins, good_bins)
     else:
         # Adapted for asymetric matrices (need to compute rows and columns)
