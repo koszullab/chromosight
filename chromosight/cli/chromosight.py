@@ -261,11 +261,6 @@ def cmd_quantify(args):
     hic_genome.kernel_config = cfg
     # Normalize (balance) matrix using ICE
     hic_genome.normalize(force_norm=force_norm, n_mads=n_mads, threads=threads)
-    # Define how many diagonals should be used in intra-matrices
-    hic_genome.compute_max_dist()
-    # Split whole genome matrix into intra- and inter- sub matrices. Each sub
-    # matrix is processed on the fly (obs / exp, trimming diagonals > max dist)
-    hic_genome.make_sub_matrices()
     # Initialize output structures
     bed2d["score"] = np.nan
     bed2d["pvalue"] = np.nan
@@ -278,6 +273,13 @@ def cmd_quantify(args):
         for i, k in enumerate(cfg['kernels']):
             cfg['kernels'][i] = resize_kernel(k, factor=win_size / km)
         km = kn = win_size
+        # Update kernel config after resizing kernels
+        hic_genome.kernel_config = cfg
+    # Define how many diagonals should be used in intra-matrices
+    hic_genome.compute_max_dist()
+    # Split whole genome matrix into intra- and inter- sub matrices. Each sub
+    # matrix is processed on the fly (obs / exp, trimming diagonals > max dist)
+    hic_genome.make_sub_matrices()
     windows = np.full((positions.shape[0], km, kn), np.nan)
     # For each position, we use the center of the BED interval
     positions["pos1"] = (positions.start1 + positions.end1) // 2
