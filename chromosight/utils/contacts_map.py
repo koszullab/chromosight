@@ -210,7 +210,7 @@ class HicGenome:
         self.detectable_bins = np.flatnonzero(np.isfinite(self.bins.weight))
         print(
             f"Found {len(self.detectable_bins)} / {self.clr.shape[0]}"
-            "detectable bins"
+            " detectable bins"
         )
 
     def load_data(self, mat_path):
