@@ -317,6 +317,10 @@ def load_bed2d(path):
         bed2d.start2[inverted],
         bed2d.start1[inverted],
     )
+    bed2d.end1[inverted], bed2d.end2[inverted] = (
+        bed2d.end2[inverted],
+        bed2d.end1[inverted],
+    )
 
     return bed2d
 
