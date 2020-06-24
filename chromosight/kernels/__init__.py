@@ -1,10 +1,18 @@
+"""
+Chromosight's kernel submodule contains each default kernel in the form of a
+dictionary whith the kernel name. The items of the dictionaries are the
+key-value pairs from the kernel's json file, with the kernel matrices
+pre-loaded under the "kernels" key. Here is the kernel submodule can be used to
+extract the first borders kernel:
+>>> import chromosight.kernels as ck
+>>> kernel = ck.borders['kernels'][0]
+"""
 from chromosight.utils.io import load_kernel_config
 import pathlib
 import sys
-from os.path import basename
 
-# Here, each pattern config file detected in the kernels directory is loaded and
-# made available as a variable in the API
+# Here, each pattern config file detected in the kernels directory is loaded
+# and made available as a variable in the API
 
 # Get parent module (chromosight.kernels)
 current_module = sys.modules[__name__]
