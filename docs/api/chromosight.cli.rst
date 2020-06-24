@@ -20,14 +20,6 @@ chromosight.cli.score module
     :undoc-members:
     :show-inheritance:
 
-chromosight.cli.simulator module
---------------------------------
-
-.. automodule:: chromosight.cli.simulator
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
 
 Module contents
 ---------------

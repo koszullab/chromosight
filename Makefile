@@ -1,4 +1,4 @@
-.PHONY: build install test clean deploy
+.PHONY: build install test clean deploy apidoc
 
 install:
 	pip install -e .
@@ -14,6 +14,9 @@ build: clean
 
 deploy: build
 	twine upload dist/*
+
+apidoc:
+	sphinx-apidoc -f -o docs/api chromosight
 
 test:
 	nose2 -s tests/

@@ -44,6 +44,14 @@ chromosight.utils.preprocessing module
     :undoc-members:
     :show-inheritance:
 
+chromosight.utils.stats module
+------------------------------
+
+.. automodule:: chromosight.utils.stats
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
 
 Module contents
 ---------------
