@@ -19,7 +19,7 @@ Usage:
                         [--threads=1] <prefix>
     chromosight quantify [--inter] [--pattern=loops] [--subsample=no]
                          [--win-fmt=json] [--kernel-config=FILE] [--force-norm]
-                         [--threads=1] [--n-mads=5] [--win-size=auto] 
+                         [--threads=1] [--n-mads=5] [--win-size=auto]
                          [--perc-undetected=auto] [--perc-zero=auto]
                          [--no-plotting] [--tsvd] <bed2d> <contact_map> <output>
     chromosight test
@@ -66,7 +66,7 @@ Arguments for generate-config:
                                 user to build the kernel. Warning: memory-heavy,
                                 reserve for small genomes or subsetted matrices.
 
-Basic options: 
+Basic options:
     -F, --force-norm            Re-compute matrix normalization (balancing) and
                                 overwrite weights present in the cool files instead
                                 of reusing them.
@@ -75,7 +75,7 @@ Basic options:
                                 consumption, only use with small matrices.
     -m, --min-dist=auto         Minimum distance from the diagonal (in base pairs).
                                 at which detection should operate. [default: auto]
-    -M, --max-dist=auto         Maximum distance from the diagonal (in base pairs) 
+    -M, --max-dist=auto         Maximum distance from the diagonal (in base pairs)
                                 for detection. [default: auto]
     -P, --pattern=loops         Which pattern to detect. This will use preset
                                 configurations for the given pattern. Possible
@@ -98,7 +98,7 @@ Advanced options:
     -d, --dump=DIR              Directory where to save matrix dumps during
                                 processing and detection. Each dump is saved as
                                 a compressed npz of a sparse matrix and can be
-                                loaded using scipy.sparse.load_npz. 
+                                loaded using scipy.sparse.load_npz.
     -i, --iterations=auto       How many iterations to perform after the first
                                 template-based pass. [default: 1]
     -k, --kernel-config=FILE    Optionally give a path to a custom JSON kernel
@@ -126,7 +126,7 @@ Advanced options:
                                 Possible formats are json and npy. [default: json]
     -W, --win-size=auto         Window size (width), in pixels, to use for the
                                 kernel when computing correlations. The pattern
-                                kernel will be resized to match this size. Linear 
+                                kernel will be resized to match this size. Linear
                                 linear interpolation is used to fill between pixels.
                                 If not specified, the default kernel size will
                                 be used instead. [default: auto]
@@ -165,11 +165,12 @@ pearson set to 0.3 based on config file.
 max_dist set to 2000000 based on config file.
 min_dist set to 20000 based on config file.
 min_separation set to 5000 based on config file.
-max_perc_zero set to 30.0 based on config file.
+max_perc_undetected set to 50.0 based on config file.
+max_perc_zero set to 10.0 based on config file.
 Matrix already balanced, reusing weights
 Preprocessing sub-matrices...
 Detecting patterns...
-50 patterns detected
+89 patterns detected
 """
 
 
