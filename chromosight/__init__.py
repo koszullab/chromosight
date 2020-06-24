@@ -3,11 +3,16 @@
 
 from .version import __version__ as version
 
-__author__ = "Axel Cournac, Axel Breuer, Lyam Baudry, Rémi Montagne, Cyril Matthey-Doret, Nadège Guielguimoni"
+__author__ = (
+    "Cyril Matthey-Doret, Lyam Baudry, Axel Breuer, Remi Montagne, ",
+    "Nadège Guiglielmoni, Vittore Scolari, Etienne Jean, Arnaud Campeas, ",
+    "Philippe-Henri Chanut, Edgar Oriol, Adrien Meot, Laurent Politis, ",
+    "Antoine Vigouroux, Pierrick Moreau, Romain Koszul, Axel Cournac",
+)
 __copyright__ = "Copyright © 2017-2018, Institut Pasteur, Paris, France"
 __credits__ = ["Hackathon ENGIE/Institut Pasteur teams"]
 __license__ = "GPLv3"
-__maintainer__ = "Axel Cournac, Lyam Baudry, Cyril Matthey-Doret, Nadège Guielguimoni"
+__maintainer__ = "Axel Cournac, Cyril Matthey-Doret, Nadège Guigliemoni"
 __email__ = "axel.cournac@pasteur.fr"
-__status__ = "Pre-Alpha"
+__status__ = "Beta"
 __version__ = version
