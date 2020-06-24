@@ -21,14 +21,14 @@
 
 project = "chromosight"
 copyright = (
-    "2020, Axel Cournac, Lyam Baudry, Cyril Matthey-Doret, Nadège Guielguimoni"
+    "2020, Cyril Matthey-Doret, Axel Breuer, Axel Cournac"
 )
-author = "Axel Cournac, Lyam Baudry, Cyril Matthey-Doret, Nadège Guielguimoni"
+author = "Cyril Matthey-Doret, Axel Breuer, Remi Montagne, Lyam Baudry, Axel Cournac"
 
 # The short X.Y version
-version = "0.4"
+version = "1.1"
 # The full version, including alpha/beta/rc tags
-release = "0.4.0"
+release = "1.1.2"
 
 
 # -- General configuration ---------------------------------------------------
