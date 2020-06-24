@@ -1,11 +1,18 @@
-# Implementation of a contact map class.
+"""Chromosight's contact_map submodule contains classes to keep track of the
+different aspects of Hi-C data and automate standard pre-processing steps. The
+ContactMap class holds the whole genome informations and metadata (chromosome
+sizes, resolution, etc) without loading the actual contact map. Upon calling
+its "make_sub_matrices" method, it will generate a collection of ContactMap
+instances accessible via the sub_mats attribute. Each instance corresponds to
+an inter- or intra-chromosomal matrix and the Hi-C matrix of each chromosome is
+loaded and preprocessed upon instantiation.
+"""
 from __future__ import absolute_import
 from . import io as cio
 import multiprocessing as mp
 import cooler
 from . import preprocessing as preproc
 import os
-import re
 import sys
 from pathlib import Path
 import numpy as np
@@ -15,14 +22,13 @@ import scipy.sparse as sp
 
 class DumpMatrix:
     """
-    This class is used as a decorator to wrap methods and generate dump files
-    of their class' "matrix" atribute. The matrix should be a scipy.sparse
-    matrix and will be saved in npy format. If the instance has a "name" 
-    attribute, the full dump path will be:
-        self.dump / self.name_basename.npy
-    if the instance has no name attribute, the dump path will be:
-        self.dump / basename.npy
-    If the instance has no matrix or dump attribute, no action is performed.
+    This class is used as a decorator to wrap ContactMap's methods and generate
+    dump files of the "matrix" atribute. The matrix should be a scipy.sparse
+    matrix and will be saved in npy format. The full dump path will be:
+        inst.dump / os.path.basename(inst.name) + self.dump_name + ".npy"
+    Where inst is the ContactMap instance of the wrapped method and self is the
+    DumpMatrix instance.  If the inst has no dump attribute, no action is
+    performed.
 
     Parameters
     ----------
@@ -60,7 +66,8 @@ class DumpMatrix:
                 else:
                     dump_path = Path(inst.dump) / f"{self.dump_name}"
                 print(
-                    f"Dumping matrix after executing {fn.__name__} to {dump_path}"
+                    f"Dumping matrix to {dump_path}"
+                    f" after executing {fn.__name__}"
                 )
                 # Save updated matrix to dump path
                 sp.save_npz(dump_path, inst.matrix)
@@ -71,8 +78,9 @@ class DumpMatrix:
 
 class HicGenome:
     """
-    Class used to manage relationships between whole genome and intra- or inter-
-    chromosomal Hi-C sub matrices. Also handles reading and writing data.
+    Class used to manage relationships between whole genome and intra- or
+    inter- chromosomal Hi-C sub matrices. Also handles reading and writing
+    data.
 
     Attributes:
     -----------
@@ -99,8 +107,8 @@ class HicGenome:
         long ranges but assumes contacts can only decrease with distance from
         the diagonal. Do not use with circular chromosomes.
     sample : int, float or None
-        Proportion of contacts to sample from the data if between 0 and 1. Number
-        of contacts to keep if above 1. Keep all if None.
+        Proportion of contacts to sample from the data if between 0 and 1.
+        Number of contacts to keep if above 1. Keep all if None.
     """
 
     def __init__(
@@ -131,7 +139,9 @@ class HicGenome:
             try:
                 _ = self.clr.info['sum']
             except KeyError:
-                raise IOError("sum information missing from cool file. Please fix the file.")
+                raise IOError(
+                    "sum info missing from cool file. Please fix the file."
+                )
             try:
                 if sample > self.clr.info["sum"]:
                     print(
@@ -167,7 +177,6 @@ class HicGenome:
             self.max_dist = None
             self.largest_kernel = 3
 
-    @DumpMatrix("02_normalized")
     def normalize(self, force_norm=False, n_mads=5, threads=1):
         """
         If the instance's cooler is not balanced, finds detectable bins and
@@ -213,52 +222,19 @@ class HicGenome:
             " detectable bins"
         )
 
-    def load_data(self, mat_path):
-        """Load contact, bin and chromosome informations from input path"""
-        # Define functions to use for each format
-        format_loader = {
-            "bg2": cio.load_bedgraph2d,
-            "cool": cio.load_cool,
-            "iobg2": cio.load_bedgraph2d,
-        }
-        # Guess file format fron file name
-        try:
-            extension = os.path.splitext(mat_path)[-1].lstrip(".")
-        except TypeError:
-            # if mat_path isn't an actual file path but a file object
-            extension = "iobg2"
-        if not len(extension) and re.search(r"mcool::", mat_path):
-            extension = "cool"
-        print("loading: ", mat_path)
-
-        # Load contact map and chromosome start bins coords
-        try:
-            sub_mat_df, chroms, bins, resolution = format_loader[extension](
-                mat_path
-            )
-        except KeyError as e:
-            sys.stderr.write(
-                f"Unknown format: {extension}. Must be one of {format_loader.keys()}\n"
-            )
-            raise e
-        if resolution is None:
-            raise ValueError(
-                "Input matrices must have a fixed genomic bin size."
-            )
-        return sub_mat_df, chroms, bins, resolution
-
     def make_sub_matrices(self):
         """
         Generates a table of Hi-C sub matrices. Each sub matrix is either intra
-        or interchromosomal. The table has 3 columns: chr1, chr2 and contact_map.
-        The contact_map column contains instances of the ContactMap class.
+        or interchromosomal. The table has 3 columns: chr1, chr2 and
+        contact_map.  The contact_map column contains instances of the
+        ContactMap class.
 
         Returns
         -------
         pandas.DataFrame:
-            The table of sub matrices which will contain n_chrom rows if the inter
-            attribute is set to false, or (n_chrom^2) / 2 + n_chroms / 2 if inter
-            is True (that is, the upper triangle matrix).
+            The table of sub matrices which will contain n_chrom rows if the
+            inter attribute is set to false, or (n_chrom^2) / 2 + n_chroms / 2
+            if inter is True (that is, the upper triangle matrix).
         """
         # Create an empty dataframe to store sub matrix info
         sub_cols = ["chr1", "chr2", "contact_map"]
@@ -282,7 +258,7 @@ class HicGenome:
         sys.stderr.write("Preprocessing sub-matrices...\n")
         if self.sample is not None:
             sys.stderr.write(
-                f"{np.round(100 * self.sample)}% contacts will be subsampled \n"
+                f"{np.round(100 * self.sample)}% contacts will be sampled \n"
             )
         sub_mat_idx = 0
         # mat_view = self.clr.matrix(sparse=True, balance=True)
@@ -294,8 +270,7 @@ class HicGenome:
                     cio.progress(
                         sub_mat_idx, sub_mats.shape[0], f"{chr1}-{chr2}"
                     )
-                    # Subset intra / inter sub_matrix and matching detectable bins
-                    # sub_mat = mat_view[s1:e1, s2:e2]
+                    # Subset intra/inter sub_mat and matching detectable bins
                     sub_mat_detectable_bins = (
                         d[(d >= s1) & (d < e1)] - s1,
                         d[(d >= s2) & (d < e2)] - s2,
@@ -329,7 +304,9 @@ class HicGenome:
         cio.progress(
             sub_mat_idx,
             sub_mats.shape[0],
-            f"{sub_mats.loc[sub_mat_idx-1, 'chr1']}-{sub_mats.loc[sub_mat_idx-1, 'chr2']}\n",
+            (
+                f"{sub_mats.loc[sub_mat_idx-1, 'chr1']}-"
+                f"{sub_mats.loc[sub_mat_idx-1, 'chr2']}\n",
         )
         self.sub_mats = sub_mats
         print("Sub matrices extracted")
@@ -341,7 +318,7 @@ class HicGenome:
         for i1, r1 in self.sub_mats.iterrows():
             s1, e1 = self.clr.extent(r1.chr1)
             s2, e2 = self.clr.extent(r1.chr2)
-            # Use each chromosome pair's sub matrix to fill the whole genome matrix
+            # Use each chrom pair's sub matrix to fill the whole genome matrix
             gathered[s1:e1, s2:e2] = r1.contact_map.matrix
         gathered = sp.triu(gathered)
         return gathered
@@ -361,12 +338,12 @@ class HicGenome:
             A dataframme of pattern coordinates. Each row is a pattern and
             columns should be bin1 and bin2, for row and column coordinates in
             the Hi-C matrix, respectively.
-        
+
         Returns
         -------
         full_patterns : pandas.DataFrame
-            A dataframe similar to the input, but with bins shifted to represent
-            coordinates in the whole genome matrix.
+            A dataframe similar to the input, but with bins shifted to
+            represent coordinates in the whole genome matrix.
         """
         full_patterns = patterns.copy()
         # Get start bin for chromosomes of interest
@@ -392,12 +369,12 @@ class HicGenome:
             A dataframme of pattern coordinates. Each row is a pattern and
             columns should be bin1 and bin2, for row and column coordinates in
             the Hi-C matrix, respectively.
-        
+
         Returns
         -------
         full_patterns : pandas.DataFrame
-            A dataframe similar to the input, but with bins shifted to represent
-            coordinates in the target sub-matrix.
+            A dataframe similar to the input, but with bins shifted to
+            represent coordinates in the target sub-matrix.
         """
         sub_patterns = patterns.copy()
         # Get start bin for chromosomes of interest
@@ -410,8 +387,8 @@ class HicGenome:
 
     def bins_to_coords(self, bin_idx):
         """
-        Converts a list of bin IDs to genomic coordinates based on the whole genome
-        contact map.
+        Converts a list of bin IDs to genomic coordinates based on the whole
+        genome contact map.
 
         Parameters
         ----------
@@ -422,17 +399,16 @@ class HicGenome:
         Returns
         -------
         pandas.DataFrame :
-            A subset of the bins dataframe, with columns chrom, start, end where
-            chrom is the chromosome name (str), and start and end are the genomic
-            coordinates of the bin (int).
-        
+            A subset of the bins dataframe, with columns chrom, start, end
+            where chrom is the chromosome name (str), and start and end are the
+            genomic coordinates of the bin (int).
         """
         return self.bins.iloc[bin_idx, :]
 
     def coords_to_bins(self, coords):
         """
-        Converts genomic coordinates to a list of bin ids based on the whole genome
-        contact map.
+        Converts genomic coordinates to a list of bin ids based on the whole
+        genome contact map.
 
         Parameters
         ----------
@@ -443,12 +419,11 @@ class HicGenome:
         -------
         numpy.array of ints :
             Indices in the whole genome matrix contact map.
-        
         """
         coords.pos = (coords.pos // self.clr.binsize) * self.clr.binsize
-        # Coordinates are merged with bins, both indices are kept in memory so that
-        # the indices of matching bins can be returned in the order of the input
-        # coordinates
+        # Coordinates are merged with bins, both indices are kept in memory so
+        # that the indices of matching bins can be returned in the order of the
+        # input coordinates
         idx = (
             self.bins.reset_index()
             .rename(columns={"index": "bin_idx"})
@@ -484,8 +459,8 @@ class ContactMap:
         True if the matrix represents contacts between two different,
         False otherwise.
     max_dist : int
-        Maximum distance (in bins) at which contact values should be analysed. Only
-        valid for intrachromosomal matrices.
+        Maximum distance (in bins) at which contact values should be analysed.
+        Only valid for intrachromosomal matrices.
     dump : str
         Base path where dump files will be generated. None means no dump.
     name : str
@@ -496,8 +471,8 @@ class ContactMap:
         can only decrease with distance from the diagonal. Do not use with
         circular chromosomes.
     sample : int, float or None
-        Proportion of contacts to sample from the data if between 0 and 1. Number
-        of contacts to keep if above 1. Keep all if None.
+        Proportion of contacts to sample from the data if between 0 and 1.
+        Number of contacts to keep if above 1. Keep all if None.
     """
 
     def __init__(
@@ -616,7 +591,8 @@ class ContactMap:
 
     @DumpMatrix("02_remove_diags")
     def remove_diags(self):
-        # Create a new matrix from the diagonals below max dist (faster than removing them)
+        # Create a new matrix from the diagonals below max dist (faster than
+        # removing them)
         self.matrix = preproc.diag_trim(
             self.matrix.tocsr(), self.keep_distance
         )
@@ -631,5 +607,6 @@ class ContactMap:
             mat_max_dist = self.matrix.shape[0]
         else:
             mat_max_dist = min(self.max_dist, self.matrix.shape[0])
-        # If we scan until a given distance, data values in a margin must be kept as well
+        # If we scan until a given distance, data values in a margin must be
+        # kept as well
         return mat_max_dist + (self.largest_kernel)
