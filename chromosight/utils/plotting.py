@@ -1,44 +1,13 @@
 import sys
 import pathlib
-import functools
 import numpy as np
-import chromosight.utils.preprocessing as preproc
 from matplotlib import pyplot as plt
-
-
-def distance_plot(matrices, labels=None, out=None, smooth=True):
-
-    if isinstance(matrices, np.ndarray):
-        matrix_list = [matrices]
-    else:
-        matrix_list = matrices
-
-    if labels is None:
-        labels = range(len(matrix_list))
-    elif isinstance(labels, str):
-        labels = [labels]
-
-    for matrix, name in zip(matrix_list, labels):
-        dist = preproc.distance_law(matrix, fun=np.nanmean, smooth=smooth)
-        x = np.arange(0, len(dist))
-        y = dist
-        y[np.isnan(y)] = 0.0
-        plt.plot(x, y, label=str(name))
-        plt.xlabel("Genomic distance")
-        plt.ylabel("Contact frequency")
-        # plt.xlim(10 ** 0, 10 ** 3)
-        # plt.ylim(10 ** -5, 10 ** -1)
-        plt.loglog()
-    plt.legend()
-    if out is None:
-        plt.show()
-    else:
-        plt.savefig(out)
 
 
 def pileup_plot(pileup_pattern, name="pileup_patterns", output=None):
     """
-    Plot the pileup of all detected patterns
+    Wrapper around matplotlib.pyplot.imshow to visualize the pileup of patterns
+    detected by chromosight
     """
     if output is None:
         output = pathlib.Path()
@@ -59,27 +28,6 @@ def pileup_plot(pileup_pattern, name="pileup_patterns", output=None):
     plt.close("all")
 
 
-def _check_datashader(fun):
-    """Decorates function `fun` to check if cooler is available.."""
-
-    @functools.wraps(fun)
-    def wrapped(*args, **kwargs):
-        try:
-            import datashader
-
-            fun.__globals__["ds"] = datashader
-        except ImportError:
-            print(
-                "The datashader package is required to use {0}, please install it first".format(
-                    fun.__name__
-                )
-            )
-            raise
-        return fun(*args, **kwargs)
-
-    return wrapped
-
-
 def plot_whole_matrix(
     mat, patterns, out=None, region=None, region2=None, log_transform=False
 ):
@@ -93,7 +41,8 @@ def plot_whole_matrix(
         The whole genome Hi-C matrix to be visualized.
     patterns : pandas.DataFrame
         The set of patterns to be plotted on top of the matrix. One pattern per
-        row, 3 columns: bin1, bin2 and score of types int, int and float, respectively.
+        row, 3 columns: bin1, bin2 and score of types int, int and float,
+        respectively.
     region : tuple of ints
         The range of rows to be plotted in the matrix. If not given, the whole
         matrix is used. It only region is given, but not region2, the matrix is
@@ -141,15 +90,13 @@ def plot_whole_matrix(
         plt.show()
     else:
         plt.savefig(out)
-    # cvs = ds.Canvas(plot_width=1000, plot_height=1000)
-    # agg = cvs.points(df, "bin1", "bin2", ds.sum("contacts"))
-    # img = tf.shade(agg, cmap=["white", "darkred"], how="log")
+
 
 def click_finder(mat, half_w=8):
     """
-    Given an input Hi-C matrix, show an interactive window and record coordinates
-    where the user double-clicks. When the interactive window is closed, the stack
-    of windows around recorded coordinates is returned.
+    Given an input Hi-C matrix, show an interactive window and record
+    coordinates where the user double-clicks. When the interactive window is
+    closed, the stack of windows around recorded coordinates is returned.
 
     Parameters
     ----------
@@ -161,11 +108,13 @@ def click_finder(mat, half_w=8):
     Returns
     -------
     numpy.array :
-        3D stack of images around coordinates recorded interactively. The shape of
-        the stack is (N, w, w) where N is the number of coordinates and w is 2*half_w.
+        3D stack of images around coordinates recorded interactively. The shape
+        of the stack is (N, w, w) where N is the number of coordinates and w is
+        2*half_w.
     """
     global coords
     coords = []
+
     def onclick(event):
         global ix, iy
         global coords
@@ -182,7 +131,9 @@ def click_finder(mat, half_w=8):
         return coords
 
     fig = plt.figure()
-    plt.imshow(mat.toarray(), cmap='afmhot_r', vmax = np.percentile(mat.data, 95))
+    plt.imshow(
+        mat.toarray(), cmap='afmhot_r', vmax=np.percentile(mat.data, 95)
+    )
     plt.title('Double click to record pattern positions')
     # Setup click listener
     cid = fig.canvas.mpl_connect('button_press_event', onclick)
@@ -198,18 +149,16 @@ def click_finder(mat, half_w=8):
     bad_coords = np.zeros(len(double_clicked), dtype=bool)
     # Fill the image stack with windows around each coord
     for i, (center_v, center_h) in enumerate(double_clicked):
-            high, low = center_h - half_w, center_h + half_w + 1
-            left, right = center_v - half_w, center_v + half_w + 1
-            try:
-                img_stack[i] = mat[high:low, left:right].toarray()
-            except ValueError:
-                bad_coords[i] = True
-                sys.stderr.write(
-                    f"Discarding {(center_v, center_h)}: Too close "
-                    "to the edge of the matrix\n"
-                )
+        high, low = center_h - half_w, center_h + half_w + 1
+        left, right = center_v - half_w, center_v + half_w + 1
+        try:
+            img_stack[i] = mat[high:low, left:right].toarray()
+        except ValueError:
+            bad_coords[i] = True
+            sys.stderr.write(
+                f"Discarding {(center_v, center_h)}: Too close "
+                "to the edge of the matrix\n"
+            )
     # Discard images associated with coords too close to the edge
     img_stack = img_stack[~bad_coords]
     return img_stack
-
-
