@@ -15,15 +15,15 @@ from sklearn.isotonic import IsotonicRegression
 
 def erase_missing(signal, valid_rows, valid_cols, sym_upper=True):
     """
-    Given an input sparse matrix, set missing (invalid) bins to 0.
+    Given a sparse matrix, set all pixels in missing (invalid) bins to 0.
 
     Parameters
     ----------
     signal : scipy.sparse.csr_matrix of floats
         Input signal on which to erase values.
-    valid_rows : numpy.array of ints
+    valid_rows : numpy.ndarray of ints
         Indices of rows considered valid (not missing).
-    valid_cols : numpy.array of ints
+    valid_cols : numpy.ndarray of ints
         Indices of columns considered valid (not missing).
     sym_upper : bool
         Define if the input signal is upper symmetric.
@@ -65,47 +65,6 @@ def erase_missing(signal, valid_rows, valid_cols, sym_upper=True):
     return erased
 
 
-def normalize(B, good_bins=None, iterations=10):
-    """
-    Iterative normalisation of a Hi-C matrix (ICE procedure,
-    Imakaev et al, doi: 10.1038/nmeth.2148)
-
-    Parameters
-    ----------
-    B : scipy coo_matrix
-        The Hi-C matrix to be normalized.
-    good_bins : numpy array
-        1D array containing the indices of detectable bins on which
-        normalization should be applied.
-        
-    Returns
-    -------
-    scipy.sparse.coo_matrix :
-        The SCN normalised Hi-C matrix
-    """
-    if good_bins is None:
-        r = B.copy()
-    else:
-        # Enforce removal of values in missing bins
-        r = erase_missing(B, good_bins, good_bins, sym_upper=True)
-    r = r.tocoo()
-    # Update sparsity and get coordinates of nonzero pixels
-    r.eliminate_zeros()
-    nz_rows, nz_cols = r.nonzero()
-    for _ in range(iterations):
-        bin_sums = sum_mat_bins(r)
-        # Divide sums by their mean to avoid instability
-        bin_sums /= np.median(bin_sums)
-        # ICE normalisation (Divide each valid pixel by the product
-        # of its row and column)
-        r.data /= np.float64(bin_sums[nz_rows] * bin_sums[nz_cols])
-    bin_sums = sum_mat_bins(r)
-    # Scale to 1
-    r.data = r.data * (1 / np.median(bin_sums))
-    r.eliminate_zeros()
-    return r
-
-
 def set_mat_diag(mat, diag=0, val=0):
     """
     Set the nth diagonal of a symmetric 2D numpy array to a fixed value.
@@ -113,7 +72,7 @@ def set_mat_diag(mat, diag=0, val=0):
 
     Parameters
     ----------
-    mat : numpy.array
+    mat : numpy.ndarray
         Symmetric 2D array of floats.
     diag : int
         0-based index of the diagonal to modify. Use negative values for the
@@ -136,30 +95,30 @@ def diag_trim(mat, n):
     Parameters
     ----------
 
-    mat : scipy.sparse.csr_matrix or numpy.array
+    mat : scipy.sparse.csr_matrix or numpy.ndarray
         The sparse matrix to be trimmed
     n : int
         The number of diagonals from the center to keep (0-based).
 
     Returns
     -------
-    scipy.sparse.dia_matrix or numpy.array:
+    scipy.sparse.dia_matrix or numpy.ndarray:
         The diagonally trimmed upper triangle matrix with only the first
         n diagonal.
     """
-    if not sp.issparse(mat):
+    if sp.issparse(mat):
+        if mat.format != "csr":
+            raise ValueError("input type must be scipy.sparse.csr_matrix")
+        # Trim diagonals by removing all elements further than n in the
+        # upper triangle
+        trimmed = sp.tril(mat, n, format="csr")
+        trimmed = sp.triu(trimmed, format="csr")
+    else:
         trimmed = mat.copy()
         n_diags = trimmed.shape[0]
         for diag in range(n, n_diags):
             set_mat_diag(trimmed, diag, 0)
         return trimmed
-
-    if mat.format != "csr":
-        raise ValueError("input type must be scipy.sparse.csr_matrix")
-    # Trim diagonals by removing all elements further than n in the
-    # upper triangle
-    trimmed = sp.tril(mat, n, format="csr")
-    trimmed = sp.triu(trimmed, format="csr")
 
     return trimmed
 
@@ -168,14 +127,16 @@ def distance_law(
     matrix, detectable_bins=None, max_dist=None, smooth=True, fun=np.nanmean
 ):
     """
-    Computes genomic distance law by averaging over each diagonal in
-    the upper triangle matrix.
+    Computes genomic distance law by averaging over each diagonal in the upper
+    triangle matrix. If a list of detectable bins is provided, pixels in
+    missing bins will be excluded from the averages. A maximum distance can be
+    specified to define how many diagonals should be computed.
 
     parameters
     ----------
     matrix: scipy.sparse.csr_matrix
         the input matrix to compute distance law from.
-    detectable_bins : numpy.array of ints
+    detectable_bins : numpy.ndarray of ints
         An array of detectable bins indices to consider when computing
         distance law.
     max_dist : int
@@ -233,54 +194,9 @@ def distance_law(
     return dist
 
 
-def despeckle(matrix, th2=3):
-    """
-    Remove speckles (i.e. noisy outlier pixels) from a Hi-C
-    contact map in sparse format. Speckles are set back to the
-    median value of their respective diagonals.
-
-    Parameters
-    ----------
-
-    B : scipy.sparse.coo_matrix
-        Contact map in sparse upper triangle format.
-    th2 : np.float64
-        Threshold used for despeckling. This defines outlier pixel
-        P on diagonal D by if P > median(D) + std(D) * th2
-
-    Returns
-    -------
-
-    A : scipy.sparse.coo_matrix
-        The despeckled sparse matrix.
-    """
-    matrix = matrix.tocoo()
-    A = matrix.copy()
-    n1 = A.shape[0]
-    # Extract all diagonals in the upper triangle
-    dist = {u: A.diagonal(u) for u in range(n1)}
-    # Compute median and MAD for each diagonal
-    medians, stds = {}, {}
-    for u in dist:
-        medians[u] = np.median(dist[u])
-        stds[u] = ss.median_absolute_deviation(dist[u], nan_policy="omit")
-
-    # Loop over all nonzero pixels in the COO matrix and their coordinates
-    for i, (row, col, val) in enumerate(
-        zip(matrix.row, matrix.col, matrix.data)
-    ):
-        # Compute genomic distance of interactions in pixel
-        dist = abs(row - col)
-        # If pixel in input matrix is an outlier, set this pixel to median
-        # of its diagonal in output matrix
-        if val > medians[dist] + th2 * stds[dist]:
-            A.data[i] = medians[dist]
-    return A
-
-
 def get_detectable_bins(mat, n_mads=3, inter=False):
     """
-    Returns lists of detectable indices after excluding low interacting bin
+    Returns lists of detectable indices after excluding low interacting bins
     based on the proportion of zero pixel values in the matrix bins.
 
     Parameters
@@ -296,14 +212,15 @@ def get_detectable_bins(mat, n_mads=3, inter=False):
 
     Returns
     -------
-    numpy array :
+    numpy ndarray :
         tuple of 2 1D arrays containing indices of low interacting rows and
         columns, respectively.
-    -------
     """
     matrix = mat.copy()
     matrix.eliminate_zeros()
-    mad = lambda x: ss.median_absolute_deviation(x, nan_policy="omit")
+
+    def mad(x): return ss.median_absolute_deviation(x, nan_policy="omit")
+
     if not inter:
         if matrix.shape[0] != matrix.shape[1]:
             raise ValueError("Intrachromosomal matrices must be symmetric.")
@@ -414,41 +331,6 @@ def ztransform(matrix):
     return mat
 
 
-def signal_to_noise_threshold(matrix, detectable_bins):
-    """
-    Compute signal to noise ratio (SNR) at each diagonal of the matrix to
-    determine the maximum scanning distance from the diagonal.
-
-    Parameters
-    ----------
-    matrix : scipy.sparse.coo_matrix
-        The Hi-C contact map in sparse format.
-    detectable_bins : numpy.array
-        Array containing indices of detectable bins.
-    Returns
-    -------
-    int :
-        The maximum distance from the diagonal at which the matrix should be
-        scanned
-    """
-    # Using median and mad to reduce sensitivity to outlier
-    dist_means = distance_law(
-        matrix, detectable_bins=detectable_bins, fun=np.nanmean
-    )
-    dist_stds = distance_law(
-        matrix, detectable_bins=detectable_bins, fun=np.nanstd
-    )
-    snr = dist_means / dist_stds
-    # Values below 1 are considered too noisy
-    threshold_noise = 1.0
-    snr[np.isnan(snr)] = 0.0
-    try:
-        max_dist = min(np.flatnonzero(snr < threshold_noise))
-    except ValueError:
-        max_dist = matrix.shape[0]
-    return max_dist
-
-
 def sum_mat_bins(mat):
     """
     Compute the sum of matrices bins (i.e. rows or columns) using
@@ -459,10 +341,10 @@ def sum_mat_bins(mat):
     mat : scipy.sparse.coo_matrix
         Contact map in sparse format, either in upper triangle or
         full matrix.
-    
+
     Returns
     -------
-    numpy.array :
+    numpy.ndarray :
         1D array of bin sums.
     """
     # Equivalaent to row or col sum on a full matrix
@@ -478,7 +360,7 @@ def subsample_contacts(M, n_contacts):
     ----------
     M : scipy.sparse.coo_matrix
         The input Hi-C contact map in sparse format.
-    n_contacts : int 
+    n_contacts : int
         The number of contacts to sample.
 
     Returns
@@ -618,9 +500,9 @@ def check_missing_mask(signal, mask):
 
     Parameters
     ----------
-    signal : numpy.array of floats or scipy.sparse.csr_matrix of floats
+    signal : numpy.ndarray of floats or scipy.sparse.csr_matrix of floats
         The signal to be checked.
-    mask : numpy.array of bools or scipy.sparse.csr_matrix of bools
+    mask : numpy.ndarray of bools or scipy.sparse.csr_matrix of bools
         The mask defining missing values as True and valid values as False.
     """
 
@@ -658,10 +540,10 @@ def make_missing_mask(
     ----------
     shape : tuple of ints
         Shape of the mask to generate.
-    valid_rows : numpy.array of ints
+    valid_rows : numpy.ndarray of ints
         Array with the indices of valid rows that should be set to 0 in the
         mask.
-    valid_cols : numpy.array of ints
+    valid_cols : numpy.ndarray of ints
         Array with the indices of valid rows that should be set to 0 in the
         mask.
     max_dist : int or None
@@ -797,7 +679,7 @@ def crop_kernel(kernel, target_size):
 
     Parameters
     ----------
-    kernel : numpy.array of floats
+    kernel : numpy.ndarray of floats
         Image to crop.
     target_size : tuple of ints
         Tuple defining the target shape of the kernel, takes the
@@ -805,7 +687,7 @@ def crop_kernel(kernel, target_size):
 
     Returns
     -------
-    cropped : numpy.array of floats
+    cropped : numpy.ndarray of floats
         New image no larger than target dimensions
     """
     # Use list for mutability
@@ -858,7 +740,7 @@ def resize_kernel(
 
     Parameters
     ----------
-    kernel : numpy.array
+    kernel : numpy.ndarray
         Kernel matrix.
     kernel_res : int
         Resolution for which the kernel was designed. Mutually exclusive with
@@ -875,7 +757,7 @@ def resize_kernel(
 
     Returns
     -------
-    resized_kernel : numpy.array
+    resized_kernel : numpy.ndarray
         The resized input kernel.
     """
     km, kn = kernel.shape
@@ -924,14 +806,14 @@ def factorise_kernel(kernel, prop_info=0.999):
 
     Parameters
     ----------
-    kernel : numpy.array of floats
+    kernel : numpy.ndarray of floats
         The input 2D kernel to factorise.
     prop_info : float
         Proportion of information to retain.
 
     Returns
     -------
-    tuple of numpy.arrays
+    tuple of numpy.ndarrays of floats
         A tuple containing the truncated left and right singular matrices,
         where each singular vector has been multiplied by the square root of
         their respective singular values.
@@ -982,5 +864,3 @@ def valid_to_missing(valid, size):
         pass
     missing = np.flatnonzero(missing)
     return missing
-
-
