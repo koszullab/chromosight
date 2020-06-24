@@ -21,9 +21,10 @@ def validate_patterns(
     missing_tol=0.75,
 ):
     """
-    Given a list of pattern coordinates and a contact map, remove patterns in
-    low detectability regions or too close to matrix boundaries. Also returns
-    the surrounding window of Hi-C contacts around each detected pattern.
+    Given a list of pattern coordinates and a contact map, drop or flag
+    patterns in low detectability regions or too close to matrix boundaries.
+    Also returns the surrounding window of Hi-C contacts around each detected
+    pattern.
 
     Parameters
     ----------
@@ -121,8 +122,9 @@ def validate_patterns(
             # undetectable bins and zero valued pixels in detectable bins.
             prop_undetected = tot_missing_pixels / tot_pixels
             prop_zero = tot_zero_pixels / (tot_pixels - tot_missing_pixels)
-            # Only compute scores for patterns with at least 25% detectable pixels
-            # (by default) and less than user-defined proportion of zero pixels
+            # Only compute scores for patterns with at least 25% detectable
+            # pixels (by default) and less than user-defined proportion of zero
+            # pixels
             if (prop_undetected < missing_tol) and (prop_zero < zero_tol):
                 validated_coords.score[i] = conv_mat[p1, p2]
                 pattern_windows[i, :, :] = pattern_window
@@ -145,19 +147,12 @@ def validate_patterns(
         filtered_coords = validated_coords
         filtered_windows = pattern_windows
 
-    # from matplotlib import pyplot as plt
-
-    # fig, ax = plt.subplots(filtered_windows.shape[2], 1)
-    # for i, axi in enumerate(ax.flatten()):
-    #    axi.imshow(filtered_windows[:, :, i])
-    # plt.show()
-
     return filtered_coords, filtered_windows
 
 
 def pileup_patterns(pattern_windows):
     """
-    Generate a pileup from an stack of pattern windows.
+    Generate a pileup (arithmetic mean) from a stack of pattern windows.
 
     Parameters
     ----------
@@ -185,8 +180,8 @@ def pattern_detector(
 ):
     """
     Detect patterns in a contact map by kernel matching, and extract windows
-    around the detected patterns. If coordinates are provided, detection is skipped and
-    windows are extracted around those coordinates.
+    around the detected patterns. If coordinates are provided, detection is
+    skipped and windows are extracted around those coordinates.
 
     Parameters
     ----------
@@ -211,7 +206,7 @@ def pattern_detector(
         using truncated SVD, keeping enough singular vectors to retain this
         proportion of information. Factorisation speeds up convolution at
         the cost of a loss of information. If the number of singular vectors
-        required to retain the desired information isDisabled by default.
+        required to retain the desired information is disabled by default.
 
     Returns
     -------
@@ -222,10 +217,12 @@ def pattern_detector(
     """
     km, kn = kernel_matrix.shape
     kh, kw = (km - 1) // 2, (kn - 1) // 2
-    # Define where to save the dump
-    save_dump = lambda base, mat: sp.save_npz(
-        pathlib.Path(dump) / f"{contact_map.name}_{base}", mat
-    )
+
+    def save_dump(base, mat):
+        """Define where to save the dump"""
+        sp.save_npz(
+            pathlib.Path(dump) / f"{contact_map.name}_{base}", mat
+        )
 
     # Define type of analysis.
     run_mode = "detect" if coords is None else "quantify"
@@ -234,6 +231,7 @@ def pattern_detector(
     if min(contact_map.matrix.shape) <= max(kernel_matrix.shape):
         return None, None
 
+    # If full is specified, missing bins are accounted for using a mask
     if full:
         missing_mask = preproc.make_missing_mask(
             contact_map.matrix.shape,
@@ -245,7 +243,7 @@ def pattern_detector(
     else:
         missing_mask = None
 
-    # Pattern matching operate here
+    # Pattern matching operates here
     mat_conv, mat_log10_pvals = normxcorr2(
         contact_map.matrix.tocsr(),
         kernel_matrix,
@@ -344,7 +342,7 @@ def pattern_detector(
 def remove_neighbours(patterns, win_size=8):
     """
     Identify patterns that are too close from each other to exclude them.
-    The pattern with the highest score in the group will be kept.
+    The pattern with the highest score are kept in priority.
 
     Parameters
     ----------
@@ -383,9 +381,9 @@ def remove_neighbours(patterns, win_size=8):
 def picker(mat_conv, pearson):
     """
     Pick coordinates of local maxima in a sparse 2D convolution heatmap. A
-    threshold computed based on the pearson argument is applied to the
-    heatmap. All values below that threshold are set to 0. The coordinate
-    of the maximum value in each focus is returned.
+    threshold computed based on the pearson argument is applied to the heatmap.
+    All values below that threshold are set to 0. The coordinate of the maximum
+    value in each focus (contiguous region of high values) is returned.
 
     Parameters
     ----------
@@ -406,6 +404,7 @@ def picker(mat_conv, pearson):
         are set to 0.
     """
 
+    # Filter and binarize sparse matrix based on input threshold
     candidate_mat = mat_conv.copy()
     candidate_mat = candidate_mat.tocoo()
     candidate_mat.data[candidate_mat.data < pearson] = 0
@@ -414,7 +413,9 @@ def picker(mat_conv, pearson):
 
     # Check if at least one candidate pixel was found
     if len(candidate_mat.data) > 0:
+        # Assign foci identifiers to pixels above threshold
         num_foci, labelled_mat = label_foci(candidate_mat)
+        # Remove foci which are too small
         num_foci, labelled_mat = filter_foci(labelled_mat)
         if num_foci == 0:
             return None, None
