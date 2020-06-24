@@ -306,7 +306,8 @@ class HicGenome:
             sub_mats.shape[0],
             (
                 f"{sub_mats.loc[sub_mat_idx-1, 'chr1']}-"
-                f"{sub_mats.loc[sub_mat_idx-1, 'chr2']}\n",
+                f"{sub_mats.loc[sub_mat_idx-1, 'chr2']}\n"
+            )
         )
         self.sub_mats = sub_mats
         print("Sub matrices extracted")

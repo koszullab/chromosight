@@ -104,18 +104,6 @@ class TestPreprocessing(unittest.TestCase):
 
 
 @params(*intra_mats)
-def test_normalize(matrix):
-    """Check if normalization sets all bins sums to ~1 (0.5 for upper triangle)."""
-    norm = preproc.normalize(matrix, good_bins=None, iterations=50)
-    sym_norm = norm + norm.T
-    sym_norm.setdiag(sym_norm.diagonal(0) / 2)
-    bin_sums = sym_norm.sum(axis=1).A1
-    # Replace missing bins by ones for the sake of testing
-    bin_sums[bin_sums == 0] = 1
-    assert np.all(np.isclose(bin_sums, np.ones(matrix.shape[0]), rtol=0.1))
-
-
-@params(*intra_mats)
 def test_diag_trim(matrix):
     """Check if trimming diagonals preserves shape and sets diagonals to zero."""
     for d in range(matrix.shape[0]):
@@ -125,19 +113,6 @@ def test_diag_trim(matrix):
         ]
         assert trimmed.shape == matrix.shape
         assert np.sum(diag_sums[d + 1 :]) == 0
-
-
-def test_despeckle():
-    """Check that artificially added outliers are removed"""
-    # Make random matrix using uniform sample between 0 and 1
-    uniform_mat = sp.random(1000, 1000, 0.1, format="csr")
-    # introduce outlier on 11th diag
-    uniform_mat[10, 10] = 10e6
-    # Compute median of 11th diag (desired value after despeckling)
-    exp_val = np.median(uniform_mat.diagonal(10))
-    desp = preproc.despeckle(uniform_mat.tocoo(), th2=1)
-    assert np.max(uniform_mat.data) > np.max(desp.data)
-    assert desp.tocsr()[10, 10] == exp_val
 
 
 def test_resize_kernel():
@@ -252,19 +227,6 @@ def test_ztransform(matrix):
     ztr = preproc.ztransform(matrix)
     assert np.isclose(np.mean(ztr.data), 0, rtol=0.1)
     assert np.isclose(np.std(ztr.data), 1, rtol=0.1)
-
-
-def test_signal_to_noise_threshold():
-    """Check if SNR yields correct index on synthetic matrix."""
-    # Initialize empty matrix (SNR = 0)
-    syn_mat = sp.coo_matrix((1000, 1000))
-    # Set all values in 5th first diagonals to 10 (SNR = 10)
-    for k in range(5):
-        syn_mat.setdiag(10, k=k)
-    snr_idx = preproc.signal_to_noise_threshold(syn_mat, detectable_bins=None)
-    # Since the 5th first diagonals are good, the last scannable diagonal
-    # should be 4
-    assert snr_idx == 5
 
 
 @params(*intra_mats)
