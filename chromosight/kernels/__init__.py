@@ -4,8 +4,12 @@ dictionary whith the kernel name. The items of the dictionaries are the
 key-value pairs from the kernel's json file, with the kernel matrices
 pre-loaded under the "kernels" key. Here is the kernel submodule can be used to
 extract the first borders kernel:
->>> import chromosight.kernels as ck
->>> kernel = ck.borders['kernels'][0]
+
+.. code-block:: python
+
+    import chromosight.kernels as ck
+    kernel = ck.borders['kernels'][0]
+
 """
 from chromosight.utils.io import load_kernel_config
 import pathlib

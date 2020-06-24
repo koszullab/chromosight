@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 # coding: utf-8
 
-"""Preprocessing utils
-Operations to perform on Hi-C matrices before analyses
+"""Chromosight's preprocessing submodule implements a number of functions to
+operate on Hi-C contact maps before detection. These functions can be used to
+improve the signal or filter unneeded signal. There are also functions to edit
+(zoom, crop, factorize) kernel matrices.
 """
+
 import sys
 import numpy as np
 import numpy.linalg as la
@@ -406,15 +409,17 @@ def frame_missing_mask(mask, kernel_shape, sym_upper=False, max_dist=None):
     half the kernel's width is added below the diagonal and a maximum distance
     from the diagonal above which margins need not be drawn can be considered.
     Otherwise Margins are simply added on all 4 sides of the matrix.
+    
+    ::
 
-    signal    kernel   _________
-    ______   ____      |#######|
-    |     |  |   | ==> |#     #|
-    |     |  |___|     |#     #|
-    |     |            |#     #|
-    |_____|            |#     #|
-                       |#######|
-                       --------
+        signal    kernel   _________
+        ______   ____      |#######|
+        |     |  |   | ==> |#     #|
+        |     |  |___|     |#     #|
+        |     |            |#     #|
+        |_____|            |#     #|
+                           |#######|
+                           --------
 
     Parameters
     ----------

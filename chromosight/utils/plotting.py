@@ -1,3 +1,7 @@
+"""Chromosight's plotting submodule contains utilities to visualize the pileup
+of detected patterns or the input matrix. It also implements an interactive map
+recording the coordinates of double clicks."""
+
 import sys
 import pathlib
 import numpy as np

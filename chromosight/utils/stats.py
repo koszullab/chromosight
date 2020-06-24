@@ -1,3 +1,5 @@
+"""Chromosight's stats submodule contains helper function to compute statistical estimators from distributions"""
+
 import numpy as np
 import scipy.stats as ss
 

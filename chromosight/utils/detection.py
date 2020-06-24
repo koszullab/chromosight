@@ -1,3 +1,8 @@
+"""Chromosight's detection submodule implements the bulk of chromosight
+convolution engine, as well as functions to perform the different steps of the
+detection algorithm (pre-processing, local maxima, post-processing...). The
+pattern_detector function orchestrate all those different steps."""
+
 from __future__ import absolute_import
 import numpy as np
 import pandas as pd

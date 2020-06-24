@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # coding: utf-8
-"""Input/Output related functions
-Load and save contact matrices in sparse format
-"""
+"""Chromosight's io submodule contains input/output related functions to load
+contact matrices in cool format, and save output patterns coordinates and
+windows."""
+
 import pandas as pd
 import numpy as np
 import pathlib
@@ -87,7 +88,8 @@ def load_kernel_config(kernel, custom=False):
 
     A kernel config file is a JSON file with the following structure:
 
-    ```json
+    .. code-block:: JSON
+
     {
         "name": str,
         "kernels": [
@@ -102,7 +104,8 @@ def load_kernel_config(kernel, custom=False):
         "pearson": float
         "resolution": int
     }
-    ```
+
+
     The kernels field should contain a list of path to kernel matrices to be
     loaded. These path should be relative to the config file. When loaded, the
     kernel field will contain the target matrices as 2D numpy arrays.
@@ -111,6 +114,7 @@ def load_kernel_config(kernel, custom=False):
     matrix of numeric value as read by the numpy.loadtxt function.
 
     Other fields are:
+
     * name : Name of the pattern
     * max_dist : maximum distance in basepairs to scan from the diagonal
     * max_iterations: maximum number of scanning iterations to perform
@@ -123,14 +127,16 @@ def load_kernel_config(kernel, custom=False):
     ----------
     kernel : str
         The name of the built-in pattern configuration to load if custom is
-        False. Otherwise, the path to the custom JSON configuration file to load.
+        False. Otherwise, the path to the custom JSON configuration file to
+        load.
     custom : bool
         Determines if a custom JSON configuration file must be loaded, or if a
         preset configuration is used.
+
     Returns
     -------
     kernel_config : dict
-        A dictionary containing a key: value pair for each parameter as well as 
+        A dictionary containing a key: value pair for each parameter as well as
         list of kernel matrices under key 'kernels'.
     """
     # Define a schema for kernel configuration validation
@@ -224,9 +230,9 @@ def write_patterns(coords, pattern_name, output_dir, dec=10):
 
 def save_windows(windows, pattern_name, output_dir=".", format="json"):
     """
-    Write windows surrounding detected patterns to a npy file.
-    The file contains a 3D array where windows are piled on
-    axis 0, matrix rows are on axis 1 and columns on axis 2.
+    Write windows surrounding detected patterns to a npy or json file.  The
+    file contains a 3D array where windows are piled on axis 0, matrix rows are
+    on axis 1 and columns on axis 2.
 
     Parameters
     ----------
@@ -259,7 +265,7 @@ def save_windows(windows, pattern_name, output_dir=".", format="json"):
 def progress(count, total, status=""):
     """
     Basic progress bar in terminal.
-    
+
     Parameters
     ----------
     count : float
@@ -295,8 +301,8 @@ def load_bed2d(path):
     Returns
     -------
     pandas.DataFrame :
-        The content of the 2D BED file as a dataframe with 6 columns. Header will
-        be: chrom1, start1, end1, chrom2, start2, end2.
+        The content of the 2D BED file as a dataframe with 6 columns. Header
+        will be: chrom1, start1, end1, chrom2, start2, end2.
     """
     header_finder = csv.Sniffer()
     with open(path) as f:
