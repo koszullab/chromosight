@@ -5,7 +5,7 @@
     ],
     "min_dist": 0,
     "max_dist": 0,
-    "max_iterations": 3,
+    "max_iterations": 1,
     "max_perc_zero": 30.0,
     "max_perc_undetected": 50.0,
     "pearson": 0.5,
