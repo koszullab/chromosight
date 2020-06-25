@@ -124,4 +124,4 @@ This command will generate a config based on the loops template (the default) an
 
 ## A note on borders and kernels
 
-One constraint in chromosight is that kernels must have an odd number of rows/columns. This is because chromosight always reports the center pixel of each window when computing correlations. For patterns which do not have a central pixel, such are borders which are between two pixels, a choice has to be made when making the kernel. In the case of borders, the kernel is shifted so that the central pixel is always the pixel on the right of the border.
+One constraint in chromosight is that kernels must have an odd number of rows/columns. This is because chromosight always reports the center pixel of each window when computing correlations. For patterns which do not have a central pixel, such as borders which are between two pixels, a choice has to be made when making the kernel. In the case of borders, the kernel is shifted so that the central pixel is always the pixel on the right of the border.
