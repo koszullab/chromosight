@@ -6,6 +6,7 @@
 Python package to detect chromatin loops (and other patterns) in Hi-C contact maps. 
 
 Preprint can be found on https://www.biorxiv.org/content/10.1101/2020.03.08.981910v3.full
+
 Docs available at https://chromosight.readthedocs.io
 
 ## Installation
