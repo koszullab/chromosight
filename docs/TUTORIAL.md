@@ -120,7 +120,7 @@ For example:
 chromosight generate-config --click sample1.cool --win-size 15 demo_manual
 ```
 
-This command will generate a config based on the loops template (the default) and will display the contact map `sample1.cool`. Every time the user double-clicks on a pixel, a window of 15x15 pixels centered on that position is recorded. The operation can be repeated as many times as the user wishes, and when the window is closed, all windows are averaged, a slight gaussian blur is added to reduce the impact of random noise, and the resulting pileup is used as the kernel when writing the config files.
+This command will generate a config file based on the loops template (the default) and will display the contact map `sample1.cool`. Every time the user double-clicks on a pixel, a window of 15x15 pixels centered on that position is recorded. The operation can be repeated as many times as the user wishes, and when the window is closed, all windows are averaged, a slight gaussian blur is added to reduce the impact of random noise, and the resulting pileup is used as the kernel when writing the config files.
 
 ## A note on borders and kernels
 
