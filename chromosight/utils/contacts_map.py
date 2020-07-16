@@ -457,7 +457,7 @@ class ContactMap:
         List containing two arrays (rows and columns) of indices from bins
         considered detectable in the matrix.
     inter : bool
-        True if the matrix represents contacts between two different,
+        True if the matrix represents contacts between two different chromosomes,
         False otherwise.
     max_dist : int
         Maximum distance (in bins) at which contact values should be analysed.
