@@ -20,10 +20,7 @@ class TestIO:
         # Create tmp temporary file for reading and writing
         tmp_out = tempfile.NamedTemporaryFile(delete=False)
         tmp_out.close()
-        # Give access to full path, dirname and basename in diff variables
         self.tmp_path = tmp_out.name
-        self.tmp_dir = os.path.dirname(self.tmp_path)
-        self.tmp_file = os.path.basename(self.tmp_path)
 
     def rm_tmp(self):
         """Teardown function to remove existing tempfile"""
@@ -153,21 +150,19 @@ class TestIO:
             }
         )
         for dec in range(1, 5):
-            cio.write_patterns(
-                tmp_coords, self.tmp_file, self.tmp_dir, dec=dec
-            )
-            obs_coords = pd.read_csv(self.tmp_path + ".txt", sep="\t")
+            cio.write_patterns(tmp_coords, self.tmp_path, dec=dec)
+            obs_coords = pd.read_csv(self.tmp_path + ".tsv", sep="\t")
             assert obs_coords.shape == tmp_coords.shape
             assert np.all(
                 np.isclose(obs_coords.score, np.round(tmp_coords.score, dec))
             )
-            os.unlink(self.tmp_path + ".txt")
+            os.unlink(self.tmp_path + ".tsv")
 
     def test_save_windows(self):
         """Check that windows around detected patterns can be saved to disk in JSON and npy."""
         tmp_wins = np.random.random((100, 9, 9))
         # Check whether legit windows can be saved and loaded in both formats
-        cio.save_windows(tmp_wins, self.tmp_file, self.tmp_dir, format="json")
+        cio.save_windows(tmp_wins, self.tmp_path, fmt="json")
         with open(self.tmp_path + ".json", "r") as jwin:
             w = json.load(jwin)
             # Loaded as a dict, check number of keys
@@ -177,7 +172,7 @@ class TestIO:
         # Remove json windows file
         os.unlink(self.tmp_path + ".json")
 
-        cio.save_windows(tmp_wins, self.tmp_file, self.tmp_dir, format="npy")
+        cio.save_windows(tmp_wins, self.tmp_path, fmt="npy")
         w = np.load(self.tmp_path + ".npy")
         assert w.shape == (100, 9, 9)
         # Remove npy windows file
@@ -185,9 +180,7 @@ class TestIO:
 
         # Check if an inappropriate format raises appropriate exception.
         try:
-            cio.save_windows(
-                tmp_wins, self.tmp_file, self.tmp_dir, format="wrong"
-            )
+            cio.save_windows(tmp_wins, self.tmp_path, fmt="wrong")
             assert False
         except (ValueError):
             assert True

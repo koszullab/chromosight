@@ -28,8 +28,6 @@ class TestPlotting:
         tmp_out.close()
         # Give access to full path, dirname and basename in diff variables
         self.tmp_path = tmp_out.name
-        self.tmp_dir = os.path.dirname(self.tmp_path)
-        self.tmp_file = os.path.basename(self.tmp_path)
 
     def test_distance_plot(self):
         cup.distance_plot(intra_mats, labels=None, out=self.tmp_path)
@@ -37,9 +35,7 @@ class TestPlotting:
     def test_pileup_plot(self):
         windows = np.reshape(np.random.randint(100, size=1000), (10, 10, 10))
         pileup_pattern = cud.pileup_patterns(windows)
-        cup.pileup_plot(
-            pileup_pattern, name="pileup_patterns", output=self.tmp_dir
-        )
+        cup.pileup_plot(pileup_pattern, self.tmp_path, name="pileup_patterns")
 
     @params(*intra_mats)
     def test_distance_plot(self, matrix):
