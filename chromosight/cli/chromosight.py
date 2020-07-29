@@ -137,7 +137,6 @@ Advanced options:
 """
 import numpy as np
 import pandas as pd
-import pathlib
 import os
 import io
 from contextlib import contextmanager
@@ -206,7 +205,7 @@ def _override_kernel_config(param_name, param_value, param_type, config):
 def cmd_quantify(args):
     bed2d_path = args["<bed2d>"]
     mat_path = args["<contact_map>"]
-    prefix = pathlib.Path(args["<prefix>"])
+    prefix = args["<prefix>"]
     n_mads = float(args["--n-mads"])
     pattern = args["--pattern"]
     inter = args["--inter"]
@@ -768,15 +767,18 @@ def cmd_detect(args):
 def cmd_test(args):
 
     sys.stderr.write(f"Fetching test dataset at {URL_EXAMPLE_DATASET}...\n")
-    tmp = tempfile.NamedTemporaryFile(delete=False)
-    cio.download_file(URL_EXAMPLE_DATASET, tmp.name)
+    tmp_cool = tempfile.NamedTemporaryFile(delete=False)
+    tmp_out = tempfile.NamedTemporaryFile(delete=False)
+    cio.download_file(URL_EXAMPLE_DATASET, tmp_cool.name)
 
     sys.stderr.write(f"Running detection on test dataset...\n")
 
-    args["<contact_map>"] = tmp.name
+    args["<contact_map>"] = tmp_cool.name
+    args["<prefix>"] = tmp_out.name
     args["--no-plotting"] = True
     cmd_detect(args)
-    os.unlink(tmp.name)
+    os.unlink(tmp_cool.name)
+    os.unlink(tmp_out.name)
 
 
 @contextmanager
