@@ -13,7 +13,7 @@ import shutil
 from urllib.request import urlopen
 import json
 from jsonschema import validate, ValidationError
-from os.path import join
+from os.path import join, dirname, isdir
 from scipy.sparse import coo_matrix, triu
 
 
@@ -222,11 +222,11 @@ def write_patterns(coords, output_prefix, dec=10):
     dec : int
         Number of decimals to keep in correlation scores and p-values.
     """
-    file_path = output_prefix + ".txt"
+    file_path = output_prefix + ".tsv"
     coords.to_csv(file_path, sep="\t", index=None, float_format=f"%.{dec}f")
 
 
-def save_windows(windows, output_prefix, format="json"):
+def save_windows(windows, output_prefix, fmt="json"):
     """
     Write windows surrounding detected patterns to a npy or json file.  The
     file contains a 3D array where windows are piled on axis 0, matrix rows are
@@ -244,11 +244,11 @@ def save_windows(windows, output_prefix, format="json"):
         numpy's binary format, or json for a general purpose text
         format.
     """
-    if format == "npy":
+    if fmt == "npy":
         file_path = output_prefix + ".npy"
         np.save(file_path, windows)
-    elif format == "json":
-        file_path = pattern_name + ".json"
+    elif fmt == "json":
+        file_path = output_prefix + ".json"
         json_wins = {idx: win.tolist() for idx, win in enumerate(windows)}
         with open(file_path, "w") as handle:
             json.dump(json_wins, handle, indent=4)
@@ -329,3 +329,10 @@ def download_file(url, file, length=16 * 1024):
     req = urlopen(url)
     with open(file, "wb") as fp:
         shutil.copyfileobj(req, fp, length)
+
+
+def check_prefix_dir(prefix):
+    """Checks for existence of the parent directory of an output prefix"""
+    out_dir = dirname(prefix)
+    if out_dir and not isdir(out_dir):
+        raise OSError(f"Directory {out_dir} does not exist.")

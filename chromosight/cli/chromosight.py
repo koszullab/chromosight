@@ -225,9 +225,8 @@ def cmd_quantify(args):
     if win_size != "auto":
         win_size = int(win_size)
     subsample = args["--subsample"]
-    # Create directory if it does not exist
-    if not output.exists():
-        os.makedirs(output, exist_ok=True)
+    # If prefix involves a directory, crash if it does not exist
+    cio.check_prefix_dir(prefix)
     # Load 6 cols from 2D BED file and infer header
     bed2d = cio.load_bed2d(bed2d_path)
     # Warn user if --inter is disabled but list contains inter patterns
@@ -391,7 +390,7 @@ def cmd_quantify(args):
         bed2d.loc[np.isnan(bed2d.score), "pvalue"] = np.nan
         bed2d.loc[np.isnan(bed2d.score), "qvalue"] = np.nan
         cio.write_patterns(bed2d, prefix)
-        cio.save_windows(windows, prefix, format=win_fmt)
+        cio.save_windows(windows, prefix, fmt=win_fmt)
         # Generate pileup visualisations if requested
         if plotting_enabled:
             # Compute and plot pileup
@@ -422,9 +421,8 @@ def cmd_generate_config(args):
 
     cfg = cio.load_kernel_config(pattern, False)
 
-    # If prefix involves a directory, create it
-    if os.path.dirname(prefix):
-        os.makedirs(os.path.dirname(prefix), exist_ok=True)
+    # If prefix involves a directory, crash if it does not exist
+    cio.check_prefix_dir(prefix)
 
     # If a specific window size if requested, resize all kernels
     if win_size != "auto":
@@ -530,6 +528,9 @@ def cmd_detect(args):
     smooth_trend = args["--smooth-trend"]
     if smooth_trend is None:
         smooth_trend = False
+
+    # If prefix involves a directory, crash if it does not exist
+    cio.check_prefix_dir(prefix)
 
     if win_fmt not in ["npy", "json"]:
         sys.stderr.write("Error: --win-fmt must be either json or npy.\n")
@@ -744,7 +745,7 @@ def cmd_detect(args):
     # Save patterns and their coordinates in a tsv file
     cio.write_patterns(all_coords, prefix)
     # Save windows as an array in an npy file
-    cio.save_windows(all_windows, prefix, format=win_fmt)
+    cio.save_windows(all_windows, prefix, fmt=win_fmt)
 
     # Generate pileup visualisations if requested
     if plotting_enabled:
