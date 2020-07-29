@@ -3,20 +3,15 @@ of detected patterns or the input matrix. It also implements an interactive map
 recording the coordinates of double clicks."""
 
 import sys
-import pathlib
 import numpy as np
 from matplotlib import pyplot as plt
 
 
-def pileup_plot(pileup_pattern, name="pileup_patterns", output=None):
+def pileup_plot(pileup_pattern, output_prefix, name="pileup_patterns"):
     """
     Wrapper around matplotlib.pyplot.imshow to visualize the pileup of patterns
     detected by chromosight
     """
-    if output is None:
-        output = pathlib.Path()
-    else:
-        output = pathlib.Path(output)
 
     plt.imshow(
         pileup_pattern,
@@ -27,8 +22,7 @@ def pileup_plot(pileup_pattern, name="pileup_patterns", output=None):
     )
     plt.title("{} pileup".format(name))
     plt.colorbar()
-    emplacement = output / pathlib.Path(name + ".pdf")
-    plt.savefig(emplacement, dpi=100, format="pdf")
+    plt.savefig(output_prefix + ".pdf", dpi=100, format="pdf")
     plt.close("all")
 
 
@@ -128,7 +122,7 @@ def click_finder(mat, half_w=8):
             return None
         try:
             if coords[-1] == (ix, iy):
-                print(f'x = {ix}, y = {iy}')
+                print(f"x = {ix}, y = {iy}")
         except IndexError:
             pass
         coords.append((ix, iy))
@@ -136,17 +130,17 @@ def click_finder(mat, half_w=8):
 
     fig = plt.figure()
     plt.imshow(
-        mat.toarray(), cmap='afmhot_r', vmax=np.percentile(mat.data, 95)
+        mat.toarray(), cmap="afmhot_r", vmax=np.percentile(mat.data, 95)
     )
-    plt.title('Double click to record pattern positions')
+    plt.title("Double click to record pattern positions")
     # Setup click listener
-    cid = fig.canvas.mpl_connect('button_press_event', onclick)
+    cid = fig.canvas.mpl_connect("button_press_event", onclick)
     plt.show()
     fig.canvas.mpl_disconnect(cid)
     # Keep coordinates that were clicked twice consecutively (double-click)
     double_clicked = set()
     for c in range(1, len(coords)):
-        if coords[c-1] == coords[c]:
+        if coords[c - 1] == coords[c]:
             double_clicked.add(coords[c])
     # initialize empty image stack, will store windows around coords
     img_stack = np.zeros((len(double_clicked), half_w * 2 + 1, half_w * 2 + 1))
