@@ -768,17 +768,15 @@ def cmd_test(args):
 
     sys.stderr.write(f"Fetching test dataset at {URL_EXAMPLE_DATASET}...\n")
     tmp_cool = tempfile.NamedTemporaryFile(delete=False)
-    tmp_out = tempfile.NamedTemporaryFile(delete=False)
     cio.download_file(URL_EXAMPLE_DATASET, tmp_cool.name)
 
     sys.stderr.write(f"Running detection on test dataset...\n")
 
     args["<contact_map>"] = tmp_cool.name
-    args["<prefix>"] = tmp_out.name
+    args["<prefix>"] = 'chromosight_test'
     args["--no-plotting"] = True
     cmd_detect(args)
     os.unlink(tmp_cool.name)
-    os.unlink(tmp_out.name)
 
 
 @contextmanager
