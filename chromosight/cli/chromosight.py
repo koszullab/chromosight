@@ -13,7 +13,7 @@ Usage:
                         [--n-mads=5] [--min-dist=0] [--max-dist=auto]
                         [--no-plotting] [--min-separation=auto] [--dump=DIR]
                         [--threads=1] [--perc-zero=auto]
-                        [--perc-undetected=auto] <contact_map> [<output>]
+                        [--perc-undetected=auto] <contact_map> <prefix>
     chromosight generate-config [--preset loops] [--click contact_map]
                         [--force-norm] [--win-size=auto] [--n-mads=5]
                         [--threads=1] <prefix>
@@ -21,7 +21,7 @@ Usage:
                          [--win-fmt=json] [--kernel-config=FILE] [--force-norm]
                          [--threads=1] [--n-mads=5] [--win-size=auto]
                          [--perc-undetected=auto] [--perc-zero=auto]
-                         [--no-plotting] [--tsvd] <bed2d> <contact_map> <output>
+                         [--no-plotting] [--tsvd] <bed2d> <contact_map> <prefix>
     chromosight test
 
     detect:
@@ -44,7 +44,8 @@ Arguments for detect:
     --version                   Display the program's current version.
     contact_map                 The Hi-C contact map to detect patterns on, in
                                 bedgraph2d or cool format.
-    output                      name of the output directory
+    prefix                      Common path prefix used to generate output files.
+                                Extensions will be added for each file.
 
 Arguments for quantify:
     bed2d                       Tab-separated text files with columns chrom1, start1
@@ -52,7 +53,8 @@ Arguments for quantify:
                                 a pair of positions (i.e. a position in the matrix).
     contact_map                 Path to the contact map, in bedgraph2d or
                                 cool format.
-    output                      output directory where files should be generated.
+    prefix                      Common path prefix used to generate output files.
+                                Extensions will be added for each file.
 
 Arguments for generate-config:
     prefix                      Path prefix for config files. If prefix is a/b,
@@ -204,7 +206,7 @@ def _override_kernel_config(param_name, param_value, param_type, config):
 def cmd_quantify(args):
     bed2d_path = args["<bed2d>"]
     mat_path = args["<contact_map>"]
-    output = pathlib.Path(args["<output>"])
+    prefix = pathlib.Path(args["<prefix>"])
     n_mads = float(args["--n-mads"])
     pattern = args["--pattern"]
     inter = args["--inter"]
@@ -255,8 +257,10 @@ def cmd_quantify(args):
     max_diag = hic_genome.clr.shape[0] * hic_genome.clr.binsize
     cfg["max_dist"] = min(furthest, max_diag)
     cfg["min_dist"] = 0
-    cfg = _override_kernel_config('max_perc_zero', perc_zero, float, cfg)
-    cfg = _override_kernel_config('max_perc_undetected', perc_undetected, float, cfg)
+    cfg = _override_kernel_config("max_perc_zero", perc_zero, float, cfg)
+    cfg = _override_kernel_config(
+        "max_perc_undetected", perc_undetected, float, cfg
+    )
 
     # Notify contact map instance of changes in scanning distance
     hic_genome.kernel_config = cfg
@@ -271,8 +275,8 @@ def cmd_quantify(args):
     if win_size != "auto":
         if not win_size % 2:
             raise ValueError("--win-size must be odd")
-        for i, k in enumerate(cfg['kernels']):
-            cfg['kernels'][i] = resize_kernel(k, factor=win_size / km)
+        for i, k in enumerate(cfg["kernels"]):
+            cfg["kernels"][i] = resize_kernel(k, factor=win_size / km)
         km = kn = win_size
         # Update kernel config after resizing kernels
         hic_genome.kernel_config = cfg
@@ -384,29 +388,26 @@ def cmd_quantify(args):
             ],
         ]
         # Set p-values of invalid scores to nan
-        bed2d.loc[np.isnan(bed2d.score), 'pvalue'] = np.nan
-        bed2d.loc[np.isnan(bed2d.score), 'qvalue'] = np.nan
-        cio.write_patterns(bed2d, f"{pattern}_quant", output)
-        # bed2d.to_csv(
-        #    output / f"{pattern}_quant.txt", sep="\t", header=True, index=False
-        # )
-        cio.save_windows(
-            windows, f"{pattern}_quant", output_dir=output, format=win_fmt
-        )
+        bed2d.loc[np.isnan(bed2d.score), "pvalue"] = np.nan
+        bed2d.loc[np.isnan(bed2d.score), "qvalue"] = np.nan
+        cio.write_patterns(bed2d, prefix)
+        cio.save_windows(windows, prefix, format=win_fmt)
         # Generate pileup visualisations if requested
         if plotting_enabled:
             # Compute and plot pileup
-            pileup_fname = ("pileup_of_{n}_{pattern}").format(
+            pileup_title = ("pileup_of_{n}_{pattern}").format(
                 pattern=cfg["name"], n=windows.shape[0]
             )
             windows_pileup = cid.pileup_patterns(windows)
             # Symmetrize pileup for diagonal patterns
-            if not cfg['max_dist']:
+            if not cfg["max_dist"]:
                 # Replace nan below diag by 0
                 windows_pileup = np.nan_to_num(windows_pileup)
                 # Add transpose
-                windows_pileup += np.transpose(windows_pileup) - np.diag(np.diag(windows_pileup))
-            pileup_plot(windows_pileup, name=pileup_fname, output=output)
+                windows_pileup += np.transpose(windows_pileup) - np.diag(
+                    np.diag(windows_pileup)
+                )
+            pileup_plot(windows_pileup, prefix, name=pileup_title)
 
 
 def cmd_generate_config(args):
@@ -513,7 +514,7 @@ def cmd_detect(args):
     min_dist = args["--min-dist"]
     min_separation = args["--min-separation"]
     n_mads = float(args["--n-mads"])
-    output = args["<output>"]
+    prefix = args["<prefix>"]
     pattern = args["--pattern"]
     pearson = args["--pearson"]
     perc_zero = args["--perc-zero"]
@@ -529,12 +530,6 @@ def cmd_detect(args):
     smooth_trend = args["--smooth-trend"]
     if smooth_trend is None:
         smooth_trend = False
-    # If output is not specified, use current directory
-    if not output:
-        output = pathlib.Path()
-    else:
-        output = pathlib.Path(output)
-    output.mkdir(exist_ok=True)
 
     if win_fmt not in ["npy", "json"]:
         sys.stderr.write("Error: --win-fmt must be either json or npy.\n")
@@ -629,9 +624,7 @@ def cmd_detect(args):
             # Run in multiprocessing subprocesses
             if threads > 1:
                 pool = mp.Pool(threads)
-                dispatcher = pool.imap(
-                    _detect_sub_mat, sub_mat_data, 1
-                )
+                dispatcher = pool.imap(_detect_sub_mat, sub_mat_data, 1)
             else:
                 dispatcher = map(_detect_sub_mat, sub_mat_data)
             for s, result in enumerate(dispatcher):
@@ -749,24 +742,26 @@ def cmd_detect(args):
     ### 3: WRITE OUTPUT
     sys.stderr.write(f"{all_coords.shape[0]} patterns detected\n")
     # Save patterns and their coordinates in a tsv file
-    cio.write_patterns(all_coords, cfg["name"] + "_out", output)
+    cio.write_patterns(all_coords, prefix)
     # Save windows as an array in an npy file
-    cio.save_windows(all_windows, cfg["name"] + "_out", output, format=win_fmt)
+    cio.save_windows(all_windows, prefix, format=win_fmt)
 
     # Generate pileup visualisations if requested
     if plotting_enabled:
         # Compute and plot pileup
-        pileup_fname = ("pileup_of_{n}_{pattern}").format(
+        pileup_title = ("Pileup of {n} {pattern}").format(
             pattern=cfg["name"], n=all_windows.shape[0]
         )
         windows_pileup = cid.pileup_patterns(all_windows)
         # Symmetrize pileup for diagonal patterns
-        if not cfg['max_dist']:
+        if not cfg["max_dist"]:
             # Replace nan below diag by 0
             windows_pileup = np.nan_to_num(windows_pileup)
             # Add transpose
-            windows_pileup += np.transpose(windows_pileup) - np.diag(np.diag(windows_pileup))
-        pileup_plot(windows_pileup, name=pileup_fname, output=output)
+            windows_pileup += np.transpose(windows_pileup) - np.diag(
+                np.diag(windows_pileup)
+            )
+        pileup_plot(windows_pileup, prefix, name=pileup_title)
 
 
 def cmd_test(args):
