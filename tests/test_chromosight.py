@@ -1,5 +1,4 @@
 import tempfile
-import pathlib
 import os
 import itertools as it
 from nose2.tools import params

@@ -298,10 +298,7 @@ def test_normxcorr2(signal):
         signal, gauss_kernel, max_dist=None, sym_upper=False,
     )
     if len(corr.data):
-        try:
-            assert np.min(corr.data) >= -1
-        except AssertionError:
-            breakpoint()
+        assert np.min(corr.data) >= -1
         assert np.max(corr.data) <= 1
 
 

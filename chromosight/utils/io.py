@@ -13,9 +13,8 @@ import shutil
 from urllib.request import urlopen
 import json
 from jsonschema import validate, ValidationError
-from os.path import join
+from os.path import join, dirname, isdir
 from scipy.sparse import coo_matrix, triu
-
 
 
 def load_cool(cool_path):
@@ -206,7 +205,7 @@ def load_kernel_config(kernel, custom=False):
     return kernel_config
 
 
-def write_patterns(coords, pattern_name, output_dir, dec=10):
+def write_patterns(coords, output_prefix, dec=10):
     """
     Writes coordinates to a text file.
 
@@ -223,12 +222,11 @@ def write_patterns(coords, pattern_name, output_dir, dec=10):
     dec : int
         Number of decimals to keep in correlation scores and p-values.
     """
-    file_name = pattern_name + ".txt"
-    file_path = join(output_dir, file_name)
+    file_path = output_prefix + ".tsv"
     coords.to_csv(file_path, sep="\t", index=None, float_format=f"%.{dec}f")
 
 
-def save_windows(windows, pattern_name, output_dir=".", format="json"):
+def save_windows(windows, output_prefix, fmt="json"):
     """
     Write windows surrounding detected patterns to a npy or json file.  The
     file contains a 3D array where windows are piled on axis 0, matrix rows are
@@ -238,23 +236,19 @@ def save_windows(windows, pattern_name, output_dir=".", format="json"):
     ----------
     windows : numpy.array of floats
         3D numpy array with axes (windows, rows, columns).
-    pattern_name : str
-        Name of the pattern. Will be the basename of the output
-        file.
-    output_dir : str
-        Output path where the file will be saved.
+    output_prefix : str
+        Output path where the file will be saved, an extension will be added
+        based on the value of "format".
     format : str
         Format in which to save windows. Can be either npy for
         numpy's binary format, or json for a general purpose text
         format.
     """
-    if format == "npy":
-        file_name = pattern_name + ".npy"
-        file_path = join(output_dir, file_name)
+    if fmt == "npy":
+        file_path = output_prefix + ".npy"
         np.save(file_path, windows)
-    elif format == "json":
-        file_name = pattern_name + ".json"
-        file_path = join(output_dir, file_name)
+    elif fmt == "json":
+        file_path = output_prefix + ".json"
         json_wins = {idx: win.tolist() for idx, win in enumerate(windows)}
         with open(file_path, "w") as handle:
             json.dump(json_wins, handle, indent=4)
@@ -335,3 +329,10 @@ def download_file(url, file, length=16 * 1024):
     req = urlopen(url)
     with open(file, "wb") as fp:
         shutil.copyfileobj(req, fp, length)
+
+
+def check_prefix_dir(prefix):
+    """Checks for existence of the parent directory of an output prefix"""
+    out_dir = dirname(prefix)
+    if out_dir and not isdir(out_dir):
+        raise OSError(f"Directory {out_dir} does not exist.")

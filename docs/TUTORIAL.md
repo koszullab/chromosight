@@ -15,21 +15,21 @@ Which will download a test dataset and run chromosight on it. This is useful to 
 The following command line can be used to run loop detection (the default pattern):
 
 ```bash
-chromosight detect -t12 sample1.cool results
+chromosight detect -t12 sample1.cool results/sample1_loops
 ```
 
-The program will run in parallel on 12 threads and write loop coordinates and their pattern matching scores in a file named `loops_out.txt` inside the `results` folder. Those scores represent pearson correlation coefficients (i.e. between -1 and 1) between the loop kernel and the detected pattern.
+The program will run in parallel on 12 threads and write loop coordinates and their pattern matching scores in a file named `sample1_loops.tsv` inside the `results` folder. Those scores represent pearson correlation coefficients (i.e. between -1 and 1) between the loop kernel and the detected pattern.
 Similarly, to run domain borders detection, one can use:
 
 ```bash
-chromosight detect --pattern borders -t12 sample1.cool results
+chromosight detect --pattern borders -t12 sample1.cool results/sample1_borders
 ```
 
-Which will write the coordinates and scores of borders in `results/borders_out.txt`.
+Which will write the coordinates and scores of borders in `results/sample1_borders.tsv`.
 
-At this point, the `results` folder will also contain files `loops_out.json` and `borders_out.json`, which contain images of the matrix regions around each detected loop or border, respectively. These files are in JSON format, which can be natively loaded in most programming languages.
+At this point, the `results` folder will also contain files `sample1_loops.json` and `sample1_borders.json`, which contain images of the matrix regions around each detected loop or border, respectively. These files are in JSON format, which can be natively loaded in most programming languages.
 
-Chromosight has many command line options which can affect the output format or filter the results based on different criteria. All parameters have sane default values defined for each pattern, which are printed during the run, but these can be overriden using command line options to optimize results if needed. The list of command line options can be shown using:
+Chromosight has several command line options which can affect the output format or filter the results based on different criteria. All parameters have sane default values defined for each pattern, which are printed during the run, but these can be overriden using command line options to optimize results if needed. The list of command line options can be shown using:
 
 ```bash
 chromosight --help
@@ -42,16 +42,16 @@ The `chromosight quantify` command can be used to assign a pattern matching scor
 For example, to compute loop scores for the positions detected in sample1.cool for a second sample, one could use:
 
 ```bash
-chromosight quantify results/loops_out.txt sample2.cool results
+chromosight quantify results/sample1_loops.tsv sample2.cool results/sample2_loops
 ```
 
 Similarly, for borders:
 
 ```bash
-chromosight quantify --pattern=borders results/borders_out.txt sample2.cool results
+chromosight quantify --pattern=borders results/sample1_borders.tsv sample2.cool results/sample2_borders
 ```
 
-These commands will each generate two files in the `results` directory, named `loops_quant.txt` and `loops_quant.json` for the first command, and `borders_quant.txt` and `borders_quant.json` for the second. Those files have the same format as the output from `chromosight detect`.
+These commands will each generate two files in the `results` directory, named `sample2_loops.tsv` and `sample2_loops.json` for the first command, and `sample2_borders.tsv` and `sample2_borders.json` for the second. Those files have the same format as the output from `chromosight detect`.
 
 `chromosight quantify` can also be useful to compute pattern scores at ChIP-seq peaks, genes, or other features of interest. [BEDtools](https://github.com/arq5x/bedtools2) can be used to generate a 2D bed file from an input bed file.
 
