@@ -185,3 +185,17 @@ class TestIO:
         except (ValueError):
             assert True
 
+    def test_check_prefix_dir(self):
+        prefix = self.tmp_path
+        noexist_prefix = self.tmp_path + "no_exist/prefix"
+        # Should work; parent dir is $TMPDIR
+        cio.check_prefix_dir(prefix)
+        # Should crash: no_exist directory is made up
+        try:
+            cio.check_prefix_dir(noexist_prefix)
+            assert False
+        except OSError:
+            assert True
+
+
+
