@@ -338,8 +338,8 @@ def cmd_quantify(args):
             # among all kernels.
             try:
                 if kernel_id == 0:
-                    bed2d["score"][sub_pat_idx] = patterns.score
-                    bed2d["pvalue"][sub_pat_idx] = patterns.pvalue
+                    bed2d["score"][sub_pat_idx] = patterns.score.values
+                    bed2d["pvalue"][sub_pat_idx] = patterns.pvalue.values
                     windows[sub_pat_idx, :, :] = mat_windows
                 else:
                     # Only update scores and their corresponding windows
@@ -348,7 +348,7 @@ def cmd_quantify(args):
                         patterns.score > bed2d["score"][sub_pat_idx].values
                     ) | (np.insnan(bed2d["score"][sub_pat_idx].values))
                     better_idx = sub_pat_idx[better]
-                    bed2d["score"][better_idx] = patterns.score[better]
+                    bed2d["score"][better_idx] = patterns.score[better].values
                     windows[better_idx, :, :] = mat_windows[better]
             # Do nothing if no pattern was detected or matrix
             # is smaller than the kernel (-> patterns is None)
