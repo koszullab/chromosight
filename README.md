@@ -44,7 +44,7 @@ To get a first look at a chromosight run, you can run `chromosight test`, which 
 * `--min-dist`: Minimum distance from which to detect patterns.
 * `--max-dist`: Maximum distance from which to detect patterns. Increasing also increases runtime and memory use.
 * `--pearson`: Decrease to allow a greater number of pattern detected (with potentially more false positives).
-* `--perc-zero`: Proportion of zero pixels allowed in a window for detection.
+* `--perc-zero`: Proportion of zero pixels allowed in a window for detection. If you have low coverage, increasing this value may improve results.
 
 ### Example
 
