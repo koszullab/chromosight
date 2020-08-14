@@ -3,6 +3,7 @@ import tempfile
 import os
 import numpy as np
 import pandas as pd
+import cooler
 import chromosight.utils.plotting as cup
 import chromosight.utils.detection as cud
 import chromosight.utils.io as cio
@@ -23,6 +24,7 @@ window_list = []
 class TestPlotting:
     def __init__(self):
         """Setup function to generate a named tempfile"""
+        self.clr = cooler.Cooler("data_test/example.cool")
         # Create tmp temporary file for reading and writing
         tmp_out = tempfile.NamedTemporaryFile(delete=False)
         tmp_out.close()
@@ -37,10 +39,9 @@ class TestPlotting:
         pileup_pattern = cud.pileup_patterns(windows)
         cup.pileup_plot(pileup_pattern, self.tmp_path, name="pileup_patterns")
 
-    @params(*intra_mats)
-    def test_distance_plot(self, matrix):
-        rand_rows = np.random.randint(0, matrix.shape[0], size=10)
-        rand_cols = np.random.randint(0, matrix.shape[1], size=10)
+    def test_distance_plot(self):
+        rand_rows = np.random.randint(0, self.clr.shape[0], size=10)
+        rand_cols = np.random.randint(0, self.clr.shape[1], size=10)
         patterns = pd.DataFrame({"bin1": rand_rows, "bin2": rand_cols})
-        cup.plot_whole_matrix(matrix, patterns, out=self.tmp_path)
+        cup.plot_whole_matrix(self.clr, patterns, out=self.tmp_path)
 
