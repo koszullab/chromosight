@@ -9,6 +9,8 @@ Preprint can be found on https://www.biorxiv.org/content/10.1101/2020.03.08.9819
 
 Docs available at https://chromosight.readthedocs.io
 
+Examples of analyses can be found at https://github.com/koszullab/chromosight_analyses_scripts/blob/master/README.md
+
 ## Installation
 
 Stable version with pip:
