@@ -43,8 +43,6 @@ Usage:
         Download example data and run loop detection on it.
 
 Arguments for detect:
-    -h, --help                  Display this help message.
-    --version                   Display the program's current version.
     contact_map                 The Hi-C contact map to detect patterns on, in
                                 bedgraph2d or cool format.
     prefix                      Common path prefix used to generate output files.
@@ -72,12 +70,15 @@ Arguments for generate-config:
                                 reserve for small genomes or subsetted matrices.
 
 Arguments for list-kernels:
-    -n, --name=kernel_name      Only show information related to a particular
-                                kernel.[default: all]
-    -l, --long                  Show default parameters in addition to kernel names.
-    -m, --mat                   Prints an ascii representation of the kernel matrix.
+    --name=kernel_name      Only show information related to a particular
+                            kernel.[default: all]
+    --long                  Show default parameters in addition to kernel names.
+    --mat                   Prints an ascii representation of the kernel matrix.
 
 Basic options:
+    -h, --help                  Display this help message.
+    --version                   Display the program's current version.
+    --verbose                   Displays the logo.
     -F, --force-norm            Re-compute matrix normalization (balancing) and
                                 overwrite weights present in the cool files instead
                                 of reusing them.
@@ -158,13 +159,13 @@ from chromosight.version import __version__
 from chromosight.utils.contacts_map import HicGenome
 import chromosight.utils.io as cio
 import chromosight.utils.detection as cid
-from chromosight.utils.plotting import pileup_plot, click_finder
+from chromosight.utils.plotting import pileup_plot, click_finder, print_ascii_mat
 from chromosight.utils.preprocessing import resize_kernel
 from chromosight.utils.stats import fdr_correction
 import chromosight.kernels as ck
 import scipy.ndimage as ndi
 import matplotlib.pyplot as plt
-
+LOGO = np.loadtxt('chromosight/cli/logo.txt')
 URL_EXAMPLE_DATASET = (
     "https://raw.githubusercontent.com/koszullab/"
     "chromosight/master/data_test/example.cool"
@@ -773,30 +774,6 @@ def cmd_detect(args):
             )
         pileup_plot(windows_pileup, prefix, name=pileup_title)
 
-def print_ascii_mat(mat, adjust=True):
-    """Given a 2D numpy array of float, print it in ASCII art"""
-
-    if adjust:
-        try:
-            term_width = (os.get_terminal_size()[0] // 2) - 5
-            step = int(max(1, np.ceil(mat.shape[1] / term_width)))
-        except OSError:
-            term_width = 79 # default terminal width fallback
-    else:
-        step = 1
-    ascii_str = " .,:;ox%#@"
-
-    sorted_pixels = np.sort(mat.flatten())
-    perc_pixels = np.searchsorted(sorted_pixels, mat) / len(sorted_pixels)
-    perc_pixels = (10 * perc_pixels).astype(int)
-    print("  " + "- " * (1+perc_pixels.shape[1]//step))
-    for i in range(0, mat.shape[0], step):
-        print("  |", end="")
-        for j in range(0, mat.shape[1], step): # pixels are skipped
-            pix = perc_pixels[i, j]
-            print(f"{ascii_str[pix]} ", end="")
-        print("|")
-    print("  " + "- " * (1+perc_pixels.shape[1]//step))
 
 
 def cmd_list_kernels(args):
@@ -861,9 +838,14 @@ def capture_ouput(stderr_to=None):
         except (ValueError, IOError):
             pass
 
+def logo_version(logo, ver):
+    l = resize_kernel(logo, factor=.33, quiet=True)
+    print_ascii_mat(l, colored=False)
+    return f'Chromosight version {ver}'
 
 def main():
-    args = docopt.docopt(__doc__, version=__version__)
+
+    args = docopt.docopt( __doc__, version=logo_version(LOGO, __version__))
     detect = args["detect"]
     generate_config = args["generate-config"]
     list_kernels = args["list-kernels"]
@@ -901,6 +883,7 @@ def main():
         cmd_list_kernels(args)
     elif quantify:
         cmd_quantify(args)
+        
     return 0
 
 
