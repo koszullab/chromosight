@@ -2,6 +2,7 @@
 of detected patterns or the input matrix. It also implements an interactive map
 recording the coordinates of double clicks."""
 
+import os
 import sys
 import numpy as np
 from matplotlib import pyplot as plt
@@ -165,3 +166,57 @@ def click_finder(mat, half_w=8):
     # Discard images associated with coords too close to the edge
     img_stack = img_stack[~bad_coords]
     return img_stack
+
+
+def print_ascii_mat(mat, adjust=True, colored=False):
+    """
+    Given a 2D numpy array of float, print it in ASCII art.
+
+    Parameters
+    ----------
+    mat : np.array of floats
+        Matrix to visualize.
+    adjust : bool
+        Whether to adjust the drawing size to termina width.
+    colored : bool
+        Whether to use colors.
+    """
+
+    if adjust:
+        try:
+            term_width = (os.get_terminal_size()[0] // 2) - 5
+            step = int(max(1, np.ceil(mat.shape[1] / term_width)))
+        except OSError:
+            term_width = 79 # default terminal width fallback
+    else:
+        step = 1
+    ascii_str = " .,:;ox%#@"
+    ascii_colors = [
+        '\x1b[37m', 
+        '\x1b[37m', 
+        '\x1b[36m', 
+        '\x1b[36m', 
+        '\x1b[32m', 
+        '\x1b[32m', 
+        '\x1b[34m', 
+        '\x1b[34m', 
+        '\x1b[33m', 
+        '\x1b[31m', 
+    ]
+    if colored:
+        suffix = '\x1b[0m'
+    else: 
+        suffix = ''
+
+    sorted_pixels = np.sort(mat.flatten())
+    perc_pixels = np.searchsorted(sorted_pixels, mat) / len(sorted_pixels)
+    perc_pixels = (10 * perc_pixels).astype(int)
+    print("  " + "- " * (1+perc_pixels.shape[1]//step))
+    for i in range(0, mat.shape[0], step):
+        print("  |", end="")
+        for j in range(0, mat.shape[1], step): # pixels are skipped
+            pix = perc_pixels[i, j]
+            prefix = ascii_colors[pix] if colored else ''
+            print(f"{prefix}{ascii_str[pix]}{suffix} ", end="")
+        print("|")
+    print("  " + "- " * (1+perc_pixels.shape[1]//step))
