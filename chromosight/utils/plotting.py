@@ -185,9 +185,9 @@ def print_ascii_mat(mat, adjust=True, colored=False):
     if adjust:
         try:
             term_width = (os.get_terminal_size()[0] // 2) - 5
-            step = int(max(1, np.ceil(mat.shape[1] / term_width)))
         except OSError:
             term_width = 79 # default terminal width fallback
+        step = int(max(1, np.ceil(mat.shape[1] / term_width)))
     else:
         step = 1
     ascii_str = " .,:;ox%#@"

@@ -796,10 +796,10 @@ def cmd_list_kernels(args):
         print(k)
         # Print default params if --long specified (key-value pairs in json)
         if args['--long']:
-            exclude_keys = ['name', 'resolution', 'kernels']
-            for k, v in kernel_infos.items():
-                if k not in exclude_keys:
-                    print(f"  {k}: {v}")
+            exclude_params = ['name', 'resolution', 'kernels']
+            for param, value in kernel_infos.items():
+                if param not in exclude_params:
+                    print(f"  {param}: {value}")
         if args['--mat']:
             mats = kernel_infos['kernels']
             for mat in mats:
@@ -880,7 +880,7 @@ def main():
         cmd_detect(args)
     elif generate_config:
         cmd_generate_config(args)
-    elif cmd_list_kernels:
+    elif list_kernels:
         cmd_list_kernels(args)
     elif quantify:
         cmd_quantify(args)
