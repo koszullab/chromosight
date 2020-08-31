@@ -165,7 +165,8 @@ from chromosight.utils.stats import fdr_correction
 import chromosight.kernels as ck
 import scipy.ndimage as ndi
 import matplotlib.pyplot as plt
-LOGO = np.loadtxt('chromosight/cli/logo.txt')
+import pathlib
+LOGO = np.loadtxt(pathlib.Path(__file__).parents[0] / 'logo.txt')
 URL_EXAMPLE_DATASET = (
     "https://raw.githubusercontent.com/koszullab/"
     "chromosight/master/data_test/example.cool"
