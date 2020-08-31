@@ -22,6 +22,7 @@ Usage:
                          [--threads=1] [--n-mads=5] [--win-size=auto]
                          [--perc-undetected=auto] [--perc-zero=auto]
                          [--no-plotting] [--tsvd] <bed2d> <contact_map> <prefix>
+    chromosight list-kernels [--long] [--mat] [--name=kernel_name]
     chromosight test
 
     detect:
@@ -36,12 +37,12 @@ Usage:
         Given a list of pairs of positions and a contact map, computes the
         correlation coefficients between those positions and the kernel of the
         selected pattern.
+    list-kernels:
+        Prints information about available kernels.
     test:
         Download example data and run loop detection on it.
 
 Arguments for detect:
-    -h, --help                  Display this help message.
-    --version                   Display the program's current version.
     contact_map                 The Hi-C contact map to detect patterns on, in
                                 bedgraph2d or cool format.
     prefix                      Common path prefix used to generate output files.
@@ -68,7 +69,16 @@ Arguments for generate-config:
                                 user to build the kernel. Warning: memory-heavy,
                                 reserve for small genomes or subsetted matrices.
 
+Arguments for list-kernels:
+    --name=kernel_name      Only show information related to a particular
+                            kernel.[default: all]
+    --long                  Show default parameters in addition to kernel names.
+    --mat                   Prints an ascii representation of the kernel matrix.
+
 Basic options:
+    -h, --help                  Display this help message.
+    --version                   Display the program's current version.
+    --verbose                   Displays the logo.
     -F, --force-norm            Re-compute matrix normalization (balancing) and
                                 overwrite weights present in the cool files instead
                                 of reusing them.
@@ -149,12 +159,14 @@ from chromosight.version import __version__
 from chromosight.utils.contacts_map import HicGenome
 import chromosight.utils.io as cio
 import chromosight.utils.detection as cid
-from chromosight.utils.plotting import pileup_plot, click_finder
+from chromosight.utils.plotting import pileup_plot, click_finder, print_ascii_mat
 from chromosight.utils.preprocessing import resize_kernel
 from chromosight.utils.stats import fdr_correction
+import chromosight.kernels as ck
 import scipy.ndimage as ndi
 import matplotlib.pyplot as plt
-
+import pathlib
+LOGO = np.loadtxt(pathlib.Path(__file__).parents[0] / 'logo.txt')
 URL_EXAMPLE_DATASET = (
     "https://raw.githubusercontent.com/koszullab/"
     "chromosight/master/data_test/example.cool"
@@ -764,6 +776,37 @@ def cmd_detect(args):
         pileup_plot(windows_pileup, prefix, name=pileup_title)
 
 
+
+def cmd_list_kernels(args):
+
+    kernel_name = args["--name"]
+    # Load every avaiable kernel by default
+    if kernel_name == 'all':
+        kernels = ck.kernel_names
+    # If a specific kernel was requested, only load this one
+    else:
+        kernels = [kernel_name]
+    
+    # Check availability of each kernel and print its name
+    for k in kernels:
+        try:
+            kernel_infos = getattr(ck, k)
+        except AttributeError:
+            raise ValueError(f"Kernel {k} is not available")
+        print(k)
+        # Print default params if --long specified (key-value pairs in json)
+        if args['--long']:
+            exclude_params = ['name', 'resolution', 'kernels']
+            for param, value in kernel_infos.items():
+                if param not in exclude_params:
+                    print(f"  {param}: {value}")
+        if args['--mat']:
+            mats = kernel_infos['kernels']
+            for mat in mats:
+                print_ascii_mat(mat)
+
+
+
 def cmd_test(args):
 
     sys.stderr.write(f"Fetching test dataset at {URL_EXAMPLE_DATASET}...\n")
@@ -796,11 +839,17 @@ def capture_ouput(stderr_to=None):
         except (ValueError, IOError):
             pass
 
+def logo_version(logo, ver):
+    l = resize_kernel(logo, factor=.33, quiet=True)
+    print_ascii_mat(l, colored=False)
+    return f'Chromosight version {ver}'
 
 def main():
-    args = docopt.docopt(__doc__, version=__version__)
+
+    args = docopt.docopt( __doc__, version=logo_version(LOGO, __version__))
     detect = args["detect"]
     generate_config = args["generate-config"]
+    list_kernels = args["list-kernels"]
     quantify = args["quantify"]
     test = args["test"]
     if test:
@@ -831,8 +880,11 @@ def main():
         cmd_detect(args)
     elif generate_config:
         cmd_generate_config(args)
+    elif list_kernels:
+        cmd_list_kernels(args)
     elif quantify:
         cmd_quantify(args)
+        
     return 0
 
 

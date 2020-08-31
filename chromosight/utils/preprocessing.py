@@ -734,6 +734,7 @@ def resize_kernel(
     signal_res=None,
     factor=None,
     min_size=7,
+    quiet=False,
 ):
     """
     Resize a kernel matrix based on the resolution at which it was defined and
@@ -759,6 +760,8 @@ def resize_kernel(
         shrink it.
     min_size : int
         Lower bound, in number of rows/column allowed when resizing the kernel.
+    quiet : bool
+        Suppress warnings if resize factor was adjusted.
 
     Returns
     -------
@@ -795,9 +798,10 @@ def resize_kernel(
     if not resized_kernel.shape[0] % 2:
         # Compute the factor required to yield a dimension smaller by one
         adj_resize_factor = (resized_kernel.shape[0] - 1) / km
-        sys.stderr.write(
-            f"Adjusting resize factor from {resize_factor} to {adj_resize_factor}.\n"
-        )
+        if not quiet:
+            sys.stderr.write(
+                f"Adjusting resize factor from {resize_factor} to {adj_resize_factor}.\n"
+            )
         resized_kernel = ndi.zoom(kernel, adj_resize_factor, order=1)
 
     return resized_kernel
