@@ -22,6 +22,7 @@ Usage:
                          [--threads=1] [--n-mads=5] [--win-size=auto]
                          [--perc-undetected=auto] [--perc-zero=auto]
                          [--no-plotting] [--tsvd] <bed2d> <contact_map> <prefix>
+    chromosight list-kernels [--long] [--mat] [--name=kernel_name]
     chromosight test
 
     detect:
@@ -36,6 +37,8 @@ Usage:
         Given a list of pairs of positions and a contact map, computes the
         correlation coefficients between those positions and the kernel of the
         selected pattern.
+    list-kernels:
+        Prints information about available kernels.
     test:
         Download example data and run loop detection on it.
 
@@ -67,6 +70,12 @@ Arguments for generate-config:
     -c, --click contact_map     Show input contact map and uses double clicks from
                                 user to build the kernel. Warning: memory-heavy,
                                 reserve for small genomes or subsetted matrices.
+
+Arguments for list-kernels:
+    -n, --name=kernel_name      Only show information related to a particular
+                                kernel.[default: all]
+    -l, --long                  Show default parameters in addition to kernel names.
+    -m, --mat                   Prints an ascii representation of the kernel matrix.
 
 Basic options:
     -F, --force-norm            Re-compute matrix normalization (balancing) and
@@ -152,6 +161,7 @@ import chromosight.utils.detection as cid
 from chromosight.utils.plotting import pileup_plot, click_finder
 from chromosight.utils.preprocessing import resize_kernel
 from chromosight.utils.stats import fdr_correction
+import chromosight.kernels as ck
 import scipy.ndimage as ndi
 import matplotlib.pyplot as plt
 
@@ -763,6 +773,50 @@ def cmd_detect(args):
             )
         pileup_plot(windows_pileup, prefix, name=pileup_title)
 
+def print_ascii_mat(mat):
+    """Given a 2D numpy array of float, print it in ASCII art"""
+    ascii_str = " .,:;ox%#@"
+    sorted_pixels = np.sort(mat.flatten())
+    perc_pixels = np.searchsorted(sorted_pixels, mat) / len(sorted_pixels)
+    perc_pixels = (10 * perc_pixels).astype(int)
+    print("  " + "- " * perc_pixels.shape[1])
+    for row in perc_pixels:
+        print("  |", end="")
+        for pix in row:
+            print(f"{ascii_str[pix]} ", end="")
+        print("|")
+    print("  " + "- " * perc_pixels.shape[1])
+
+
+def cmd_list_kernels(args):
+
+    kernel_name = args["--name"]
+    # Load every avaiable kernel by default
+    if kernel_name == 'all':
+        kernels = ck.kernel_names
+    # If a specific kernel was requested, only load this one
+    else:
+        kernels = [kernel_name]
+    
+    # Check availability of each kernel and print its name
+    for k in kernels:
+        try:
+            kernel_infos = getattr(ck, k)
+        except AttributeError:
+            raise ValueError(f"Kernel {k} is not available")
+        print(k)
+        # Print default params if --long specified (key-value pairs in json)
+        if args['--long']:
+            exclude_keys = ['name', 'resolution', 'kernels']
+            for k, v in kernel_infos.items():
+                if k not in exclude_keys:
+                    print(f"  {k}: {v}")
+        if args['--mat']:
+            mats = kernel_infos['kernels']
+            for mat in mats:
+                print_ascii_mat(mat)
+
+
 
 def cmd_test(args):
 
@@ -801,6 +855,7 @@ def main():
     args = docopt.docopt(__doc__, version=__version__)
     detect = args["detect"]
     generate_config = args["generate-config"]
+    list_kernels = args["list-kernels"]
     quantify = args["quantify"]
     test = args["test"]
     if test:
@@ -831,6 +886,8 @@ def main():
         cmd_detect(args)
     elif generate_config:
         cmd_generate_config(args)
+    elif cmd_list_kernels:
+        cmd_list_kernels(args)
     elif quantify:
         cmd_quantify(args)
     return 0
