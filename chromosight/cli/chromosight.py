@@ -773,19 +773,31 @@ def cmd_detect(args):
             )
         pileup_plot(windows_pileup, prefix, name=pileup_title)
 
-def print_ascii_mat(mat):
+def print_ascii_mat(mat, adjust=True):
     """Given a 2D numpy array of float, print it in ASCII art"""
+    import time
+
+    if adjust:
+        try:
+            term_width = (os.get_terminal_size()[0] // 2) - 5
+            step = int(max(1, np.ceil(mat.shape[1] / term_width)))
+        except OSError:
+            term_width = 79 # default terminal width fallback
+    else:
+        step = 1
     ascii_str = " .,:;ox%#@"
+
     sorted_pixels = np.sort(mat.flatten())
     perc_pixels = np.searchsorted(sorted_pixels, mat) / len(sorted_pixels)
     perc_pixels = (10 * perc_pixels).astype(int)
-    print("  " + "- " * perc_pixels.shape[1])
-    for row in perc_pixels:
+    print("  " + "- " * (perc_pixels.shape[1]//step))
+    for i in range(0, mat.shape[0], step):
         print("  |", end="")
-        for pix in row:
+        for j in range(0, mat.shape[1], step): # pixels are skipped
+            pix = perc_pixels[i, j]
             print(f"{ascii_str[pix]} ", end="")
         print("|")
-    print("  " + "- " * perc_pixels.shape[1])
+    print("  " + "- " * (perc_pixels.shape[1]//step))
 
 
 def cmd_list_kernels(args):
