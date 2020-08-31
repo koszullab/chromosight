@@ -789,14 +789,14 @@ def print_ascii_mat(mat, adjust=True):
     sorted_pixels = np.sort(mat.flatten())
     perc_pixels = np.searchsorted(sorted_pixels, mat) / len(sorted_pixels)
     perc_pixels = (10 * perc_pixels).astype(int)
-    print("  " + "- " * (perc_pixels.shape[1]//step))
+    print("  " + "- " * (1+perc_pixels.shape[1]//step))
     for i in range(0, mat.shape[0], step):
         print("  |", end="")
         for j in range(0, mat.shape[1], step): # pixels are skipped
             pix = perc_pixels[i, j]
             print(f"{ascii_str[pix]} ", end="")
         print("|")
-    print("  " + "- " * (perc_pixels.shape[1]//step))
+    print("  " + "- " * (1+perc_pixels.shape[1]//step))
 
 
 def cmd_list_kernels(args):
