@@ -775,7 +775,6 @@ def cmd_detect(args):
 
 def print_ascii_mat(mat, adjust=True):
     """Given a 2D numpy array of float, print it in ASCII art"""
-    import time
 
     if adjust:
         try:
