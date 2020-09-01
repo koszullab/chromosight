@@ -73,7 +73,7 @@ def plot_whole_matrix(
         (pat.bin1 > s1) & (pat.bin1 < e1) & (pat.bin2 > s2) & (pat.bin2 < e2),
         :,
     ]
-    
+
     if log_transform:
         mat = np.log(mat)
     mat[mat == 0] = np.nan
@@ -135,9 +135,7 @@ def click_finder(mat, half_w=8):
         return coords
 
     fig = plt.figure()
-    plt.imshow(
-        mat.toarray(), cmap="afmhot_r", vmax=np.percentile(mat.data, 95)
-    )
+    plt.imshow(mat.toarray(), cmap="afmhot_r", vmax=np.percentile(mat.data, 95))
     plt.title("Double click to record pattern positions")
     # Setup click listener
     cid = fig.canvas.mpl_connect("button_press_event", onclick)
@@ -168,7 +166,7 @@ def click_finder(mat, half_w=8):
     return img_stack
 
 
-def print_ascii_mat(mat, adjust=True, colored=False):
+def print_ascii_mat(mat, adjust=True, colored=False, print_str=True):
     """
     Given a 2D numpy array of float, print it in ASCII art.
 
@@ -180,43 +178,63 @@ def print_ascii_mat(mat, adjust=True, colored=False):
         Whether to adjust the drawing size to termina width.
     colored : bool
         Whether to use colors.
+    print_str : bool
+        If true, the ASCII art is printed to stdout, otherwise it
+        is stored in a string and returned.
+
+    Returns
+    -------
+    str :
+        An empty string is returned if print_str is True, otherwise the
+        ASCII art is returned as a string.
     """
 
     if adjust:
         try:
             term_width = (os.get_terminal_size()[0] // 2) - 5
         except OSError:
-            term_width = 79 # default terminal width fallback
+            term_width = 79  # default terminal width fallback
         step = int(max(1, np.ceil(mat.shape[1] / term_width)))
     else:
         step = 1
     ascii_str = " .,:;ox%#@"
     ascii_colors = [
-        '\x1b[37m', 
-        '\x1b[37m', 
-        '\x1b[36m', 
-        '\x1b[36m', 
-        '\x1b[32m', 
-        '\x1b[32m', 
-        '\x1b[34m', 
-        '\x1b[34m', 
-        '\x1b[33m', 
-        '\x1b[31m', 
+        "\x1b[37m",
+        "\x1b[37m",
+        "\x1b[36m",
+        "\x1b[36m",
+        "\x1b[32m",
+        "\x1b[32m",
+        "\x1b[34m",
+        "\x1b[34m",
+        "\x1b[33m",
+        "\x1b[31m",
     ]
     if colored:
-        suffix = '\x1b[0m'
-    else: 
-        suffix = ''
+        suffix = "\x1b[0m"
+    else:
+        suffix = ""
+    ascii_art = ""
+
+    def ascii_printer(text, end="\n", print_str=print_str):
+        if print_str:
+            print(text, end=end)
+            out = ''
+        else:
+            out = text + end
+        return out
 
     sorted_pixels = np.sort(mat.flatten())
     perc_pixels = np.searchsorted(sorted_pixels, mat) / len(sorted_pixels)
     perc_pixels = (10 * perc_pixels).astype(int)
-    print("  " + "- " * (1+perc_pixels.shape[1]//step))
+    ascii_art += ascii_printer("  " + "- " * (1 + perc_pixels.shape[1] // step))
     for i in range(0, mat.shape[0], step):
-        print("  |", end="")
-        for j in range(0, mat.shape[1], step): # pixels are skipped
+        ascii_art += ascii_printer("  |", end="")
+        for j in range(0, mat.shape[1], step):  # pixels are skipped
             pix = perc_pixels[i, j]
-            prefix = ascii_colors[pix] if colored else ''
-            print(f"{prefix}{ascii_str[pix]}{suffix} ", end="")
-        print("|")
-    print("  " + "- " * (1+perc_pixels.shape[1]//step))
+            prefix = ascii_colors[pix] if colored else ""
+            ascii_art += ascii_printer(f"{prefix}{ascii_str[pix]}{suffix} ", end="")
+        ascii_art += ascii_printer("|")
+    ascii_art += ascii_printer("  " + "- " * (1 + perc_pixels.shape[1] // step))
+
+    return ascii_art

@@ -840,9 +840,9 @@ def capture_ouput(stderr_to=None):
             pass
 
 def logo_version(logo, ver):
-    l = resize_kernel(logo, factor=.33, quiet=True)
-    print_ascii_mat(l, colored=False)
-    return f'Chromosight version {ver}'
+    small_logo = resize_kernel(logo, factor=.33, quiet=True)
+    ascii_logo = print_ascii_mat(small_logo, colored=False, print_str=False)
+    return f'{ascii_logo} Chromosight version {ver}'
 
 def main():
 
