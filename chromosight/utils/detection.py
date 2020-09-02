@@ -686,7 +686,12 @@ def _xcorr2_sparse(signal, kernel, threshold=1e-6):
                 np.ones(kn), -np.arange(kn), shape=(sn, sn - kn + 1), format="dia",
             )
             out = (l_subkernel_sp @ signal) @ r_subkernel_sp
-        # Convolution code for general case
+        # convolution code for general case
+        # 1. 2D kernel composed of 1D filters, each col being a 1D filter.
+        # 2. input remains unchanged, and each 1D kernel is unrolled into
+        # a sparse toeplitz matrix.
+        # 3. Each 1D conv is computed via a sparse matrix x vector product.
+        # It is fast because the product is delegated to numpy.
         else:
             for kj in range(kn):
                 subkernel_sp = sp.diags(
@@ -768,9 +773,12 @@ def _xcorr2_dense(signal, kernel, threshold=1e-6):
         # It is fast because the product is delegated to numpy.
         else:
             for kj in range(kn):
+                # Make a toeplitz matrix from the kj'th column of the kernel
                 subkernel_sp = sp.diags(
                     kernel[:, kj], np.arange(km), shape=(sm - km + 1, sm), format="csr",
                 )
+                # Note: We compute the dot product of the subkernel with the signal 
+                # shifted by kj.
                 out_wo_margin += subkernel_sp @ signal[:, kj : sn - kn + 1 + kj]
 
     kh = (km - 1) // 2
