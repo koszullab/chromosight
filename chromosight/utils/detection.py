@@ -761,6 +761,11 @@ def _xcorr2_dense(signal, kernel, threshold=1e-6):
             )
             out_wo_margin = (l_subkernel_sp @ signal) @ r_subkernel_sp
         # convolution code for general case
+        # 1. 2D kernel composed of 1D filters, each col being a 1D filter.
+        # 2. input remains unchanged, and each 1D kernel is unrolled into
+        # a sparse toeplitz matrix.
+        # 3. Each 1D conv is computed via a sparse matrix x vector product.
+        # It is fast because the product is delegated to numpy.
         else:
             for kj in range(kn):
                 subkernel_sp = sp.diags(
