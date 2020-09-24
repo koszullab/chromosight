@@ -134,6 +134,8 @@ class HicGenome:
         self.detectable_bins = np.array(range(self.clr.shape[0]))
         self.inter = inter
         self.compute_max_dist()
+        # Whether normalized or raw matrices should be used
+        self.use_norm = True
         if sample is not None:
             sample = float(sample)
             try:
@@ -177,7 +179,7 @@ class HicGenome:
             self.max_dist = None
             self.largest_kernel = 3
 
-    def normalize(self, force_norm=False, n_mads=5, threads=1):
+    def normalize(self, norm='auto', n_mads=5, threads=1):
         """
         If the instance's cooler is not balanced, finds detectable bins and
         applies ICE normalisation to the whole genome matrix. Newly computed
@@ -186,9 +188,11 @@ class HicGenome:
 
         Parameters
         ----------
-        force_norm : bool
-            Whether to force recomputing of or reuse existing weights in the
-            cool file.
+        force_norm : str
+            Normalization behaviour. If 'auto', existing weights are reused and
+            matrix is balanced only in the absence of weights. If 'raw', raw
+            contact values are used. If 'force', weights are recomputed and the
+            underlying cool file is overwritten.
         n_mads : float
             Maximum number of median absoluted deviations (MADs) below the
             median of the distribution of logged bin sums to consider a bin
@@ -196,8 +200,10 @@ class HicGenome:
         threads : int
             Number of parallel threads to use for normalization.
         """
-        if "weight" in self.bins.columns and not force_norm:
+        if "weight" in self.bins.columns and norm == 'auto':
             sys.stderr.write("Matrix already balanced, reusing weights\n")
+        elif norm == 'raw':
+            self.use_norm = False
         else:
             pool = mp.Pool(threads)
             cooler.balance_cooler(
@@ -261,7 +267,6 @@ class HicGenome:
                 f"{np.round(100 * self.sample)}% contacts will be sampled \n"
             )
         sub_mat_idx = 0
-        # mat_view = self.clr.matrix(sparse=True, balance=True)
         for i1, chr1 in enumerate(self.clr.chromnames):
             for i2, chr2 in enumerate(self.clr.chromnames):
                 s1, e1 = self.clr.extent(chr1)
@@ -275,28 +280,28 @@ class HicGenome:
                         d[(d >= s1) & (d < e1)] - s1,
                         d[(d >= s2) & (d < e2)] - s2,
                     )
+                    map_kwargs = {
+                        'smooth': self.smooth,
+                        'sample': self.sample,
+                        'dump': self.dump,
+                        'use_norm': self.use_norm,
+                        'extent': [(s1, e1), (s2, e2)],
+                        'detectable_bins': sub_mat_detectable_bins,
+                        'name': f"{chr1}-{chr2}",
+                    }
                     if i1 == i2:
                         sub_mats.contact_map[sub_mat_idx] = ContactMap(
                             self.clr,
-                            extent=[(s1, e1), (s2, e2)],
-                            detectable_bins=sub_mat_detectable_bins,
                             inter=False,
                             max_dist=self.max_dist,
                             largest_kernel=self.largest_kernel,
-                            dump=self.dump,
-                            name=f"{chr1}-{chr2}",
-                            smooth=self.smooth,
-                            sample=self.sample,
+                            **map_kwargs,
                         )
                     else:
                         sub_mats.contact_map[sub_mat_idx] = ContactMap(
                             self.clr,
-                            extent=[(s1, e1), (s2, e2)],
-                            detectable_bins=sub_mat_detectable_bins,
                             inter=True,
-                            dump=self.dump,
-                            name=f"{chr1}-{chr2}",
-                            sample=self.sample,
+                            **map_kwargs,
                         )
                     sub_mats.chr1[sub_mat_idx] = chr1
                     sub_mats.chr2[sub_mat_idx] = chr2
@@ -474,6 +479,9 @@ class ContactMap:
     sample : int, float or None
         Proportion of contacts to sample from the data if between 0 and 1.
         Number of contacts to keep if above 1. Keep all if None.
+    use_norm : bool
+        Whether to use the balanced matrix. If set to False, the raw contact
+        counts are used.
     """
 
     def __init__(
@@ -488,6 +496,7 @@ class ContactMap:
         dump=None,
         smooth=False,
         sample=None,
+        use_norm=True,
     ):
         self.clr = clr
         self.extent = extent
@@ -500,6 +509,7 @@ class ContactMap:
         self.largest_kernel = largest_kernel
         self.dump = dump
         self.matrix = None
+        self.use_norm = use_norm
         # If detectable were not provided, compute them from the input matrix
         if detectable_bins is None:
             detectable_bins = preproc.get_detectable_bins(
@@ -510,13 +520,13 @@ class ContactMap:
 
     def create_mat(self):
         (s1, e1), (s2, e2) = self.extent
-        self.matrix = self.clr.matrix(sparse=True, balance=True)[s1:e1, s2:e2]
+        self.matrix = self.clr.matrix(sparse=True, balance=self.use_norm)[s1:e1, s2:e2]
         # Remove NaN values to store them as implicit zeroes
         self.matrix.data[np.isnan(self.matrix.data)] = 0
         self.matrix.eliminate_zeros()
         # Subsample contacts if requested
         if self.sample is not None:
-            self.subsample(self.sample)
+            self.subsample(self.sample, balance=self.use_norm)
         # Apply preprocessing steps on the input matrix
         if self.inter:
             self.preprocess_inter_matrix()
