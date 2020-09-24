@@ -223,6 +223,8 @@ class HicGenome:
             self.bins = self.clr.bins()[:]
         if norm == 'raw':
             self.use_norm = False
+        else:
+            self.use_norm = True
         # Bins with NaN weight are missing, matrix already balanced
         self.detectable_bins = np.flatnonzero(np.isfinite(self.bins.weight))
         print(
