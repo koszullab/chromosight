@@ -8,17 +8,17 @@ maps with pattern matching.
 Usage:
     chromosight detect  [--kernel-config=FILE] [--pattern=loops]
                         [--pearson=auto] [--win-size=auto] [--iterations=auto]
-                        [--win-fmt={json,npy}] [--force-norm]
+                        [--win-fmt={json,npy}] [--norm={auto,raw,force}]
                         [--subsample=no] [--inter] [--tsvd] [--smooth-trend]
                         [--n-mads=5] [--min-dist=0] [--max-dist=auto]
                         [--no-plotting] [--min-separation=auto] [--dump=DIR]
                         [--threads=1] [--perc-zero=auto]
                         [--perc-undetected=auto] <contact_map> <prefix>
     chromosight generate-config [--preset loops] [--click contact_map]
-                        [--force-norm] [--win-size=auto] [--n-mads=5]
+                        [--norm={auto,raw,norm}] [--win-size=auto] [--n-mads=5]
                         [--threads=1] <prefix>
     chromosight quantify [--inter] [--pattern=loops] [--subsample=no]
-                         [--win-fmt=json] [--kernel-config=FILE] [--force-norm]
+                         [--win-fmt=json] [--kernel-config=FILE] [--norm={auto,raw,norm}]
                          [--threads=1] [--n-mads=5] [--win-size=auto]
                          [--perc-undetected=auto] [--perc-zero=auto]
                          [--no-plotting] [--tsvd] <bed2d> <contact_map> <prefix>
@@ -79,9 +79,10 @@ Basic options:
     -h, --help                  Display this help message.
     --version                   Display the program's current version.
     --verbose                   Displays the logo.
-    -F, --force-norm            Re-compute matrix normalization (balancing) and
-                                overwrite weights present in the cool files instead
-                                of reusing them.
+    -n, --norm={auto,raw,force} Normalization / balancing behaviour. auto: weights
+                                present in the cool file are used. raw: raw contact
+                                values are used. force: recompute weights and
+                                overwrite existing values. raw[default: auto]
     -I, --inter                 Enable to consider interchromosomal contacts.
                                 Warning: Experimental feature with high memory
                                 consumption, only use with small matrices.
@@ -117,7 +118,7 @@ Advanced options:
                                 config path. Use this to override pattern if
                                 you do not want to use one of the preset
                                 patterns.
-    -n, --no-plotting           Disable generation of pileup plots.
+    --no-plotting               Disable generation of pileup plots.
     -N, --n-mads=5              Maximum number of median absolute deviations below
                                 the median of the bin sums distribution allowed to
                                 consider detectable bins. [default: 5]
@@ -226,7 +227,7 @@ def cmd_quantify(args):
     perc_undetected = args["--perc-undetected"]
     plotting_enabled = False if args["--no-plotting"] else True
     threads = int(args["--threads"])
-    force_norm = args["--force-norm"]
+    norm = args["--norm"]
     tsvd = 0.999 if args["--tsvd"] else None
     win_fmt = args["--win-fmt"]
     if win_fmt not in ["npy", "json"]:
@@ -275,7 +276,7 @@ def cmd_quantify(args):
     # Notify contact map instance of changes in scanning distance
     hic_genome.kernel_config = cfg
     # Normalize (balance) matrix using ICE
-    hic_genome.normalize(force_norm=force_norm, n_mads=n_mads, threads=threads)
+    hic_genome.normalize(norm=norm, n_mads=n_mads, threads=threads)
     # Initialize output structures
     bed2d["score"] = np.nan
     bed2d["pvalue"] = np.nan
@@ -426,7 +427,7 @@ def cmd_generate_config(args):
     pattern = args["--preset"]
     click_find = args["--click"]
     n_mads = float(args["--n-mads"])
-    force_norm = args["--force-norm"]
+    norm = args["--norm"]
     win_size = args["--win-size"]
     threads = int(args["--threads"])
 
@@ -452,7 +453,7 @@ def cmd_generate_config(args):
         hic_genome = HicGenome(click_find, inter=True, kernel_config=cfg)
         # Normalize (balance) the whole genome matrix
         hic_genome.normalize(
-            force_norm=force_norm, n_mads=n_mads, threads=threads
+            norm=norm, n_mads=n_mads, threads=threads
         )
         # enforce full scanning distance in kernel config
 
@@ -514,7 +515,7 @@ def _detect_sub_mat(data):
 def cmd_detect(args):
     # Parse command line arguments for detect
     dump = args["--dump"]
-    force_norm = args["--force-norm"]
+    norm = args["--norm"]
     interchrom = args["--inter"]
     iterations = args["--iterations"]
     kernel_config_path = args["--kernel-config"]
@@ -598,7 +599,7 @@ def cmd_detect(args):
     ### 1: Process input signal
     hic_genome.kernel_config = cfg
     # Normalize (balance) matrix using ICE
-    hic_genome.normalize(force_norm=force_norm, n_mads=n_mads, threads=threads)
+    hic_genome.normalize(norm=norm, n_mads=n_mads, threads=threads)
     # Define how many diagonals should be used in intra-matrices
     hic_genome.compute_max_dist()
     # Split whole genome matrix into intra- and inter- sub matrices. Each sub
