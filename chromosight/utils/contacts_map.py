@@ -200,10 +200,10 @@ class HicGenome:
         threads : int
             Number of parallel threads to use for normalization.
         """
-        if "weight" in self.bins.columns and norm == 'auto':
+        if norm not in ['auto', 'raw', 'force']:
+            raise ValueError("norm must be one of: auto, raw, force")
+        if "weight" in self.bins.columns and norm != 'force':
             sys.stderr.write("Matrix already balanced, reusing weights\n")
-        elif norm == 'raw':
-            self.use_norm = False
         else:
             pool = mp.Pool(threads)
             cooler.balance_cooler(
@@ -221,6 +221,8 @@ class HicGenome:
             print("Whole genome matrix balanced")
             # Reload bins attribute to include the weight  column
             self.bins = self.clr.bins()[:]
+        if norm == 'raw':
+            self.use_norm = False
         # Bins with NaN weight are missing, matrix already balanced
         self.detectable_bins = np.flatnonzero(np.isfinite(self.bins.weight))
         print(
@@ -521,9 +523,6 @@ class ContactMap:
     def create_mat(self):
         (s1, e1), (s2, e2) = self.extent
         self.matrix = self.clr.matrix(sparse=True, balance=self.use_norm)[s1:e1, s2:e2]
-        # Remove NaN values to store them as implicit zeroes
-        self.matrix.data[np.isnan(self.matrix.data)] = 0
-        self.matrix.eliminate_zeros()
         # Subsample contacts if requested
         if self.sample is not None:
             self.subsample(self.sample, balance=self.use_norm)
@@ -532,6 +531,17 @@ class ContactMap:
             self.preprocess_inter_matrix()
         else:
             self.preprocess_intra_matrix()
+        # Remove NaN values to store them as implicit zeroes
+        if self.use_norm:
+            self.matrix.data[np.isnan(self.matrix.data)] = 0
+        # Raw matrices do not have nan values, we need to use the weights
+        # to deduce missing bins
+        else:
+            self.matrix = self.matrix.tocsr()
+            self.matrix[preproc.valid_to_missing(self.detectable_bins[0], self.matrix.shape[0]), :] = 0
+            self.matrix[:, preproc.valid_to_missing(self.detectable_bins[1], self.matrix.shape[1])] = 0
+            self.matrix = self.matrix.tocoo()
+        self.matrix.eliminate_zeros()
 
     def destroy_mat(self):
         """Destroys contact map to clean up memory"""
@@ -580,7 +590,6 @@ class ContactMap:
                 bias_cols[self.matrix.col] *
                 self.matrix.data
                 )
-            self.matrix.data[np.isnan(self.matrix.data)] = 0
 
     @DumpMatrix("01_process_inter")
     def preprocess_inter_matrix(self):
@@ -598,6 +607,7 @@ class ContactMap:
             max_dist=self.keep_distance,
             smooth=self.smooth,
             detectable_bins=self.detectable_bins[0],
+            max_val=10 if self.use_norm else None,
         )
 
     @DumpMatrix("02_remove_diags")

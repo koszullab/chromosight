@@ -279,8 +279,8 @@ def detrend(
         Whether to use isotonic regression to smooth the trend.
     fun : callable
         Function to use on each diagonal to compute the trend.
-    max_val : float
-        Maximum value in the detrended matrix.
+    max_val : float or None
+        Maximum value in the detrended matrix. Set to None to disable
 
     Returns
     -------
@@ -306,7 +306,8 @@ def detrend(
     except TypeError:
         pass
     clean_mat = clean_mat.tocsr()
-    clean_mat[clean_mat >= max_val] = max_val
+    if max_val is not None:
+        clean_mat[clean_mat >= max_val] = max_val
     return clean_mat
 
 
