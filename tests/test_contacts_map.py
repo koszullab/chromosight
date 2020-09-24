@@ -69,7 +69,7 @@ def test_hic_genome(path):
 def test_hic_genome_normalize(path):
     """Test if normalization of HicGenome object yields expected results"""
     hic_genome = ccm.HicGenome(path)
-    hic_genome.normalize(force_norm=True)
+    hic_genome.normalize(norm=True)
 
 
 class TestHicGenome(unittest.TestCase):
