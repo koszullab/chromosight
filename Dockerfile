@@ -5,6 +5,7 @@ LABEL Name=chromosight Version=1.3.1
 COPY * ./ /app/
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y gcc
 RUN conda config --add channels bioconda
 RUN conda install -c conda-forge -y cooler \
   && conda clean -afy
