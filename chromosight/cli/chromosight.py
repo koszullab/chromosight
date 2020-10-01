@@ -190,6 +190,8 @@ Matrix already balanced, reusing weights
 Preprocessing sub-matrices...
 Detecting patterns...
 89 patterns detected
+Saving patterns in chromosight_test.tsv
+Saving patterns in chromosight_test.json
 """
 
 
@@ -423,7 +425,7 @@ def cmd_quantify(args):
                 windows_pileup += np.transpose(windows_pileup) - np.diag(
                     np.diag(windows_pileup)
                 )
-            sys.stderr.write(f"Saving pileup plots in {prefix}.pdf")
+            sys.stderr.write(f"Saving pileup plots in {prefix}.pdf\n")
             pileup_plot(windows_pileup, prefix, name=pileup_title)
 
 
@@ -760,11 +762,11 @@ def cmd_detect(args):
     sys.stderr.write(f"{all_coords.shape[0]} patterns detected\n")
     # Save patterns and their coordinates in a tsv file
 
-    sys.stderr.write(f"Saving patterns in {prefix}.tsv")
+    sys.stderr.write(f"Saving patterns in {prefix}.tsv\n")
     cio.write_patterns(all_coords, prefix)
     # Save windows as an array in an npy file
 
-    sys.stderr.write(f"Saving patterns in {prefix}.{win_fmt}")
+    sys.stderr.write(f"Saving patterns in {prefix}.{win_fmt}\n")
     cio.save_windows(all_windows, prefix, fmt=win_fmt)
 
     # Generate pileup visualisations if requested
@@ -782,7 +784,7 @@ def cmd_detect(args):
             windows_pileup += np.transpose(windows_pileup) - np.diag(
                 np.diag(windows_pileup)
             )
-        sys.stderr.write(f"Saving pileup plots in {prefix}.pdf")
+        sys.stderr.write(f"Saving pileup plots in {prefix}.pdf\n")
         pileup_plot(windows_pileup, prefix, name=pileup_title)
 
 
