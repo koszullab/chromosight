@@ -160,14 +160,19 @@ from chromosight.version import __version__
 from chromosight.utils.contacts_map import HicGenome
 import chromosight.utils.io as cio
 import chromosight.utils.detection as cid
-from chromosight.utils.plotting import pileup_plot, click_finder, print_ascii_mat
+from chromosight.utils.plotting import (
+    pileup_plot,
+    click_finder,
+    print_ascii_mat,
+)
 from chromosight.utils.preprocessing import resize_kernel
 from chromosight.utils.stats import fdr_correction
 import chromosight.kernels as ck
 import scipy.ndimage as ndi
 import matplotlib.pyplot as plt
 import pathlib
-LOGO = np.loadtxt(pathlib.Path(__file__).parents[0] / 'logo.txt')
+
+LOGO = np.loadtxt(pathlib.Path(__file__).parents[0] / "logo.txt")
 URL_EXAMPLE_DATASET = (
     "https://raw.githubusercontent.com/koszullab/"
     "chromosight/master/data_test/example.cool"
@@ -418,6 +423,7 @@ def cmd_quantify(args):
                 windows_pileup += np.transpose(windows_pileup) - np.diag(
                     np.diag(windows_pileup)
                 )
+            sys.stderr.write(f"Saving pileup plots in {prefix}.pdf")
             pileup_plot(windows_pileup, prefix, name=pileup_title)
 
 
@@ -452,9 +458,7 @@ def cmd_generate_config(args):
     if click_find:
         hic_genome = HicGenome(click_find, inter=True, kernel_config=cfg)
         # Normalize (balance) the whole genome matrix
-        hic_genome.normalize(
-            norm=norm, n_mads=n_mads, threads=threads
-        )
+        hic_genome.normalize(norm=norm, n_mads=n_mads, threads=threads)
         # enforce full scanning distance in kernel config
 
         hic_genome.max_dist = hic_genome.clr.shape[0] * hic_genome.clr.binsize
@@ -755,8 +759,12 @@ def cmd_detect(args):
     ### 3: WRITE OUTPUT
     sys.stderr.write(f"{all_coords.shape[0]} patterns detected\n")
     # Save patterns and their coordinates in a tsv file
+
+    sys.stderr.write(f"Saving patterns in {prefix}.tsv")
     cio.write_patterns(all_coords, prefix)
     # Save windows as an array in an npy file
+
+    sys.stderr.write(f"Saving patterns in {prefix}.{win_fmt}")
     cio.save_windows(all_windows, prefix, fmt=win_fmt)
 
     # Generate pileup visualisations if requested
@@ -774,20 +782,20 @@ def cmd_detect(args):
             windows_pileup += np.transpose(windows_pileup) - np.diag(
                 np.diag(windows_pileup)
             )
+        sys.stderr.write(f"Saving pileup plots in {prefix}.pdf")
         pileup_plot(windows_pileup, prefix, name=pileup_title)
-
 
 
 def cmd_list_kernels(args):
 
     kernel_name = args["--name"]
     # Load every avaiable kernel by default
-    if kernel_name == 'all':
+    if kernel_name == "all":
         kernels = ck.kernel_names
     # If a specific kernel was requested, only load this one
     else:
         kernels = [kernel_name]
-    
+
     # Check availability of each kernel and print its name
     for k in kernels:
         try:
@@ -796,16 +804,15 @@ def cmd_list_kernels(args):
             raise ValueError(f"Kernel {k} is not available")
         print(k)
         # Print default params if --long specified (key-value pairs in json)
-        if args['--long']:
-            exclude_params = ['name', 'resolution', 'kernels']
+        if args["--long"]:
+            exclude_params = ["name", "resolution", "kernels"]
             for param, value in kernel_infos.items():
                 if param not in exclude_params:
                     print(f"  {param}: {value}")
-        if args['--mat']:
-            mats = kernel_infos['kernels']
+        if args["--mat"]:
+            mats = kernel_infos["kernels"]
             for mat in mats:
                 print_ascii_mat(mat)
-
 
 
 def cmd_test(args):
@@ -817,7 +824,7 @@ def cmd_test(args):
     sys.stderr.write(f"Running detection on test dataset...\n")
 
     args["<contact_map>"] = tmp_cool.name
-    args["<prefix>"] = 'chromosight_test'
+    args["<prefix>"] = "chromosight_test"
     args["--no-plotting"] = True
     cmd_detect(args)
     os.unlink(tmp_cool.name)
@@ -840,14 +847,16 @@ def capture_ouput(stderr_to=None):
         except (ValueError, IOError):
             pass
 
+
 def logo_version(logo, ver):
-    small_logo = resize_kernel(logo, factor=.33, quiet=True)
+    small_logo = resize_kernel(logo, factor=0.33, quiet=True)
     ascii_logo = print_ascii_mat(small_logo, colored=False, print_str=False)
-    return f'{ascii_logo} Chromosight version {ver}'
+    return f"{ascii_logo} Chromosight version {ver}"
+
 
 def main():
 
-    args = docopt.docopt( __doc__, version=logo_version(LOGO, __version__))
+    args = docopt.docopt(__doc__, version=logo_version(LOGO, __version__))
     detect = args["detect"]
     generate_config = args["generate-config"]
     list_kernels = args["list-kernels"]
@@ -885,7 +894,7 @@ def main():
         cmd_list_kernels(args)
     elif quantify:
         cmd_quantify(args)
-        
+
     return 0
 
 
