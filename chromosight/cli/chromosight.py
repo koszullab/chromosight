@@ -222,6 +222,59 @@ def _override_kernel_config(param_name, param_value, param_type, config):
     return config
 
 
+def _quantify_sub_mat(data):
+    sub = data[0][1]
+    config = data[1]
+    kernel = data[2]
+    positions = data[3]
+    sub.contact_map.create_mat()
+    # Feed the submatrix to quantification pipeline
+    patterns, windows = cid.pattern_detector(
+        sub.contact_map,
+        config,
+        kernel,
+        coords=np.array(positions.loc[:, ["bin1", "bin2"]]),
+        full=True,
+        tsvd=config["tsvd"],
+    )
+    sub.contact_map.destroy_mat()
+
+    return {
+        "coords": patterns,
+        "windows": windows,
+        "chr1": sub.chr1,
+        "chr2": sub.chr2,
+    }
+
+
+def _get_chrom_pos(positions, hic_genome, chr1, chr2):
+    # Filter patterns falling onto this sub-matrix
+    sub_pat = positions.loc[
+        (positions.chrom1 == chr1) & (positions.chrom2 == chr2)
+    ]
+    # Convert genomic coordinates to bins for horizontal and vertical axes
+    for ax in [1, 2]:
+        sub_pat_ax = sub_pat.loc[:, [f"chrom{ax}", f"pos{ax}"]].rename(
+            columns={f"chrom{ax}": "chrom", f"pos{ax}": "pos"}
+        )
+        sub_pat_bins = hic_genome.coords_to_bins(sub_pat_ax)
+        sub_pat[f"bin{ax}"] = sub_pat_bins
+
+    # Check for nan bins (coords that do not match any Hi-C fragments
+    fall_out = np.isnan(sub_pat["bin1"]) | np.isnan(sub_pat["bin2"])
+    if np.any(fall_out):
+        n_out = len(sub_pat_bins[fall_out])
+        sys.stderr.write(
+            f"\n{n_out} entr{'ies' if n_out > 1 else 'y'} outside "
+            "genomic coordinates of the Hi-C matrix will be ignored.\n"
+        )
+        sub_pat = sub_pat.loc[~fall_out, :]
+    sub_pat_idx = sub_pat.index.values
+    # Convert bins from whole genome matrix to sub matrix
+    sub_pat = hic_genome.get_sub_mat_pattern(chr1, chr2, sub_pat)
+    return sub_pat_idx, sub_pat
+
+
 def cmd_quantify(args):
     bed2d_path = args["<bed2d>"]
     mat_path = args["<contact_map>"]
@@ -275,6 +328,7 @@ def cmd_quantify(args):
     max_diag = hic_genome.clr.shape[0] * hic_genome.clr.binsize
     cfg["max_dist"] = min(furthest, max_diag)
     cfg["min_dist"] = 0
+    cfg["tsvd"] = tsvd
     cfg = _override_kernel_config("max_perc_zero", perc_zero, float, cfg)
     cfg = _override_kernel_config(
         "max_perc_undetected", perc_undetected, float, cfg
@@ -312,72 +366,57 @@ def cmd_quantify(args):
         cio.progress(kernel_id, len(cfg["kernels"]), f"Kernel: {kernel_id}\n")
         # Iterate over intra- and inter-chromosomal sub-matrices
         n_sub_mats = hic_genome.sub_mats.shape[0]
-        for sub_mat_id, sub_mat in enumerate(hic_genome.sub_mats.iterrows()):
-            mat = sub_mat[1]
-            cio.progress(sub_mat_id, n_sub_mats, f"{mat.chr1}-{mat.chr2}")
-            mat.contact_map.create_mat()
-            # Filter patterns falling onto this sub-matrix
-            sub_pat = positions.loc[
-                (positions.chrom1 == mat.chr1) & (positions.chrom2 == mat.chr2)
-            ]
-            # Convert genomic coordinates to bins for horizontal and vertical axes
-            for ax in [1, 2]:
-                sub_pat_ax = sub_pat.loc[:, [f"chrom{ax}", f"pos{ax}"]].rename(
-                    columns={f"chrom{ax}": "chrom", f"pos{ax}": "pos"}
-                )
-                sub_pat_bins = hic_genome.coords_to_bins(sub_pat_ax)
-                sub_pat[f"bin{ax}"] = sub_pat_bins
+        # Apply quantification procedure to all sub matrices in parallel
+        sub_pos = [
+            _get_chrom_pos(positions, hic_genome, m[1].chr1, m[1].chr2)
+            for m in hic_genome.sub_mats.iterrows()
+        ]
+        sub_mat_data = zip(
+            hic_genome.sub_mats.iterrows(),
+            [cfg for _ in range(n_sub_mats)],
+            [kernel_matrix for _ in range(n_sub_mats)],
+            [s[1] for s in sub_pos],
+        )
+        # Run quantification in parallel on different sub matrices, and show progress when
+        # gathering results
+        sub_mat_results = []
+        # Run in multiprocessing subprocesses
+        if threads > 1:
+            pool = mp.Pool(threads)
+            dispatcher = pool.imap(_quantify_sub_mat, sub_mat_data, 1)
+        else:
+            dispatcher = map(_quantify_sub_mat, sub_mat_data)
+        for s, result in enumerate(dispatcher):
+            chr1 = hic_genome.sub_mats.chr1[s]
+            chr2 = hic_genome.sub_mats.chr2[s]
+            cio.progress(s, n_sub_mats, f"{chr1}-{chr2}")
+            sub_mat_results.append(result)
 
-            # Check for nan bins (coords that do not match any Hi-C fragments
-            fall_out = np.isnan(sub_pat["bin1"]) | np.isnan(sub_pat["bin2"])
-            if np.any(fall_out):
-                n_out = len(sub_pat_bins[fall_out])
-                sys.stderr.write(
-                    f"\n{n_out} entr{'ies' if n_out > 1 else 'y'} outside "
-                    "genomic coordinates of the Hi-C matrix will be ignored.\n"
-                )
-                sub_pat = sub_pat.loc[~fall_out, :]
-            sub_pat_idx = sub_pat.index.values
-            # Convert bins from whole genome matrix to sub matrix
-            sub_pat = hic_genome.get_sub_mat_pattern(
-                mat.chr1, mat.chr2, sub_pat
-            )
-            m = mat.contact_map.matrix.tocsr()
-
-            # Feed the submatrix to quantification pipeline
-            patterns, mat_windows = cid.pattern_detector(
-                mat.contact_map,
-                cfg,
-                kernel_matrix,
-                coords=np.array(sub_pat.loc[:, ["bin1", "bin2"]]),
-                full=True,
-                tsvd=tsvd,
-            )
+        for i, r in enumerate(sub_mat_results):
+            sub_pat_idx = sub_pos[i][0]
 
             # For each coordinate, keep the highest coefficient
             # among all kernels.
             try:
                 if kernel_id == 0:
-                    bed2d["score"][sub_pat_idx] = patterns.score.values
-                    bed2d["pvalue"][sub_pat_idx] = patterns.pvalue.values
-                    windows[sub_pat_idx, :, :] = mat_windows
+                    bed2d["score"][sub_pat_idx] = r["coords"].score.values
+                    bed2d["pvalue"][sub_pat_idx] = r["coords"].pvalue.values
+                    windows[sub_pat_idx, :, :] = r["windows"]
                 else:
                     # Only update scores and their corresponding windows
                     # if better than results from previous kernels
                     better = (
-                        patterns.score > bed2d["score"][sub_pat_idx].values
+                        r["coords"].score > bed2d["score"][sub_pat_idx].values
                     ) | (np.insnan(bed2d["score"][sub_pat_idx].values))
                     better_idx = sub_pat_idx[better]
-                    bed2d["score"][better_idx] = patterns.score[better].values
-                    windows[better_idx, :, :] = mat_windows[better]
+                    bed2d["score"][better_idx] = (
+                        r["coords"].score[better].values
+                    )
+                    windows[better_idx, :, :] = r["windows"][better]
             # Do nothing if no pattern was detected or matrix
             # is smaller than the kernel (-> patterns is None)
             except AttributeError:
                 pass
-            # Free space from current submatrix
-            mat.contact_map.destroy_mat()
-            del m
-            m = None
         bed2d["bin1"] = hic_genome.coords_to_bins(
             bed2d.loc[:, ["chrom1", "start1"]].rename(
                 columns={"chrom1": "chrom", "start1": "pos"}
