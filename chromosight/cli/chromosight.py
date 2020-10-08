@@ -387,9 +387,7 @@ def cmd_quantify(args):
         else:
             dispatcher = map(_quantify_sub_mat, sub_mat_data)
         for s, result in enumerate(dispatcher):
-            chr1 = hic_genome.sub_mats.chr1[s]
-            chr2 = hic_genome.sub_mats.chr2[s]
-            cio.progress(s, n_sub_mats, f"{chr1}-{chr2}")
+            cio.progress(s, n_sub_mats, f"{result['chr1']}-{result['chr2']}")
             sub_mat_results.append(result)
 
         for i, r in enumerate(sub_mat_results):
@@ -686,9 +684,7 @@ def cmd_detect(args):
             else:
                 dispatcher = map(_detect_sub_mat, sub_mat_data)
             for s, result in enumerate(dispatcher):
-                chr1 = hic_genome.sub_mats.chr1[s]
-                chr2 = hic_genome.sub_mats.chr2[s]
-                cio.progress(s, n_sub_mats, f"{chr1}-{chr2}")
+                cio.progress(s, n_sub_mats, f"{result['chr1']}-{result['chr2']}")
                 sub_mat_results.append(result)
 
             # Convert coordinates from chromosome to whole genome bins
