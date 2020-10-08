@@ -312,6 +312,8 @@ def load_bed2d(path):
             usecols=range(6),
         )
     # Make sure start1 is always the left anchor for intrachromosomal pairs
+    bed2d.chrom1 = bed2d.chrom1.astype(str)
+    bed2d.chrom2 = bed2d.chrom2.astype(str)
     inverted = (bed2d.start2 < bed2d.start1) & (bed2d.chrom1 == bed2d.chrom2)
     bed2d.start1[inverted], bed2d.start2[inverted] = (
         bed2d.start2[inverted],
