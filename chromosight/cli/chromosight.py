@@ -223,21 +223,30 @@ def _override_kernel_config(param_name, param_value, param_type, config):
 
 
 def _quantify_sub_mat(data):
+    """
+    This function is dispatched by multiprocessing to
+    run the quantification pipeline.
+    """
     sub = data[0][1]
     config = data[1]
     kernel = data[2]
     positions = data[3]
-    sub.contact_map.create_mat()
-    # Feed the submatrix to quantification pipeline
-    patterns, windows = cid.pattern_detector(
-        sub.contact_map,
-        config,
-        kernel,
-        coords=np.array(positions.loc[:, ["bin1", "bin2"]]),
-        full=True,
-        tsvd=config["tsvd"],
-    )
-    sub.contact_map.destroy_mat()
+    # If there is no pattern on this sub matrix,
+    # do not scan it.
+    if positions.shape[0]:
+        sub.contact_map.create_mat()
+        # Feed the submatrix to quantification pipeline
+        patterns, windows = cid.pattern_detector(
+            sub.contact_map,
+            config,
+            kernel,
+            coords=np.array(positions.loc[:, ["bin1", "bin2"]]),
+            full=True,
+            tsvd=config["tsvd"],
+        )
+        sub.contact_map.destroy_mat()
+    else:
+        patterns = windows = None
 
     return {
         "coords": patterns,
@@ -248,6 +257,10 @@ def _quantify_sub_mat(data):
 
 
 def _get_chrom_pos(positions, hic_genome, chr1, chr2):
+    """
+    Helper function to filter input 2D genomic positions
+    and convert them from whole genome to submatrix coords.
+    """
     # Filter patterns falling onto this sub-matrix
     sub_pat = positions.loc[
         (positions.chrom1 == chr1) & (positions.chrom2 == chr2)
@@ -364,21 +377,22 @@ def cmd_quantify(args):
     # Use each kernel matrix available for the pattern
     for kernel_id, kernel_matrix in enumerate(cfg["kernels"]):
         cio.progress(kernel_id, len(cfg["kernels"]), f"Kernel: {kernel_id}\n")
-        # Iterate over intra- and inter-chromosomal sub-matrices
         n_sub_mats = hic_genome.sub_mats.shape[0]
-        # Apply quantification procedure to all sub matrices in parallel
+        # Retrieve input positions for each submatrix and convert
+        # coordinates from whole genome to submatrix.
         sub_pos = [
             _get_chrom_pos(positions, hic_genome, m[1].chr1, m[1].chr2)
             for m in hic_genome.sub_mats.iterrows()
         ]
+        # Apply quantification procedure to all sub matrices in parallel
         sub_mat_data = zip(
             hic_genome.sub_mats.iterrows(),
             [cfg for _ in range(n_sub_mats)],
             [kernel_matrix for _ in range(n_sub_mats)],
             [s[1] for s in sub_pos],
         )
-        # Run quantification in parallel on different sub matrices, and show progress when
-        # gathering results
+        # Run quantification in parallel on different sub matrices,
+        # and show progress when gathering results
         sub_mat_results = []
         # Run in multiprocessing subprocesses
         if threads > 1:
@@ -391,6 +405,9 @@ def cmd_quantify(args):
             sub_mat_results.append(result)
 
         for i, r in enumerate(sub_mat_results):
+            # If there were no patterns on that sub matrix, just skip it
+            if r['coords'] is None:
+                continue
             sub_pat_idx = sub_pos[i][0]
 
             # For each coordinate, keep the highest coefficient
