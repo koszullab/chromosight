@@ -7,7 +7,7 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y gcc
 RUN conda config --add channels bioconda
-RUN conda install -c conda-forge -y cooler \
+RUN conda install -c conda-forge -y cooler pip \
   && conda clean -afy
 
 RUN pip install -Ur requirements.txt
