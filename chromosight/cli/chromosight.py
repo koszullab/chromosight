@@ -92,7 +92,7 @@ Basic options:
                                 for detection. [default: auto]
     -P, --pattern=loops         Which pattern to detect. This will use preset
                                 configurations for the given pattern. Possible
-                                values are: loops, borders, hairpins and
+                                values are: loops, loops_small, borders, hairpins and
                                 centromeres. [default: loops]
     -p, --pearson=auto          Pearson correlation threshold when detecting patterns
                                 in the contact map. Lower values leads to potentially
