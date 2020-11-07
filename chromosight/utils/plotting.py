@@ -21,7 +21,7 @@ def pileup_plot(pileup_pattern, output_prefix, name="pileup_patterns"):
         vmax=2.0,
         cmap="seismic",
     )
-    plt.title("{} pileup".format(name))
+    plt.title("{} pileup".format(name)+output_prefix)
     plt.colorbar()
     plt.savefig(output_prefix + ".pdf", dpi=100, format="pdf")
     plt.close("all")
