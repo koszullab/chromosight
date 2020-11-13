@@ -290,6 +290,24 @@ def test_xcorr2_constant(signal):
         atol=1e-4,
     )
 
+@params(*gauss1_mats)
+def test_xcorr2_rectangle(signal):
+    """Check if xcorr2 yields correct results with rectangle kernels"""
+    rect_ker = gauss_kernel[:, 2:6]
+    conv_rect= cud.xcorr2(
+        signal,
+        rect_ker,
+    ).toarray()
+    conv_square  = cud.xcorr2(
+        signal,
+        gauss_kernel,
+    ).toarray()
+    rect_r, rect_c = np.where(conv_rect == conv_rect.max())
+    square_r, square_c = np.where(conv_square == conv_square.max())
+    # Hit from truncated kernel must be no further than 1 pixel from
+    # hit from square kernel
+    assert  abs(square_r[0] - rect_r[0]) < 2
+    assert  abs(square_c[0] - rect_c[0]) < 2
 
 @params(*gauss1_mats)
 def test_normxcorr2(signal):
