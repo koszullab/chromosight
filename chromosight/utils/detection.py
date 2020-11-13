@@ -704,7 +704,7 @@ def _xcorr2_sparse(signal, kernel, threshold=1e-6):
             else:
                 for ki in range(km):
                     subkernel_sp = sp.diags(
-                        kernel[ki, :], np.arange(kn), shape=(sn - kn + 1, sn), format="csr",
+                        np.array(kernel[ki, :]).flatten(), np.arange(kn), shape=(sn - kn + 1, sn), format="csr",
                     )
                     out += signal[ki : sm - km + 1 + ki, :].dot(subkernel_sp.T)
 
