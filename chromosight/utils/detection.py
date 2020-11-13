@@ -693,11 +693,20 @@ def _xcorr2_sparse(signal, kernel, threshold=1e-6):
         # 3. Each 1D conv is computed via a sparse matrix x vector product.
         # It is fast because the product is delegated to numpy.
         else:
-            for kj in range(kn):
-                subkernel_sp = sp.diags(
-                    kernel[:, kj], np.arange(km), shape=(sm - km + 1, sm), format="csr",
-                )
-                out += subkernel_sp.dot(signal[:, kj : sn - kn + 1 + kj])
+            # In case the kernel is rectangle, it is faster to scan
+            # the largest dimension first
+            if kn < km:
+                for kj in range(kn):
+                    subkernel_sp = sp.diags(
+                        kernel[:, kj], np.arange(km), shape=(sm - km + 1, sm), format="csr",
+                    )
+                    out += subkernel_sp.dot(signal[:, kj : sn - kn + 1 + kj])
+            else:
+                for ki in range(km):
+                    subkernel_sp = sp.diags(
+                        kernel[ki, :], np.arange(kn), shape=(sn - kn + 1, sn), format="csr",
+                    )
+                    out += signal[ki : sm - km + 1 + ki, :].dot(subkernel_sp.T)
 
     # Set very low pixels to 0
     out.data[np.abs(out.data) < threshold] = 0
