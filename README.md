@@ -5,11 +5,9 @@
 
 Python package to detect chromatin loops (and other patterns) in Hi-C contact maps. 
 
-Preprint can be found on https://www.biorxiv.org/content/10.1101/2020.03.08.981910v3.full
-
-Docs available at https://chromosight.readthedocs.io
-
-Examples of analyses can be found at https://github.com/koszullab/chromosight_analyses_scripts
+* Associated publication: https://www.nature.com/articles/s41467-020-19562-7
+* Documentation: https://chromosight.readthedocs.io
+* Examples of analyses: https://github.com/koszullab/chromosight_analyses_scripts
 
 ## Installation
 
@@ -128,3 +126,6 @@ To test the code, you can run:
 ```bash
 nose2 -s tests/
 ```
+
+### Citation
+When using Chromosight in you research, please cite the pubication: https://www.nature.com/articles/s41467-020-19562-7
