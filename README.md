@@ -28,21 +28,23 @@ pip3 install --user -e git+https://github.com/koszullab/chromosight.git@master#e
 
 ## Usage
 
-`chromosight` has 3 subcommands: `detect`, `quantify` and `generate-config`. To get the list and description of those subcommands, you can always run:
+The two most commonly subcommands of `chromosight` are `detect` and `quantify`. For more advanced use, there are two additional subcomands: `generate-config` and `list-kernels`. To get the list and description of those subcommands, you can always run:
 
 ```bash
 chromosight --help
 ```
-Pattern detection is done using the `detect` subcommand. The generate-config subcommand is used to create a new type of pattern that can then be fed to `detect` using the `--custom-kernel` option. The `quantify` subcommand is used to compute pattern matching scores for a list of 2D coordinates on a Hi-C matrix.
+Pattern detection is done using the `detect` subcommand. The `quantify` subcommand is used to compute pattern matching scores for a list of 2D coordinates on a Hi-C matrix. The `generate-config` subcommand is used to create a new type of pattern that can then be fed to `detect` using the `--custom-kernel` option. The `list-kernels` command is used to view informations about the available patterns.
 
 ### Get started
-To get a first look at a chromosight run, you can run `chromosight test`, which will download a test dataset from the github repository and run `chromosight detect` on it.
+To get a first look at a chromosight run, you can run `chromosight test`, which will download a test dataset from the github repository and run `chromosight detect` on it. You can then have a look at the output files generated.
 
 ### Important options
 
-* `--min-dist`: Minimum distance from which to detect patterns.
-* `--max-dist`: Maximum distance from which to detect patterns. Increasing also increases runtime and memory use.
-* `--pearson`: Decrease to allow a greater number of pattern detected (with potentially more false positives).
+When running `chromosight detect`, there are a handful parameters which are especially important:
+
+* `--min-dist`: Minimum genomic distance from which to detect patterns. For loops, this means the smallest loop size accepted (i.e. distance between the two anchors).
+* `--max-dist`: Maximum genomic distance from which to detect patterns. Increasing also increases runtime and memory use.
+* `--pearson`: Detection threshold. Decrease to allow a greater number of pattern detected (with potentially more false positives). Setting a very low value may actually reduce the number of detected patterns. This is due to the algorithm which might merge neighbouring patterns.
 * `--perc-zero`: Proportion of zero pixels allowed in a window for detection. If you have low coverage, increasing this value may improve results.
 
 ### Example
@@ -64,20 +66,21 @@ maps with pattern matching.
 Usage:
     chromosight detect  [--kernel-config=FILE] [--pattern=loops]
                         [--pearson=auto] [--win-size=auto] [--iterations=auto]
-                        [--win-fmt={json,npy}] [--force-norm]
+                        [--win-fmt={json,npy}] [--norm={auto,raw,force}]
                         [--subsample=no] [--inter] [--tsvd] [--smooth-trend]
                         [--n-mads=5] [--min-dist=0] [--max-dist=auto]
                         [--no-plotting] [--min-separation=auto] [--dump=DIR]
                         [--threads=1] [--perc-zero=auto]
                         [--perc-undetected=auto] <contact_map> <prefix>
     chromosight generate-config [--preset loops] [--click contact_map]
-                        [--force-norm] [--win-size=auto] [--n-mads=5]
+                        [--norm={auto,raw,norm}] [--win-size=auto] [--n-mads=5]
                         [--threads=1] <prefix>
     chromosight quantify [--inter] [--pattern=loops] [--subsample=no]
-                         [--win-fmt=json] [--kernel-config=FILE] [--force-norm]
+                         [--win-fmt=json] [--kernel-config=FILE] [--norm={auto,raw,norm}]
                          [--threads=1] [--n-mads=5] [--win-size=auto]
                          [--perc-undetected=auto] [--perc-zero=auto]
                          [--no-plotting] [--tsvd] <bed2d> <contact_map> <prefix>
+    chromosight list-kernels [--long] [--mat] [--name=kernel_name]
     chromosight test
 
     detect:
@@ -92,6 +95,8 @@ Usage:
         Given a list of pairs of positions and a contact map, computes the
         correlation coefficients between those positions and the kernel of the
         selected pattern.
+    list-kernels:
+        Prints information about available kernels.
     test:
         Download example data and run loop detection on it.
 
@@ -99,7 +104,7 @@ Usage:
 
 ## Input
 
-Input Hi-C contact maps should be in cool format. The cool format is an efficient and compact format for Hi-C data based on HDF5. It is maintained by the Mirny lab and documented here: https://mirnylab.github.io/cooler/
+Input Hi-C contact maps should be in cool format. The cool format is an efficient and compact format for Hi-C data based on HDF5. It is maintained by the Mirny lab and documented here: https://open2c.github.io/cooler/
 
 Most other Hi-C data formats (hic, homer, hic-pro), can be converted to cool using [hicexplorer's hicConvertFormat](https://hicexplorer.readthedocs.io/en/latest/content/tools/hicConvertFormat.html) or [hic2cool](https://github.com/4dn-dcic/hic2cool). Bedgraph2 format can be converted directly using cooler with the command `cooler load -f bg2 <chrom.sizes>:<binsize> in.bg2.gz out.cool`. For more informations, see the [cooler documentation](https://cooler.readthedocs.io/en/latest/cli.html#cooler-load)
 
