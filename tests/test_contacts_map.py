@@ -12,7 +12,6 @@ import chromosight.kernels as ck
 import chromosight.utils.preprocessing as preproc
 
 COOL_TEST = "data_test/example.cool"
-#BG2_TEST = "data_test/example.bg2"
 
 
 class DummyGenome:
@@ -49,7 +48,7 @@ def test_dump_matrix():
 
 @params(COOL_TEST)
 def test_hic_genome(path):
-    """Test HicGenome instantiation and matrix splitting with bg2 and cool files"""
+    """Test HicGenome instantiation and matrix splitting with cool files"""
     # Simple instantiation test: no kernel config, no inter matrices
     hic_genome = ccm.HicGenome(path)
     hic_genome.make_sub_matrices()
