@@ -11,7 +11,7 @@ __author__ = (
 )
 __copyright__ = "Copyright © 2017-2018, Institut Pasteur, Paris, France"
 __credits__ = ["Hackathon ENGIE/Institut Pasteur teams"]
-__license__ = "GPLv3"
+__license__ = "MIT"
 __maintainer__ = "Axel Cournac, Cyril Matthey-Doret, Nadège Guigliemoni"
 __email__ = "axel.cournac@pasteur.fr"
 __status__ = "Beta"
