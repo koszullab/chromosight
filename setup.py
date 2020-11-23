@@ -9,7 +9,7 @@ import codecs
 CLASSIFIERS = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: Artistic License",
+    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3.6",
     "Programming Language :: Python :: 3.7",
@@ -26,7 +26,7 @@ MINOR = 3
 MAINTENANCE = 3
 VERSION = "{}.{}.{}".format(MAJOR, MINOR, MAINTENANCE)
 
-LICENSE = "GPLv3"
+LICENSE = "MIT"
 
 with open("requirements.txt", "r") as f:
     REQUIREMENTS = f.read().splitlines()
