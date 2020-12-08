@@ -4,4 +4,5 @@ jsonschema
 matplotlib
 numpy
 scikit-learn
+scikit-image
 scipy>= 1.3

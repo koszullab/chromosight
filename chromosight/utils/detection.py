@@ -11,6 +11,7 @@ import pathlib
 import warnings
 import chromosight.utils.preprocessing as preproc
 import chromosight.utils.stats as cus
+from skimage.feature import peak_local_max
 
 warnings.filterwarnings("ignore")
 
@@ -343,8 +344,46 @@ def pattern_detector(
     filtered_coords["pvalue"] = 10 ** filtered_coords["pvalue"]
     return filtered_coords, filtered_windows
 
+def remove_neighbours(patterns, win_size=5, max_blocks=10000):
+    pat = patterns.reset_index(drop=True)
+    if pat.loc[:, ['bin1', 'bin2']].drop_duplicates().shape[0] != pat.shape[0]:
+        raise ValueError("Duplicate entries in pattern coordinates.")
+    keep_coords = []
+    # Sort on X  and identify gaps (regions without patterns) on which to
+    # split horizontally
+    sorted_x = pat.bin1.sort_values()
+    x_gaps = sorted_x[sorted_x.diff() > 2*win_size]
+    # If we have too many gaps, just merge blocks randomly to retain 10
+    if len(x_gaps) > max_blocks:
+        x_gaps= np.random.choice(x_gaps, size=max_blocks, replace=False)
+    max_kwargs = {'min_distance': win_size, 'indices': True, 'exclude_border': False}
+    x_gaps = np.append(x_gaps, pat.bin1.max()+1)
+    start = 0
+    # Subset each block, make a dense image and find local maxima
+    for gap in x_gaps:
+        block = pat.query(
+            f'(bin1 >= {start}) & (bin1 < {gap})'
+        )
+        img = sp.csr_matrix((block.score, (block.bin1 - block.bin1.min(), block.bin2 - block.bin2.min()))).toarray()
+        coords = peak_local_max(img, **max_kwargs)
+        # If only 1 row in the block, reshape output
+        coords[:, 0] += block.bin1.min()
+        coords[:, 1] += block.bin2.min()
+        keep_coords.append(coords)
+        start = gap
+    # Combine coordinates from all blocks into a single array
+    keep_coords = np.concatenate(keep_coords)
+    # Inner merge to retrieve indices of patterns corresponding to maxima
+    keep_coords = pd.DataFrame(keep_coords, columns=['bin1', 'bin2'])
+    # Note: we make a dummy "index" column to retrieve the original index after the merge
+    whitelist = pat.reset_index(drop=False).merge(keep_coords, on=['bin1', 'bin2'], how='inner')['index']
+    # Format into a boolean array to use as whitelist
+    whitelist_mask = np.zeros(pat.shape[0], dtype=bool)
+    whitelist_mask[whitelist] = True
 
-def remove_neighbours(patterns, win_size=8):
+    return whitelist_mask
+
+def slow_remove_neighbours(patterns, win_size=8):
     """
     Identify patterns that are too close from each other to exclude them.
     The pattern with the highest score are kept in priority.

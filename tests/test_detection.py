@@ -154,18 +154,24 @@ def test_pattern_detector(matrix):
 def test_remove_neighbours(win_size):
     """Check if the correct number of patterns are removed and highest scores are kept"""
     patterns = pd.DataFrame(gauss1_coords, columns=["bin1", "bin2"])
-    patterns["bin1"] = patterns["bin1"] // win_size
-    patterns["bin2"] = patterns["bin2"] // win_size
+    patterns["bin1"] = patterns["bin1"]
+    patterns["bin2"] = patterns["bin2"]
     patterns["score"] = np.random.random(patterns.shape[0])
-    clean_patterns = cud.remove_neighbours(patterns, win_size=1)
-    obs_clean = len(clean_patterns[clean_patterns])
-    exp_clean = np.unique(patterns.loc[:, ["bin1", "bin2"]], axis=0).shape[0]
-    assert obs_clean == exp_clean
-    obs_scores = np.sort(patterns.score[clean_patterns].values)
-    exp_scores = np.sort(
-        patterns.groupby(["bin1", "bin2"]).max().values.flatten()
-    )
-    assert np.all(obs_scores == exp_scores)
+    patterns = patterns.drop_duplicates(subset=['bin1', 'bin2']).reset_index(drop=True)
+    clean_patterns = cud.remove_neighbours(patterns, win_size=win_size)
+    obs_clean = patterns.loc[clean_patterns, :]
+    # import matplotlib.pyplot as plt
+    # import scipy.sparse as sp
+    # plt.imshow(sp.csr_matrix((patterns.score, (patterns.bin1, patterns.bin2))).toarray())
+    # plt.scatter(obs_clean.bin2, obs_clean.bin1)
+    # plt.show()
+    obs_clean = obs_clean.reset_index(drop=True)
+    for i, pat in obs_clean.iterrows():
+        excl_idx= np.zeros(obs_clean.shape[0], dtype=bool)
+        excl_idx[i] = True
+        assert np.all(
+            excl_idx | (abs(obs_clean.bin1 - pat.bin1) > win_size) | (abs(obs_clean.bin2 - pat.bin2) > win_size)
+        )
 
 
 def test_picker_speckles():
