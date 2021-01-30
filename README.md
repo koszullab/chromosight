@@ -7,6 +7,7 @@ Python package to detect chromatin loops (and other patterns) in Hi-C contact ma
 
 * Associated publication: https://www.nature.com/articles/s41467-020-19562-7
 * Documentation and analyses examples: https://chromosight.readthedocs.io
+* scripts used for the analysis presented in the article https://github.com/koszullab/chromosight_analyses_scripts
 
 ## Installation
 
