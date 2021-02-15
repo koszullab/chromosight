@@ -223,6 +223,7 @@ def pattern_detector(
     km, kn = kernel_matrix.shape
     kh, kw = (km - 1) // 2, (kn - 1) // 2
 
+
     def save_dump(base, mat):
         """Define where to save the dump"""
         sp.save_npz(

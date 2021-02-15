@@ -595,7 +595,8 @@ class ContactMap:
 
     @DumpMatrix("01_process_inter")
     def preprocess_inter_matrix(self):
-        self.matrix.data = self.matrix.data / np.median(self.matrix.data)
+        self.matrix.data[np.isnan(self.matrix.data)] = 0.0
+        self.matrix.data = self.matrix.data / np.nanmedian(self.matrix.data)
 
     def preprocess_intra_matrix(self):
         self.detrend()
