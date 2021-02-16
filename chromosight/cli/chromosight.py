@@ -787,7 +787,13 @@ def cmd_detect(args):
     )
     all_coords = all_coords.loc[~min_dist_drop_mask, :]
     all_windows = all_windows[~min_dist_drop_mask, :, :]
+    del min_dist_drop_mask
 
+    # Remove patterns with nan p-values (no contact in window)
+    pval_mask = np.isnan(all_coords.pvalue)
+    all_coords = all_coords.loc[~pval_mask, :]
+    all_windows = all_windows[~pval_mask, :, :]
+    del pval_mask
     # Correct p-values for multiple testing using FDR
     all_coords["qvalue"] = fdr_correction(all_coords["pvalue"])
     # Reorder columns
