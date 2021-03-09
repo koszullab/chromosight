@@ -132,5 +132,8 @@ To test the code, you can run:
 nose2 -s tests/
 ```
 
+### FAQ
+
+Questions from previous users are available in the [github issues](https://github.com/koszullab/chromosight/issues?q=label%3Aquestion). You can open a new issue for your question if it is not already covered.
 ### Citation
 When using Chromosight in you research, please cite the pubication: https://www.nature.com/articles/s41467-020-19562-7
