@@ -357,6 +357,7 @@ def cmd_quantify(args):
     positions = bed2d.copy()
     # Only resize kernel matrix if explicitely requested
     km, kn = cfg["kernels"][0].shape
+    n_kernels = len(cfg['kernels'])
     if win_size != "auto":
         if not win_size % 2:
             raise ValueError("--win-size must be odd")
@@ -371,6 +372,9 @@ def cmd_quantify(args):
     # matrix is processed on the fly (obs / exp, trimming diagonals > max dist)
     hic_genome.make_sub_matrices()
     windows = np.full((positions.shape[0], km, kn), np.nan)
+    # We will store a copy of coordinates for each kernel
+    bed2d_out = [bed2d.copy() for _ in range(n_kernels)]
+    windows_out = [windows.copy() for _ in range(n_kernels)]
     # For each position, we use the center of the BED interval
     positions["pos1"] = (positions.start1 + positions.end1) // 2
     positions["pos2"] = (positions.start2 + positions.end2) // 2
@@ -413,74 +417,79 @@ def cmd_quantify(args):
             # For each coordinate, keep the highest coefficient
             # among all kernels.
             try:
-                if kernel_id == 0:
-                    bed2d["score"][sub_pat_idx] = r["coords"].score.values
-                    bed2d["pvalue"][sub_pat_idx] = r["coords"].pvalue.values
-                    windows[sub_pat_idx, :, :] = r["windows"]
-                else:
-                    # Only update scores and their corresponding windows
-                    # if better than results from previous kernels
-                    better = (
-                        r["coords"].score > bed2d["score"][sub_pat_idx].values
-                    ) | (np.insnan(bed2d["score"][sub_pat_idx].values))
-                    better_idx = sub_pat_idx[better]
-                    bed2d["score"][better_idx] = (
-                        r["coords"].score[better].values
-                    )
-                    windows[better_idx, :, :] = r["windows"][better]
+                bed2d_out[kernel_id]['score'][sub_pat_idx] = r['coords'].score.values
+                bed2d_out[kernel_id]["pvalue"][sub_pat_idx] = r["coords"].pvalue.values
+                windows_out[kernel_id][sub_pat_idx, :, :] = r["windows"]
             # Do nothing if no pattern was detected or matrix
             # is smaller than the kernel (-> patterns is None)
             except AttributeError:
                 pass
-        bed2d["bin1"] = hic_genome.coords_to_bins(
-            bed2d.loc[:, ["chrom1", "start1"]].rename(
-                columns={"chrom1": "chrom", "start1": "pos"}
-            )
+    # Select the best score for each coordinate (among the different kernels)
+    bed2d = pd.concat(bed2d_out, axis=0).reset_index(drop=True)
+    windows = np.concatenate(windows_out, axis=0)
+    bed2d = (
+        bed2d
+        .sort_values('score', ascending=True)
+        .groupby(['chrom1', 'start1', 'chrom2', 'start2'], sort=False)
+        .tail(1)
+    )
+    windows = windows[bed2d.index, :, :]
+    bed2d = bed2d.reset_index(drop=True)
+    bed2d["bin1"] = hic_genome.coords_to_bins(
+        bed2d.loc[:, ["chrom1", "start1"]].rename(
+            columns={"chrom1": "chrom", "start1": "pos"}
         )
-        bed2d["bin2"] = hic_genome.coords_to_bins(
-            bed2d.loc[:, ["chrom2", "start2"]].rename(
-                columns={"chrom2": "chrom", "start2": "pos"}
-            )
+    )
+    bed2d["bin2"] = hic_genome.coords_to_bins(
+        bed2d.loc[:, ["chrom2", "start2"]].rename(
+            columns={"chrom2": "chrom", "start2": "pos"}
         )
-        bed2d["qvalue"] = fdr_correction(bed2d["pvalue"])
-        bed2d = bed2d.loc[
-            :,
-            [
-                "chrom1",
-                "start1",
-                "end1",
-                "chrom2",
-                "start2",
-                "end2",
-                "bin1",
-                "bin2",
-                "score",
-                "pvalue",
-                "qvalue",
-            ],
-        ]
-        # Set p-values of invalid scores to nan
-        bed2d.loc[np.isnan(bed2d.score), "pvalue"] = np.nan
-        bed2d.loc[np.isnan(bed2d.score), "qvalue"] = np.nan
-        cio.write_patterns(bed2d, prefix)
-        cio.save_windows(windows, prefix, fmt=win_fmt)
-        # Generate pileup visualisations if requested
-        if plotting_enabled:
-            # Compute and plot pileup
-            pileup_title = ("pileup_of_{n}_{pattern}").format(
-                pattern=cfg["name"], n=windows.shape[0]
+    )
+    bed2d["qvalue"] = fdr_correction(bed2d["pvalue"])
+    bed2d = bed2d.loc[
+        :,
+        [
+            "chrom1",
+            "start1",
+            "end1",
+            "chrom2",
+            "start2",
+            "end2",
+            "bin1",
+            "bin2",
+            "score",
+            "pvalue",
+            "qvalue",
+        ],
+    ]
+    # Set p-values of invalid scores to nan
+    bed2d.loc[np.isnan(bed2d.score), "pvalue"] = np.nan
+    bed2d.loc[np.isnan(bed2d.score), "qvalue"] = np.nan
+    # Sort by whole genome coordinates to match input order
+    bed2d = (
+        bed2d
+        .sort_values(['bin1', 'bin2'], ascending=True)
+        .reset_index(drop=True)
+    )
+    cio.write_patterns(bed2d, prefix)
+    cio.save_windows(windows, prefix, fmt=win_fmt)
+    # Generate pileup visualisations if requested
+    if plotting_enabled:
+        # Compute and plot pileup
+        pileup_title = ("pileup_of_{n}_{pattern}").format(
+            pattern=cfg["name"], n=windows.shape[0]
+        )
+        windows_pileup = cid.pileup_patterns(windows)
+        # Symmetrize pileup for diagonal patterns
+        if not cfg["max_dist"]:
+            # Replace nan below diag by 0
+            windows_pileup = np.nan_to_num(windows_pileup)
+            # Add transpose
+            windows_pileup += np.transpose(windows_pileup) - np.diag(
+                np.diag(windows_pileup)
             )
-            windows_pileup = cid.pileup_patterns(windows)
-            # Symmetrize pileup for diagonal patterns
-            if not cfg["max_dist"]:
-                # Replace nan below diag by 0
-                windows_pileup = np.nan_to_num(windows_pileup)
-                # Add transpose
-                windows_pileup += np.transpose(windows_pileup) - np.diag(
-                    np.diag(windows_pileup)
-                )
-            sys.stderr.write(f"Saving pileup plots in {prefix}.pdf\n")
-            pileup_plot(windows_pileup, prefix, name=pileup_title)
+        sys.stderr.write(f"Saving pileup plots in {prefix}.pdf\n")
+        pileup_plot(windows_pileup, prefix, name=pileup_title)
 
 
 def cmd_generate_config(args):
