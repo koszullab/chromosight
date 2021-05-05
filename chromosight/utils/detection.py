@@ -276,8 +276,8 @@ def pattern_detector(
     # Only attempt detection if no input coordinates were given
     if run_mode == "detect":
         # Find foci of highly correlated pixels and pick local maxima
-        # coords, foci_mat = picker(np.abs(mat_log10_pvals), 5)
-        coords, foci_mat = picker(mat_conv, kernel_config["pearson"],)
+        # coords, foci_mat = pick_foci(np.abs(mat_log10_pvals), 5)
+        coords, foci_mat = pick_foci(mat_conv, kernel_config["pearson"],)
         # If nothing was detected, no point in resuming
         if coords is None:
             return None, None
@@ -384,7 +384,7 @@ def remove_neighbours(patterns, win_size=8):
     return whitelist_mask
 
 
-def picker(mat_conv, pearson):
+def pick_foci(mat_conv, pearson, min_size=2):
     """
     Pick coordinates of local maxima in a sparse 2D convolution heatmap. A
     threshold computed based on the pearson argument is applied to the heatmap.
@@ -399,6 +399,9 @@ def picker(mat_conv, pearson):
         Minimum correlation coefficient required to consider a pixel as
         candidate. Increasing this value reduces the amount of false
         positive patterns.
+    min_size : int
+        Minimum number of pixels required to keep a focus. Pixels belonging to
+        smaller foci will be set to 0.
     Returns
     -------
     foci_coords : numpy.array of ints
@@ -422,7 +425,7 @@ def picker(mat_conv, pearson):
         # Assign foci identifiers to pixels above threshold
         num_foci, labelled_mat = label_foci(candidate_mat)
         # Remove foci which are too small
-        num_foci, labelled_mat = filter_foci(labelled_mat)
+        num_foci, labelled_mat = filter_foci(labelled_mat, min_size=min_size)
         if num_foci == 0:
             return None, None
         mat_conv = mat_conv.tocsr()

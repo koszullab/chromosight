@@ -168,25 +168,25 @@ def test_remove_neighbours(win_size):
     assert np.all(obs_scores == exp_scores)
 
 
-def test_picker_speckles():
-    """Test if speckles are discarded by picker"""
-    obs_coords, obs_mat = cud.picker(point_mat, pearson=0.1)
+def test_pick_speckles():
+    """Test if speckles are discarded by pick_foci"""
+    obs_coords, obs_mat = cud.pick_foci(point_mat, pearson=0.1)
     assert obs_coords is None
     assert obs_mat is None
 
 
 @params(*zip(gauss1_coords, gauss1_mats))
-def test_picker_idx(patterns, matrix):
-    """Test that index is not shifted when using picker"""
+def test_pick_idx(patterns, matrix):
+    """Test that index is not shifted when using pick_foci"""
     thresh = matrix.data.mean()
-    obs_coords, _ = cud.picker(matrix, pearson=thresh)
+    obs_coords, _ = cud.pick_foci(matrix, pearson=thresh)
     assert np.all(obs_coords[0] == patterns)
 
 
-def test_picker_nloci():
-    """Test if the number of foci detected by picker is correct"""
+def test_pick_nloci():
+    """Test if the number of foci detected by pick_foci is correct"""
     thresh = gauss12.data.mean()
-    obs_coords, _ = cud.picker(gauss12, pearson=thresh)
+    obs_coords, _ = cud.pick_foci(gauss12, pearson=thresh)
     assert len(obs_coords) == 2
 
 
