@@ -1,6 +1,6 @@
 FROM continuumio/miniconda3:4.8.2
 
-LABEL Name=chromosight Version=1.5.0
+LABEL Name=chromosight Version=1.5.1
 
 COPY * ./ /app/
 WORKDIR /app
