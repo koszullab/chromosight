@@ -97,7 +97,7 @@ def plot_whole_matrix(
         plt.savefig(out)
 
 
-def click_finder(mat, half_w=8):
+def click_finder(mat, half_w=8, xlab=None, ylab=None):
     """
     Given an input Hi-C matrix, show an interactive window and record
     coordinates where the user double-clicks. When the interactive window is
@@ -109,6 +109,10 @@ def click_finder(mat, half_w=8):
         The input Hi-C matrix to display interactively.
     half_w : int
         Half width of the windows to return. The resulting windows
+    xlab: str
+        Horizontal label to display below the matrix.
+    ylab: str
+        Vertical label to display next to the matrix.
 
     Returns
     -------
@@ -138,6 +142,10 @@ def click_finder(mat, half_w=8):
     fig = plt.figure()
     plt.imshow(mat.toarray(), cmap="afmhot_r", vmax=np.percentile(mat.data, 95))
     plt.title("Double click to record pattern positions")
+    if xlab:
+        plt.xlabel(xlab)
+    if ylab:
+        plt.ylabel(ylab)
     # Setup click listener
     cid = fig.canvas.mpl_connect("button_press_event", onclick)
     plt.show()

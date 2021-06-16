@@ -16,7 +16,7 @@ Usage:
                         [--perc-undetected=auto] <contact_map> <prefix>
     chromosight generate-config [--preset loops] [--click contact_map]
                         [--norm={auto,raw,norm}] [--win-size=auto] [--n-mads=5]
-                        [--threads=1] <prefix>
+                        [--chroms=CHROMS] [--inter] [--threads=1] <prefix>
     chromosight quantify [--inter] [--pattern=loops] [--subsample=no]
                          [--win-fmt=json] [--kernel-config=FILE] [--norm={auto,raw,norm}]
                          [--threads=1] [--n-mads=5] [--win-size=auto]
@@ -65,9 +65,13 @@ Arguments for generate-config:
     -e, --preset=loops          Generate a preset config for the given pattern.
                                 Preset configs available are "loops" and
                                 "borders". [default: loops]
-    -c, --click contact_map     Show input contact map and uses double clicks from
+    -c, --click=contact_map     Show input contact map and uses double clicks from
                                 user to build the kernel. Warning: memory-heavy,
                                 reserve for small genomes or subsetted matrices.
+    -C, --chroms=CHROMS         Comma-separated list of chromosome names. When used
+                                with --click, this will show each chromosome's
+                                one-by-one sequentially instead of the whole genome.
+                                This is useful to reduce memory usage.
 
 Arguments for list-kernels:
     --name=kernel_name      Only show information related to a particular
@@ -146,15 +150,17 @@ Advanced options:
 
 
 """
-import numpy as np
-import pandas as pd
+import sys
 import os
 import io
+import itertools as it
 from contextlib import contextmanager
-import sys
 import json
-import docopt
 import tempfile
+import pathlib
+import numpy as np
+import pandas as pd
+import docopt
 import multiprocessing as mp
 from chromosight.version import __version__
 from chromosight.utils.contacts_map import HicGenome
@@ -170,7 +176,6 @@ from chromosight.utils.stats import fdr_correction
 import chromosight.kernels as ck
 import scipy.ndimage as ndi
 import matplotlib.pyplot as plt
-import pathlib
 
 LOGO = np.loadtxt(pathlib.Path(__file__).parents[0] / "logo.txt")
 URL_EXAMPLE_DATASET = (
@@ -501,6 +506,8 @@ def cmd_generate_config(args):
     norm = args["--norm"]
     win_size = args["--win-size"]
     threads = int(args["--threads"])
+    inter = args["--inter"]
+    chroms = args["--chroms"]
 
     cfg = cio.load_kernel_config(pattern, False)
 
@@ -521,7 +528,7 @@ def cmd_generate_config(args):
     # If click mode is enabled, build a kernel from scratch using
     # graphical display, otherwise, just inherit the pattern's kernel
     if click_find:
-        hic_genome = HicGenome(click_find, inter=True, kernel_config=cfg)
+        hic_genome = HicGenome(click_find, inter=inter, kernel_config=cfg)
         # Normalize (balance) the whole genome matrix
         hic_genome.normalize(norm=norm, n_mads=n_mads, threads=threads)
         # enforce full scanning distance in kernel config
@@ -529,11 +536,46 @@ def cmd_generate_config(args):
         hic_genome.max_dist = hic_genome.clr.shape[0] * hic_genome.clr.binsize
         # Process each sub-matrix individually (detrend diag for intra)
         hic_genome.make_sub_matrices()
-        for sub in hic_genome.sub_mats.iterrows():
-            sub_mat = sub[1]
-            sub_mat.contact_map.create_mat()
-        processed_mat = hic_genome.gather_sub_matrices().tocsr()
-        windows = click_finder(processed_mat, half_w=int((win_size - 1) / 2))
+        # By default, the whole genome is showed at once (takes lots of RAM)
+        if chroms is None:
+            for sub in hic_genome.sub_mats.iterrows():
+                sub_mat = sub[1].contact_map
+                sub_mat.create_mat()
+            processed_mat = hic_genome.gather_sub_matrices().tocsr()
+            windows = click_finder(processed_mat, half_w=int((win_size - 1) / 2))
+        # If chromosomes were specified, their submatrices are shown one by one
+        # taking less memory (but more tedious for the user)
+        else:
+            chroms = chroms.split(',')
+            # Generate chromosome pairs to scan
+            if inter:
+                chroms = it.combinations_with_replacement(chroms, 2)
+            else:
+                chroms = [(ch, ch) for ch in chroms]
+            windows = []
+            for c1, c2 in chroms:
+                try:
+                    sub_mat = hic_genome.sub_mats.query(
+                            '(chr1 == @c1) & (chr2 == @c2)'
+                    )['contact_map'].values[0]
+                # In case chromosomes have been entered in a different order
+                except IndexError:
+                    c1, c2 = c2, c1
+                    sub_mat = hic_genome.sub_mats.query(
+                            '(chr1 == @c1) & (chr2 == @c2)'
+                    )['contact_map'].values[0]
+                sub_mat.create_mat()
+                chrom_wins = click_finder(
+                        sub_mat.matrix.tocsr(),
+                        half_w=int((win_size - 1) / 2),
+                        xlab=c2,
+                        ylab=c1
+                )
+                windows.append(chrom_wins)
+                sub_mat.destroy_mat()
+            windows = np.concatenate(windows, axis=0)
+
+
         # Pileup all recorded windows and convert to JSON serializable list
         pileup = ndi.gaussian_filter(cid.pileup_patterns(windows), 1)
         cfg["kernels"] = [pileup.tolist()]

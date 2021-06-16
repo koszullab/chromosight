@@ -462,6 +462,8 @@ class ContactMap:
     extent : list of tuples of ints
         List of two tuples containing the start and end bin numbers of both
         chromosomes from the submatrix.
+    matrix : scipy.sparse.csr_matrix
+        The contact map as a sparse matrix.
     detectable_bins : tuple of arrays
         List containing two arrays (rows and columns) of indices from bins
         considered detectable in the matrix.
