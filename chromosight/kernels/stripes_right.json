@@ -1,0 +1,14 @@
+{
+    "name": "stripes_right",
+    "kernels": [
+        "stripes_right.1.txt"
+    ],
+    "min_dist": 60000,
+    "max_dist": 2000000,
+    "max_iterations": 1,
+    "max_perc_zero": 80.0,
+    "max_perc_undetected": 50.0,
+    "min_separation": 40000,
+    "pearson": 0.17,
+    "resolution": 10000
+}
