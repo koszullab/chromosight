@@ -29,7 +29,7 @@ pip3 install --user -e git+https://github.com/koszullab/chromosight.git@master#e
 
 ## Usage
 
-The two most commonly subcommands of `chromosight` are `detect` and `quantify`. For more advanced use, there are two additional subcomands: `generate-config` and `list-kernels`. To get the list and description of those subcommands, you can always run:
+The two main subcommands of `chromosight` are `detect` and `quantify`. For more advanced use, there are two additional subcomands: `generate-config` and `list-kernels`. To get the list and description of those subcommands, you can always run:
 
 ```bash
 chromosight --help
