@@ -20,7 +20,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -v -Ur requirements.txt
-        pip install codecov nose2
+        pip install codecov nose2 nose
         pip install -e .
     - name: Run tests
       run: |
