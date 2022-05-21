@@ -840,7 +840,7 @@ def cmd_detect(args):
     del min_dist_drop_mask
 
     # Remove patterns with nan p-values (no contact in window)
-    pval_mask = np.isnan(all_coords.pvalue)
+    pval_mask = all_coords.pvalue.isnull()
     all_coords = all_coords.loc[~pval_mask, :]
     all_windows = all_windows[~pval_mask, :, :]
     del pval_mask
