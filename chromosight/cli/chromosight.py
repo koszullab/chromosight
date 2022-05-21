@@ -44,7 +44,7 @@ Usage:
 
 Arguments for detect:
     contact_map                 The Hi-C contact map to detect patterns on, in
-                                bedgraph2d or cool format.
+                                cool format.
     prefix                      Common path prefix used to generate output files.
                                 Extensions will be added for each file.
 
@@ -52,8 +52,7 @@ Arguments for quantify:
     bed2d                       Tab-separated text files with columns chrom1, start1
                                 end1, chrom2, start2, end2. Each line correspond to
                                 a pair of positions (i.e. a position in the matrix).
-    contact_map                 Path to the contact map, in bedgraph2d or
-                                cool format.
+    contact_map                 Path to the contact map, in cool format.
     prefix                      Common path prefix used to generate output files.
                                 Extensions will be added for each file.
 
