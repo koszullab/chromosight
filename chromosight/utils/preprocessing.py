@@ -222,7 +222,7 @@ def get_detectable_bins(mat, n_mads=3, inter=False):
     matrix = mat.copy()
     matrix.eliminate_zeros()
 
-    def mad(x): return ss.median_absolute_deviation(x, nan_policy="omit")
+    def mad(x): return ss.median_abs_deviation(x, nan_policy="omit")
 
     if not inter:
         if matrix.shape[0] != matrix.shape[1]:
