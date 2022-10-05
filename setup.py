@@ -24,7 +24,7 @@ name = "chromosight"
 
 MAJOR = 1
 MINOR = 6
-MAINTENANCE = 2
+MAINTENANCE = 3
 VERSION = "{}.{}.{}".format(MAJOR, MINOR, MAINTENANCE)
 
 LICENSE = "MIT"
