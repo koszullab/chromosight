@@ -2,7 +2,6 @@
 import os
 import json
 import tempfile
-import nose.tools as nt
 import numpy as np
 import pandas as pd
 from jsonschema import ValidationError

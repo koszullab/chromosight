@@ -252,13 +252,13 @@ class HicGenome:
         if self.inter:
             sub_mats = pd.DataFrame(
                 np.zeros(
-                    (int(n_chroms ** 2 / 2 + n_chroms / 2), 3), dtype=str
+                    (int(n_chroms ** 2 / 2 + n_chroms / 2), 3), dtype=object
                 ),
                 columns=sub_cols,
             )
         else:
             sub_mats = pd.DataFrame(
-                np.zeros((n_chroms, 3), dtype=str), columns=sub_cols
+                np.zeros((n_chroms, 3), dtype=object), columns=sub_cols
             )
 
         d = self.detectable_bins
@@ -294,7 +294,7 @@ class HicGenome:
                         'name': f"{chr1}-{chr2}",
                     }
                     if i1 == i2:
-                        sub_mats.contact_map[sub_mat_idx] = ContactMap(
+                        sub_mats.loc[sub_mat_idx, 'contact_map'] = ContactMap(
                             self.clr,
                             inter=False,
                             max_dist=self.max_dist,
@@ -302,13 +302,13 @@ class HicGenome:
                             **map_kwargs,
                         )
                     else:
-                        sub_mats.contact_map[sub_mat_idx] = ContactMap(
+                        sub_mats.loc[sub_mat_idx, 'contact_map'] = ContactMap(
                             self.clr,
                             inter=True,
                             **map_kwargs,
                         )
-                    sub_mats.chr1[sub_mat_idx] = chr1
-                    sub_mats.chr2[sub_mat_idx] = chr2
+                    sub_mats.loc[sub_mat_idx, 'chr1'] = chr1
+                    sub_mats.loc[sub_mat_idx, 'chr2'] = chr2
                     sub_mat_idx += 1
         cio.progress(
             sub_mat_idx,
